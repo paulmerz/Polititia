@@ -27,6 +27,7 @@ class DateTests(unittest.TestCase):
 
     def test_compact_datetime(self) -> None:
         self.assertEqual(normalize_session_date("20241002153000"), "2024-10-02")
+        self.assertEqual(normalize_session_date("20260527213000000"), "2026-05-27")
 
 
 if __name__ == "__main__":

@@ -34,8 +34,15 @@ def index_session_dates(xml_dir: Path) -> dict[str, str]:
             root = ET.parse(path).getroot()
         except ET.ParseError:
             continue
-        raw = _get_metadata(root).get("dateSeanceJour", "")
-        date = normalize_session_date(raw)
+        md = root.find("an:metadonnees", NS)
+        raw_values: list[str] = []
+        if md is not None:
+            for key in ("dateSeance", "dateSeanceJour"):
+                node = md.find(f"an:{key}", NS)
+                if node is not None and node.text:
+                    raw_values.append(node.text)
+        raw_values.append(_get_metadata(root).get("dateSeanceJour", ""))
+        date = next((parsed for raw in raw_values if (parsed := normalize_session_date(raw))), None)
         if date:
             dates[path.stem] = date
     return dates
