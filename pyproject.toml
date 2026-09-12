@@ -1,0 +1,10 @@
+[project]
+name = "polititia"
+version = "0.1.0"
+description = "Static dashboard and n-gram analysis for Assemblée nationale speeches"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+lemma = ["spacy"]
