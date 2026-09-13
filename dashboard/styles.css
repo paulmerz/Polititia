@@ -204,10 +204,30 @@ h1 {
 }
 
 .seat-scale-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 18px;
   margin: 0;
   padding: 0 14px 12px;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.seat-size-key {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.seat-size-key-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .topic-legend {

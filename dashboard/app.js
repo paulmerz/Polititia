@@ -273,18 +273,39 @@ function seatMetricValue(person) {
   return Number(person.surfaceTokenCount || 0);
 }
 
+const SEAT_RADIUS_MIN = 2.6;
+const SEAT_RADIUS_MAX = 14.5;
+const SEAT_SCALE_PERCENTILE = 0.9;
+
+function quantile(values, p) {
+  if (!values.length) {
+    return 1;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = (sorted.length - 1) * p;
+  const lo = Math.floor(index);
+  const hi = Math.ceil(index);
+  if (lo === hi) {
+    return sorted[lo];
+  }
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (index - lo);
+}
+
 function seatScale() {
-  const logs = data.politicians.map((person) => Math.log1p(seatMetricValue(person)));
+  const values = data.politicians.map((person) => seatMetricValue(person));
   return {
-    min: Math.min(...logs),
-    max: Math.max(...logs),
+    cap: Math.max(1, quantile(values, SEAT_SCALE_PERCENTILE)),
+    median: Math.max(1, quantile(values, 0.5)),
   };
 }
 
+function seatRadiusForValue(value, scale) {
+  const capped = Math.min(Math.max(0, Number(value) || 0), scale.cap);
+  return Math.max(SEAT_RADIUS_MIN, SEAT_RADIUS_MAX * Math.sqrt(capped / scale.cap));
+}
+
 function seatRadius(person, scale) {
-  const value = Math.log1p(seatMetricValue(person));
-  const scaled = (value - scale.min) / Math.max(0.0001, scale.max - scale.min);
-  return 3.4 + scaled * 5.8;
+  return seatRadiusForValue(seatMetricValue(person), scale);
 }
 
 function seatTooltip(person) {
@@ -422,10 +443,41 @@ function renderChamber() {
   });
   chamberSvg.appendChild(dots);
   renderLegend(byParty);
-  if (seatScaleNote) {
-    const metricLabel = state.seatMetric === "speeches" ? "speech count" : "word count";
-    seatScaleNote.textContent = `Seat size encodes ${metricLabel} (log scale). Hover shows both speeches and words.`;
+  renderSeatScaleNote(scale);
+}
+
+function seatScaleExampleSvg(radius) {
+  const size = Math.ceil(radius * 2 + 4);
+  const center = size / 2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${center}" cy="${center}" r="${radius.toFixed(2)}" fill="#5b6575"></circle></svg>`;
+}
+
+function renderSeatScaleNote(scale) {
+  if (!seatScaleNote) {
+    return;
   }
+  const isSpeeches = state.seatMetric === "speeches";
+  const unit = isSpeeches ? "speeches" : "words";
+  const formatValue = isSpeeches ? fmtInt : fmtCompact;
+  const low = Math.max(1, Math.round(scale.cap * 0.1));
+  const examples = [
+    { value: low, label: formatValue(low) },
+    { value: scale.median, label: formatValue(Math.round(scale.median)) },
+    { value: scale.cap, label: `${formatValue(Math.round(scale.cap))}+` },
+  ];
+  const key = examples
+    .map(
+      (example) => `
+        <span class="seat-size-key-item">
+          ${seatScaleExampleSvg(seatRadiusForValue(example.value, scale))}
+          <span>${escapeHtml(example.label)}</span>
+        </span>`,
+    )
+    .join("");
+  seatScaleNote.innerHTML = `
+    <span>Seat area is proportional to ${unit}, capped at the 90th percentile so one very active speaker does not flatten everyone else. Hover shows both speeches and words.</span>
+    <span class="seat-size-key" aria-label="Seat size key">${key}</span>
+  `;
 }
 
 function renderLegend(byParty) {
