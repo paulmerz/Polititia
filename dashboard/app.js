@@ -475,7 +475,7 @@ function renderSeatScaleNote(scale) {
     )
     .join("");
   seatScaleNote.innerHTML = `
-    <span>Seat area is proportional to ${unit}, capped at the 90th percentile so one very active speaker does not flatten everyone else. Hover shows both speeches and words.</span>
+    <span>Circle area follows ${unit}, with a 90th-percentile cap so outliers share the largest size. Hover shows both counts.</span>
     <span class="seat-size-key" aria-label="Seat size key">${key}</span>
   `;
 }
