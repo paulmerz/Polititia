@@ -203,6 +203,21 @@ h1 {
   color: #fff;
 }
 
+.seat-scale-note.is-updating .seat-size-key {
+  animation: seat-key-pulse 500ms ease;
+}
+
+@keyframes seat-key-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .seat-scale-note {
   display: flex;
   flex-wrap: wrap;
@@ -349,7 +364,7 @@ h1 {
   stroke: #fff;
   stroke-width: 1.4;
   transition:
-    r 120ms ease,
+    r 450ms ease,
     opacity 120ms ease,
     stroke-width 120ms ease;
 }

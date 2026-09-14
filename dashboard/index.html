@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Assemblee N-gram Explorer</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=seat-toggle-2" />
   </head>
   <body>
     <header class="topbar">
@@ -42,8 +42,8 @@
           <div class="field">
             <span>Seat size</span>
             <div class="segmented" role="group" aria-label="Seat size metric">
-              <button type="button" data-seat-metric="speeches">Speeches</button>
-              <button type="button" data-seat-metric="tokens" class="is-active">Words</button>
+              <button type="button" data-seat-metric="speeches" aria-pressed="false">Speeches</button>
+              <button type="button" data-seat-metric="tokens" class="is-active" aria-pressed="true">Words</button>
             </div>
           </div>
         </div>
@@ -78,6 +78,6 @@
     </dialog>
 
     <script src="data/dashboard-data.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=seat-toggle-2"></script>
   </body>
 </html>

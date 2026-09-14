@@ -192,7 +192,9 @@ function syncControls() {
     tab.classList.toggle("is-active", tab.dataset.tab === state.activeTab);
   });
   document.querySelectorAll("[data-seat-metric]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.seatMetric === state.seatMetric);
+    const isActive = button.dataset.seatMetric === state.seatMetric;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
 }
 
@@ -271,6 +273,48 @@ function seatMetricValue(person) {
     return Number(person.speechCount || 0);
   }
   return Number(person.surfaceTokenCount || 0);
+}
+
+function compareSeatPosition(a, b) {
+  const speechDelta = Number(b.speechCount || 0) - Number(a.speechCount || 0);
+  if (speechDelta !== 0) {
+    return speechDelta;
+  }
+  return String(a.name || "").localeCompare(String(b.name || ""), "fr");
+}
+
+function updateSeatRadii() {
+  const scale = seatScale();
+  chamberSvg.querySelectorAll("[data-politician-id]").forEach((dot) => {
+    const person = politiciansById.get(dot.dataset.politicianId);
+    if (!person) {
+      return;
+    }
+    const label = seatTooltip(person);
+    dot.setAttribute("r", seatRadius(person, scale).toFixed(2));
+    dot.setAttribute("aria-label", label);
+    const title = dot.querySelector("title");
+    if (title) {
+      title.textContent = label;
+    }
+  });
+  renderSeatScaleNote(scale);
+  if (seatScaleNote) {
+    seatScaleNote.classList.remove("is-updating");
+    void seatScaleNote.offsetWidth;
+    seatScaleNote.classList.add("is-updating");
+  }
+}
+
+function setSeatMetric(metric) {
+  if (!metric || state.seatMetric === metric) {
+    return;
+  }
+  state.seatMetric = metric;
+  syncControls();
+  requestAnimationFrame(() => {
+    updateSeatRadii();
+  });
 }
 
 const SEAT_RADIUS_MIN = 2.6;
@@ -418,7 +462,7 @@ function renderChamber() {
     if (!people || !sector) {
       return;
     }
-    people.sort((a, b) => seatMetricValue(b) - seatMetricValue(a));
+    people.sort(compareSeatPosition);
     allSeats.push(...layoutPartySeats(people, sector));
   });
 
@@ -1196,6 +1240,14 @@ function selectPolitician(personId, openDialog = false) {
   }
 }
 
+document.querySelectorAll("[data-seat-metric]").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSeatMetric(button.dataset.seatMetric);
+  });
+});
+
 document.body.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-tab]");
   if (tab) {
@@ -1207,13 +1259,6 @@ document.body.addEventListener("click", (event) => {
   const markerButton = event.target.closest("[data-marker-category]");
   if (markerButton) {
     state.markerCategory = markerButton.dataset.markerCategory;
-    render();
-    return;
-  }
-
-  const seatMetricButton = event.target.closest("[data-seat-metric]");
-  if (seatMetricButton) {
-    state.seatMetric = seatMetricButton.dataset.seatMetric;
     render();
     return;
   }
