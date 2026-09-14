@@ -14,18 +14,23 @@ const searchInput = document.getElementById("searchInput");
 const searchResults = document.getElementById("searchResults");
 const ngramSize = document.getElementById("ngramSize");
 const showUnlabeled = document.getElementById("showUnlabeled");
+const seatScaleNote = document.getElementById("seatScaleNote");
 const dialog = document.getElementById("politicianDialog");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogContent = document.getElementById("dialogContent");
 
-const tokenLogs = data.politicians.map((person) => Math.log1p(person.surfaceTokenCount || 0));
-const minTokenLog = Math.min(...tokenLogs);
-const maxTokenLog = Math.max(...tokenLogs);
 const languageMarkers = data.languageMarkers || { metrics: [], partyRows: [], summary: {} };
 const languageMetricMap = new Map((languageMarkers.metrics || []).map((metric) => [metric.key, metric]));
 const pronounKeys = ["nous", "je", "il", "vous"];
 const lexicalMetricKeys = ["LD", "BW", "MWL", "MSL", "TTR"];
-const languagePalette = ["#2f6f73", "#b35d32", "#6f5b9e", "#2d9b68", "#c43b58", "#3156a3", "#e4a72c"];
+const topicPalette = ["#2f6f73", "#b35d32", "#6f5b9e", "#2d9b68", "#c43b58", "#3156a3", "#e4a72c", "#8e4bb5", "#42a9b8", "#26324d"];
+const markerHelp = {
+  address: "Parliamentary address formulas only (monsieur le ministre, chers collègues). Rate is hits per 1,000 words.",
+  negation: "Negation scope (ne … pas / jamais / rien / plus), not comparatives such as plus de or les plus.",
+  procedure: "Collocations that contain legislative procedure terms.",
+  stance: "Collocations that contain stance verbs (faut, propose, refuse…).",
+  pronoun: "Collocations that contain je / nous / vous.",
+};
 const dashboardPartyToLanguageParty = {
   LFI_NFP: "La France Insoumise",
   GDR: "Parti communiste français",
@@ -49,6 +54,8 @@ const state = {
   languageMetric: "LD",
   search: "",
   showUnlabeled: false,
+  seatMetric: "tokens",
+  isolatedTopicId: null,
 };
 
 function normalize(value) {
@@ -107,7 +114,7 @@ function fmtLanguageValue(key, value) {
 }
 
 function languageColor(index) {
-  return languagePalette[index % languagePalette.length];
+  return topicPalette[index % topicPalette.length];
 }
 
 function languageRowsForMetric(metricKey) {
@@ -184,6 +191,11 @@ function syncControls() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.tab === state.activeTab);
   });
+  document.querySelectorAll("[data-seat-metric]").forEach((button) => {
+    const isActive = button.dataset.seatMetric === state.seatMetric;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
 }
 
 function getVisiblePoliticians() {
@@ -256,10 +268,92 @@ function svgEl(name, attrs = {}) {
   return element;
 }
 
-function seatRadius(person) {
-  const value = Math.log1p(person.surfaceTokenCount || 0);
-  const scaled = (value - minTokenLog) / Math.max(0.0001, maxTokenLog - minTokenLog);
-  return 3.4 + scaled * 5.8;
+function seatMetricValue(person) {
+  if (state.seatMetric === "speeches") {
+    return Number(person.speechCount || 0);
+  }
+  return Number(person.surfaceTokenCount || 0);
+}
+
+function compareSeatPosition(a, b) {
+  const speechDelta = Number(b.speechCount || 0) - Number(a.speechCount || 0);
+  if (speechDelta !== 0) {
+    return speechDelta;
+  }
+  return String(a.name || "").localeCompare(String(b.name || ""), "fr");
+}
+
+function updateSeatRadii() {
+  const scale = seatScale();
+  chamberSvg.querySelectorAll("[data-politician-id]").forEach((dot) => {
+    const person = politiciansById.get(dot.dataset.politicianId);
+    if (!person) {
+      return;
+    }
+    const label = seatTooltip(person);
+    dot.setAttribute("r", seatRadius(person, scale).toFixed(2));
+    dot.setAttribute("aria-label", label);
+    const title = dot.querySelector("title");
+    if (title) {
+      title.textContent = label;
+    }
+  });
+  renderSeatScaleNote(scale);
+  if (seatScaleNote) {
+    seatScaleNote.classList.remove("is-updating");
+    void seatScaleNote.offsetWidth;
+    seatScaleNote.classList.add("is-updating");
+  }
+}
+
+function setSeatMetric(metric) {
+  if (!metric || state.seatMetric === metric) {
+    return;
+  }
+  state.seatMetric = metric;
+  syncControls();
+  requestAnimationFrame(() => {
+    updateSeatRadii();
+  });
+}
+
+const SEAT_RADIUS_MIN = 2.6;
+const SEAT_RADIUS_MAX = 14.5;
+const SEAT_SCALE_PERCENTILE = 0.9;
+
+function quantile(values, p) {
+  if (!values.length) {
+    return 1;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = (sorted.length - 1) * p;
+  const lo = Math.floor(index);
+  const hi = Math.ceil(index);
+  if (lo === hi) {
+    return sorted[lo];
+  }
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (index - lo);
+}
+
+function seatScale() {
+  const values = data.politicians.map((person) => seatMetricValue(person));
+  return {
+    cap: Math.max(1, quantile(values, SEAT_SCALE_PERCENTILE)),
+    median: Math.max(1, quantile(values, 0.5)),
+  };
+}
+
+function seatRadiusForValue(value, scale) {
+  const capped = Math.min(Math.max(0, Number(value) || 0), scale.cap);
+  return Math.max(SEAT_RADIUS_MIN, SEAT_RADIUS_MAX * Math.sqrt(capped / scale.cap));
+}
+
+function seatRadius(person, scale) {
+  return seatRadiusForValue(seatMetricValue(person), scale);
+}
+
+function seatTooltip(person) {
+  return `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} speeches · ${fmtCompact(person.surfaceTokenCount)} words`;
 }
 
 function layoutPartySeats(people, sector) {
@@ -368,30 +462,66 @@ function renderChamber() {
     if (!people || !sector) {
       return;
     }
-    people.sort((a, b) => (b.surfaceTokenCount || 0) - (a.surfaceTokenCount || 0));
+    people.sort(compareSeatPosition);
     allSeats.push(...layoutPartySeats(people, sector));
   });
 
+  const scale = seatScale();
   const dots = svgEl("g");
   allSeats.forEach(({ person, x, y }) => {
     const dot = svgEl("circle", {
       cx: x.toFixed(1),
       cy: y.toFixed(1),
-      r: seatRadius(person).toFixed(2),
+      r: seatRadius(person, scale).toFixed(2),
       fill: partyColor(person.party),
       class: `seat-dot${person.id === state.selectedId ? " is-selected" : ""}`,
       tabindex: 0,
       role: "button",
-      "aria-label": `${person.name}, ${partyLabel(person.party)}`,
+      "aria-label": seatTooltip(person),
       "data-politician-id": person.id,
     });
     const title = svgEl("title");
-    title.textContent = `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} speeches`;
+    title.textContent = seatTooltip(person);
     dot.appendChild(title);
     dots.appendChild(dot);
   });
   chamberSvg.appendChild(dots);
   renderLegend(byParty);
+  renderSeatScaleNote(scale);
+}
+
+function seatScaleExampleSvg(radius) {
+  const size = Math.ceil(radius * 2 + 4);
+  const center = size / 2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${center}" cy="${center}" r="${radius.toFixed(2)}" fill="#5b6575"></circle></svg>`;
+}
+
+function renderSeatScaleNote(scale) {
+  if (!seatScaleNote) {
+    return;
+  }
+  const isSpeeches = state.seatMetric === "speeches";
+  const unit = isSpeeches ? "speeches" : "words";
+  const formatValue = isSpeeches ? fmtInt : fmtCompact;
+  const low = Math.max(1, Math.round(scale.cap * 0.1));
+  const examples = [
+    { value: low, label: formatValue(low) },
+    { value: scale.median, label: formatValue(Math.round(scale.median)) },
+    { value: scale.cap, label: `${formatValue(Math.round(scale.cap))}+` },
+  ];
+  const key = examples
+    .map(
+      (example) => `
+        <span class="seat-size-key-item">
+          ${seatScaleExampleSvg(seatRadiusForValue(example.value, scale))}
+          <span>${escapeHtml(example.label)}</span>
+        </span>`,
+    )
+    .join("");
+  seatScaleNote.innerHTML = `
+    <span>Circle area follows ${unit}, with a 90th-percentile cap so outliers share the largest size. Hover shows both counts.</span>
+    <span class="seat-size-key" aria-label="Seat size key">${key}</span>
+  `;
 }
 
 function renderLegend(byParty) {
@@ -740,6 +870,8 @@ function renderPoliticianDetail(personId) {
 
       <h3 class="section-title">Speech markers</h3>
       ${markerCategory}
+      ${renderMarkerRate(phrases, state.markerCategory)}
+      <p class="source-note">${escapeHtml(markerHelp[state.markerCategory] || "")}</p>
       ${phraseList(markerRows)}
 
       <h3 class="section-title">Party common phrases</h3>
@@ -906,7 +1038,153 @@ function renderCorpusPanel() {
           .join("")}
       </div>
       <p class="source-note section-title">Data sources</p>
-      <p class="source-note">${Object.values(data.meta.sources).map(escapeHtml).join("<br />")}</p>
+      <p class="source-note">${Object.values(data.meta.sources).filter(Boolean).map(escapeHtml).join("<br />")}</p>
+    </div>
+  `;
+}
+
+function renderMarkerRate(phrases, category) {
+  if (category !== "address" && category !== "negation") {
+    return "";
+  }
+  const rate = phrases.markerRates?.[category];
+  const count = phrases.markerCounts?.[category] || 0;
+  if (rate === undefined) {
+    return "";
+  }
+  return `
+    <div class="stat-grid">
+      <div class="stat"><span>Per 1,000 words</span><strong>${Number(rate).toFixed(1)}</strong></div>
+      <div class="stat"><span>Hits</span><strong>${fmtInt(count)}</strong></div>
+    </div>
+  `;
+}
+
+function topicColor(topicId) {
+  return topicPalette[Number(topicId) % topicPalette.length];
+}
+
+function renderTopicChart(months, lines) {
+  if (!months.length || !lines.length) {
+    return `<p class="source-note">No monthly series for this party.</p>`;
+  }
+  const width = 640;
+  const height = 240;
+  const pad = { top: 16, right: 12, bottom: 36, left: 42 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const maxValue = Math.max(0.05, ...lines.flatMap((line) => line.values));
+  const xAt = (index) => pad.left + (months.length === 1 ? innerW / 2 : (index / (months.length - 1)) * innerW);
+  const yAt = (value) => pad.top + innerH - (value / maxValue) * innerH;
+  const visibleLines = lines.filter((line) => !state.isolatedTopicId || line.id === state.isolatedTopicId);
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+    const value = maxValue * fraction;
+    const y = yAt(value);
+    return `<line class="topic-chart-grid" x1="${pad.left}" x2="${width - pad.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>
+      <text class="topic-chart-axis" x="8" y="${(y + 4).toFixed(1)}">${Math.round(value * 100)}%</text>`;
+  });
+  const xLabels = months.map((month, index) => {
+    if (index !== 0 && index !== months.length - 1 && index % Math.ceil(months.length / 6) !== 0) {
+      return "";
+    }
+    return `<text class="topic-chart-axis" x="${xAt(index).toFixed(1)}" y="${height - 10}" text-anchor="middle">${escapeHtml(month)}</text>`;
+  });
+  const paths = visibleLines.map((line) => {
+    const d = line.values
+      .map((value, index) => `${index === 0 ? "M" : "L"} ${xAt(index).toFixed(1)} ${yAt(value).toFixed(1)}`)
+      .join(" ");
+    return `<path class="topic-chart-line" d="${d}" stroke="${line.color}"></path>`;
+  });
+  return `
+    <svg class="topic-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Theme share over time">
+      ${grid.join("")}
+      ${paths.join("")}
+      ${xLabels.join("")}
+    </svg>
+  `;
+}
+
+function renderThemesPanel() {
+  const bundle = data.topics;
+  if (!bundle || !bundle.topics?.length) {
+    return `
+      <div class="detail-body">
+        <h2>Themes</h2>
+        <p class="source-note">Topic data is missing. Run analyze_topics.py then dashboard/build_dashboard_data.py.</p>
+      </div>
+    `;
+  }
+
+  const selected = state.selectedParty === "ALL" ? selectedPolitician()?.party : state.selectedParty;
+  const partyId = selected || "LFI_NFP";
+  const partyTopics = [...(bundle.byParty?.[partyId] || [])].sort((a, b) => b.share - a.share);
+  const topTopics = partyTopics.slice(0, 5);
+  const topIds = new Set(topTopics.map((topic) => String(topic.id)));
+  const months = bundle.months || [];
+  const series = bundle.series?.[partyId] || {};
+
+  const lines = topTopics.map((topic) => ({
+    id: String(topic.id),
+    label: topic.label,
+    color: topicColor(topic.id),
+    values: months.map((month) => Number(series[String(topic.id)]?.[month] || 0)),
+  }));
+  if (partyTopics.length > 5) {
+    lines.push({
+      id: "other",
+      label: "Other themes",
+      color: "#9aa1aa",
+      values: months.map((month) => {
+        let rest = 0;
+        Object.entries(series).forEach(([topicId, monthMap]) => {
+          if (!topIds.has(topicId)) {
+            rest += Number(monthMap[month] || 0);
+          }
+        });
+        return rest;
+      }),
+    });
+  }
+
+  return `
+    <div class="detail-body">
+      <div class="panel-control">
+        <label class="field">
+          <span>Party</span>
+          <select id="themesPartySelect">${partyOptions(partyId)}</select>
+        </label>
+      </div>
+      <h2>Themes</h2>
+      <p class="source-note">Lexical fields from TF-IDF + NMF on individual speeches. Shares are the percentage of that party's speeches assigned to each theme.</p>
+      <div class="panel-title-row">
+        <h3 class="section-title">${escapeHtml(partyLabel(partyId))}</h3>
+      </div>
+      ${renderTopicChart(months, lines)}
+      <div class="topic-legend">
+        ${lines
+          .map((line) => {
+            const isolated = state.isolatedTopicId;
+            const dimmed = isolated && isolated !== line.id;
+            const active = isolated === line.id;
+            return `
+              <button class="topic-legend-item${active ? " is-active" : ""}${dimmed ? " is-dimmed" : ""}" type="button" data-topic-id="${escapeHtml(line.id)}">
+                <span class="swatch" style="background:${line.color}"></span>
+                ${escapeHtml(line.label.split(",")[0])}
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+      <h3 class="section-title">Party lexical fields</h3>
+      ${phraseList(
+        partyTopics.map((topic) => ({
+          ngram: `${topic.label} · ${topic.terms.slice(0, 6).join(", ")}`,
+          count: topic.share,
+          share_pct: (topic.share || 0) * 100,
+        })),
+        { metric: "count", scoreLabel: "share_pct", scoreDigits: 1 },
+      )}
+      <p class="source-note">${escapeHtml(bundle.source || "")}</p>
     </div>
   `;
 }
@@ -918,6 +1196,8 @@ function renderAnalysis() {
     analysisContent.innerHTML = renderLanguageMarkersPanel();
   } else if (state.activeTab === "corpus") {
     analysisContent.innerHTML = renderCorpusPanel();
+  } else if (state.activeTab === "themes") {
+    analysisContent.innerHTML = renderThemesPanel();
   } else {
     analysisContent.innerHTML = renderPoliticianDetail(state.selectedId);
   }
@@ -960,6 +1240,14 @@ function selectPolitician(personId, openDialog = false) {
   }
 }
 
+document.querySelectorAll("[data-seat-metric]").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSeatMetric(button.dataset.seatMetric);
+  });
+});
+
 document.body.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-tab]");
   if (tab) {
@@ -971,6 +1259,14 @@ document.body.addEventListener("click", (event) => {
   const markerButton = event.target.closest("[data-marker-category]");
   if (markerButton) {
     state.markerCategory = markerButton.dataset.markerCategory;
+    render();
+    return;
+  }
+
+  const topicButton = event.target.closest("[data-topic-id]");
+  if (topicButton) {
+    const topicId = topicButton.dataset.topicId;
+    state.isolatedTopicId = state.isolatedTopicId === topicId ? null : topicId;
     render();
     return;
   }
@@ -1035,6 +1331,11 @@ showUnlabeled.addEventListener("change", () => {
 analysisContent.addEventListener("change", (event) => {
   if (event.target.id === "partyPanelSelect") {
     state.selectedParty = event.target.value;
+    render();
+  }
+  if (event.target.id === "themesPartySelect") {
+    state.selectedParty = event.target.value;
+    state.isolatedTopicId = null;
     render();
   }
   if (event.target.id === "partyPanelNgram" || event.target.id === "corpusPanelNgram") {

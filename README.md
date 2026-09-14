@@ -27,6 +27,8 @@ uv run python analyze_project_ngrams.py \
   --ngram-sizes 1 2 3 4 \
   --top-k 25 \
   --min-distinctive-count 50
+uv run python scripts/index_session_dates.py
+uv run --extra topics python analyze_topics.py
 uv run python dashboard/build_dashboard_data.py
 ```
 
@@ -51,12 +53,14 @@ uv run python ngram_distribution.py "extracted_texts/project_full/by_speaker" \
   --token-mode surface
 ```
 
-The documented pipeline has no third-party dependencies. The optional
-`lemma_content` modes use spaCy and can be run with:
+The documented pipeline has no required third-party dependencies. Optional extras:
 
 ```bash
 uv run --extra lemma python analyze_project_ngrams.py --token-mode lemma_content
+uv run --extra topics python analyze_topics.py
 ```
+
+The dashboard **Themes** tab needs the topic extra and `analyze_topics.py`. Seat size (speeches vs words) is a client-side toggle.
 
 ## Ignored Outputs
 

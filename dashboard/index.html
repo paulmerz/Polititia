@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Assemblee N-gram Explorer</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=seat-toggle-2" />
   </head>
   <body>
     <header class="topbar">
@@ -39,11 +39,19 @@
             <input id="showUnlabeled" type="checkbox" />
             <span>Unlabeled</span>
           </label>
+          <div class="field">
+            <span>Seat size</span>
+            <div class="segmented" role="group" aria-label="Seat size metric">
+              <button type="button" data-seat-metric="speeches" aria-pressed="false">Speeches</button>
+              <button type="button" data-seat-metric="tokens" class="is-active" aria-pressed="true">Words</button>
+            </div>
+          </div>
         </div>
 
         <div class="search-results" id="searchResults"></div>
 
         <div class="chamber-wrap">
+          <p class="seat-scale-note" id="seatScaleNote"></p>
           <svg id="chamberSvg" viewBox="0 0 1000 640" role="img" aria-label="Semicircle party layout"></svg>
           <div class="legend" id="partyLegend"></div>
         </div>
@@ -55,6 +63,7 @@
           <button class="tab" data-tab="party" type="button">Party</button>
           <button class="tab" data-tab="markers" type="button">Markers</button>
           <button class="tab" data-tab="corpus" type="button">Corpus</button>
+          <button class="tab" data-tab="themes" type="button">Themes</button>
         </div>
         <div id="analysisContent"></div>
       </aside>
@@ -69,6 +78,6 @@
     </dialog>
 
     <script src="data/dashboard-data.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=seat-toggle-2"></script>
   </body>
 </html>
