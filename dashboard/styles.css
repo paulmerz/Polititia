@@ -123,13 +123,23 @@ h1 {
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(120px, 160px) minmax(110px, 140px) auto auto;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
+  gap: 10px 12px;
   padding: 14px;
   border-bottom: 1px solid var(--line);
   background: #fcfbf8;
+}
+
+.search-field {
+  flex: 1 1 180px;
+  min-width: min(180px, 100%);
+}
+
+.toolbar > .field,
+.toolbar > .toggle-field {
+  flex: 0 0 auto;
 }
 
 .field {
@@ -176,6 +186,7 @@ h1 {
 
 .segmented {
   display: inline-flex;
+  flex-shrink: 0;
   min-height: 39px;
   overflow: hidden;
   border: 1px solid var(--strong-line);
@@ -841,10 +852,6 @@ h1 {
   .app-shell {
     padding-left: 12px;
     padding-right: 12px;
-  }
-
-  .toolbar {
-    grid-template-columns: 1fr;
   }
 
   .chamber-wrap {
