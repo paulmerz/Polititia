@@ -15,6 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from analyze_project_ngrams import CONTENT_EXCLUDE_TERMS  # noqa: E402
+from speech_markers import (  # noqa: E402
+    MARKER_ORDER,
+    classify_marker,
+    find_address_phrases,
+    find_negation_phrases,
+    rate_per_thousand,
+)
 
 
 def first_existing(*paths: Path) -> Path:
@@ -50,6 +57,9 @@ GLOBAL_NGRAMS_PATH = ANALYSIS_DIR / "global_common_ngrams.csv"
 PARTY_COMMON_PATH = ANALYSIS_DIR / "party_common_ngrams.csv"
 PARTY_DISTINCTIVE_PATH = ANALYSIS_DIR / "party_distinctive_ngrams.csv"
 SPEAKER_TFIDF_PATH = ANALYSIS_DIR / "speaker_tfidf_ngrams.csv"
+TOPIC_TERMS_PATH = ANALYSIS_DIR / "topic_terms.csv"
+PARTY_TOPICS_PATH = ANALYSIS_DIR / "party_topics.csv"
+PARTY_TOPIC_MONTHLY_PATH = ANALYSIS_DIR / "party_topic_monthly.csv"
 LANGUAGE_MARKERS_PATH = first_existing(
     ROOT / "metrics_CSV" / "metriche_by_party.csv",
     ROOT / "Politica" / "metrics_CSV" / "metriche_by_party.csv",
@@ -286,59 +296,6 @@ FRENCH_STOPWORDS = {
     "y",
 }
 
-ADDRESS_TERMS = {
-    "cher",
-    "chers",
-    "chere",
-    "chère",
-    "collegue",
-    "collègues",
-    "collègue",
-    "madame",
-    "mesdames",
-    "ministre",
-    "monsieur",
-    "president",
-    "président",
-    "presidente",
-    "présidente",
-    "rapporteur",
-    "rapporteure",
-}
-PROCEDURE_TERMS = {
-    "amendement",
-    "amendements",
-    "article",
-    "avis",
-    "commission",
-    "gouvernement",
-    "loi",
-    "projet",
-    "rapport",
-    "scrutin",
-    "seance",
-    "séance",
-    "texte",
-}
-STANCE_TERMS = {
-    "crois",
-    "demande",
-    "demandons",
-    "devons",
-    "doit",
-    "faut",
-    "pense",
-    "propose",
-    "proposons",
-    "refuse",
-    "souhaite",
-    "voter",
-    "votons",
-}
-NEGATION_TERMS = {"aucun", "jamais", "ne", "ni", "non", "pas", "personne", "plus", "rien"}
-PRONOUN_TERMS = {"je", "j", "nous", "notre", "nos", "vous", "votre", "vos"}
-
-
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -385,21 +342,6 @@ def content_tokens(line: str) -> list[str]:
             continue
         tokens.append(token)
     return tokens
-
-
-def classify_marker(tokens: list[str]) -> str | None:
-    token_set = set(tokens)
-    if token_set & ADDRESS_TERMS:
-        return "address"
-    if token_set & PROCEDURE_TERMS:
-        return "procedure"
-    if token_set & STANCE_TERMS:
-        return "stance"
-    if token_set & NEGATION_TERMS:
-        return "negation"
-    if token_set & PRONOUN_TERMS:
-        return "pronoun"
-    return None
 
 
 def rank_counter(
@@ -488,7 +430,9 @@ def build_politician_phrases(grouped: dict[str, dict[str, object]]) -> dict[str,
         marker_counts: dict[str, Counter[str]] = defaultdict(Counter)
         marker_speech_counts: dict[str, Counter[str]] = defaultdict(Counter)
         marker_totals: Counter[str] = Counter()
+        marker_event_counts: Counter[str] = Counter()
         total_speeches = 0
+        surface_token_total = 0
 
         for source_path in source_paths:
             path = Path(source_path)
@@ -508,6 +452,20 @@ def build_politician_phrases(grouped: dict[str, dict[str, object]]) -> dict[str,
                     content_totals[size] += len(grams)
 
                 s_tokens = line.split()
+                surface_token_total += len(s_tokens)
+                address_hits = find_address_phrases(s_tokens)
+                negation_hits = find_negation_phrases(s_tokens)
+                if address_hits:
+                    marker_counts["address"].update(address_hits)
+                    marker_totals["address"] += len(address_hits)
+                    marker_speech_counts["address"].update(address_hits)
+                    marker_event_counts["address"] += len(address_hits)
+                if negation_hits:
+                    marker_counts["negation"].update(negation_hits)
+                    marker_totals["negation"] += len(negation_hits)
+                    marker_speech_counts["negation"].update(negation_hits)
+                    marker_event_counts["negation"] += len(negation_hits)
+
                 seen_markers: dict[str, set[str]] = defaultdict(set)
                 for size in MARKER_NGRAM_SIZES:
                     for phrase in ngrams(s_tokens, size):
@@ -534,13 +492,21 @@ def build_politician_phrases(grouped: dict[str, dict[str, object]]) -> dict[str,
             },
             "markers": {
                 category: rank_counter(
-                    counts,
+                    marker_counts[category],
                     marker_totals[category],
                     marker_speech_counts[category],
                     total_speeches,
                     TOP_MARKERS,
                 )
-                for category, counts in sorted(marker_counts.items())
+                for category in MARKER_ORDER
+            },
+            "markerRates": {
+                "address": round(rate_per_thousand(marker_event_counts["address"], surface_token_total), 2),
+                "negation": round(rate_per_thousand(marker_event_counts["negation"], surface_token_total), 2),
+            },
+            "markerCounts": {
+                "address": int(marker_event_counts["address"]),
+                "negation": int(marker_event_counts["negation"]),
             },
         }
 
@@ -672,6 +638,58 @@ def build_party_data(politicians: list[dict[str, object]]) -> list[dict[str, obj
     return parties
 
 
+def build_topics_bundle() -> dict[str, object] | None:
+    if not TOPIC_TERMS_PATH.exists() or not PARTY_TOPICS_PATH.exists():
+        return None
+
+    terms_rows = read_csv(TOPIC_TERMS_PATH)
+    topics = []
+    for row in terms_rows:
+        topic_id = int_value(row.get("topic_id"))
+        terms = [item.strip() for item in row.get("terms", "").split("|") if item.strip()]
+        topics.append(
+            {
+                "id": topic_id,
+                "label": row.get("label") or ", ".join(terms[:4]),
+                "terms": terms,
+            }
+        )
+    topic_by_id = {item["id"]: item for item in topics}
+
+    by_party: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in read_csv(PARTY_TOPICS_PATH):
+        topic_id = int_value(row.get("topic_id"))
+        topic = topic_by_id.get(topic_id, {"id": topic_id, "label": f"Topic {topic_id}", "terms": []})
+        by_party[row["party"]].append(
+            {
+                "id": topic_id,
+                "label": topic["label"],
+                "terms": topic["terms"],
+                "speechCount": int_value(row.get("speech_count")),
+                "share": float_value(row.get("share")),
+            }
+        )
+    for party_id, rows in by_party.items():
+        rows.sort(key=lambda item: (-float(item["share"]), int(item["id"])))
+        by_party[party_id] = rows
+
+    months: list[str] = []
+    series: dict[str, dict[str, dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
+    if PARTY_TOPIC_MONTHLY_PATH.exists():
+        monthly_rows = read_csv(PARTY_TOPIC_MONTHLY_PATH)
+        months = sorted({row["month"] for row in monthly_rows})
+        for row in monthly_rows:
+            series[row["party"]][str(int_value(row.get("topic_id")))][row["month"]] = float_value(row.get("share"))
+
+    return {
+        "topics": topics,
+        "byParty": dict(by_party),
+        "months": months,
+        "series": {party: dict(topic_map) for party, topic_map in series.items()},
+        "source": display_path(TOPIC_TERMS_PATH),
+    }
+
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
@@ -686,6 +704,7 @@ def main() -> None:
         )
     parties = build_party_data(politicians)
     language_markers = build_language_markers()
+    topics = build_topics_bundle()
 
     party_common = group_ngram_rows(
         read_csv(PARTY_COMMON_PATH),
@@ -731,6 +750,7 @@ def main() -> None:
                 "partyDistinctiveNgrams": display_path(PARTY_DISTINCTIVE_PATH),
                 "speakerTfidfNgrams": display_path(SPEAKER_TFIDF_PATH),
                 "languageMarkers": language_markers["source"],
+                "topics": display_path(TOPIC_TERMS_PATH) if topics else None,
             },
         },
         "partyOrder": [config["id"] for config in PARTY_CONFIG],
@@ -740,6 +760,7 @@ def main() -> None:
         "partyPhrases": party_phrases,
         "globalPhrases": global_common,
         "languageMarkers": language_markers,
+        "topics": topics,
     }
 
     json_path = OUTPUT_DIR / "dashboard-data.json"
