@@ -241,6 +241,25 @@ function buildSectors(visible) {
   return sectors;
 }
 
+const SEAT_ROW_RADII = [116, 169, 222, 275, 328, 381, 434, 486];
+
+function distributeRowCounts(n, radii) {
+  if (n <= 0) {
+    return radii.map(() => 0);
+  }
+  const totalWeight = radii.reduce((sum, radius) => sum + radius, 0);
+  const exact = radii.map((radius) => (n * radius) / totalWeight);
+  const counts = exact.map((value) => Math.floor(value));
+  let leftover = n - counts.reduce((sum, count) => sum + count, 0);
+  const order = exact
+    .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+    .sort((a, b) => b.frac - a.frac || b.index - a.index);
+  for (let i = 0; i < leftover; i += 1) {
+    counts[order[i].index] += 1;
+  }
+  return counts;
+}
+
 function polarPoint(cx, cy, radius, angleDegrees) {
   const radians = (angleDegrees * Math.PI) / 180;
   return {
@@ -357,31 +376,29 @@ function seatTooltip(person) {
 }
 
 function layoutPartySeats(people, sector) {
-  const rows = Math.min(8, Math.max(2, Math.ceil(Math.sqrt(people.length / 1.6))));
-  const rowGroups = Array.from({ length: rows }, () => []);
-  people.forEach((person, index) => {
-    const rowIndex = Math.min(rows - 1, Math.floor((index / Math.max(1, people.length)) * rows));
-    rowGroups[rowIndex].push(person);
-  });
-
-  const seats = [];
-  const inner = 116;
-  const outer = 486;
+  const radii = SEAT_ROW_RADII;
+  const rowCounts = distributeRowCounts(people.length, radii);
   const gap = Math.min(2.4, sector.width / 7);
   const start = sector.start - gap;
   const end = sector.end + gap;
+  const seats = [];
+  let cursor = 0;
 
-  rowGroups.forEach((group, rowIndex) => {
-    if (!group.length) {
-      return;
+  for (let rowIndex = rowCounts.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const count = rowCounts[rowIndex];
+    if (!count) {
+      continue;
     }
-    const radius = rows === 1 ? inner : inner + ((outer - inner) * rowIndex) / (rows - 1);
+    const group = people.slice(cursor, cursor + count);
+    cursor += count;
+    const radius = radii[rowIndex];
+    const stagger = count > 1 && rowIndex % 2 === 1 ? 0.4 : 0;
     group.forEach((person, index) => {
-      const fraction = (index + 0.5) / group.length;
+      const fraction = (index + 0.5 + stagger) / count;
       const theta = start + (end - start) * fraction;
       seats.push({ person, ...polarPoint(500, 585, radius, theta) });
     });
-  });
+  }
 
   return seats;
 }
@@ -391,7 +408,7 @@ function renderChamber() {
   const sectors = buildSectors(visible);
   chamberSvg.replaceChildren();
 
-  [116, 169, 222, 275, 328, 381, 434, 486].forEach((radius) => {
+  SEAT_ROW_RADII.forEach((radius) => {
     chamberSvg.appendChild(
       svgEl("path", {
         d: arcPath(500, 585, radius, 160, 20),
