@@ -1,7 +1,7 @@
 const data = window.DASHBOARD_DATA;
 
 if (!data) {
-  throw new Error("Dashboard data was not loaded. Run dashboard/build_dashboard_data.py.");
+  throw new Error("Les données du tableau de bord n'ont pas été chargées. Exécutez dashboard/build_dashboard_data.py.");
 }
 
 const partyMap = new Map(data.parties.map((party) => [party.id, party]));
@@ -38,8 +38,204 @@ const dashboardPartyToLanguageParty = {
   RN: "Rassemblement national",
   UNLABELED: "Non déclaré(s)",
 };
+const partyFamilyLabels = {
+  Left: "Gauche",
+  Green: "Écologistes",
+  Independent: "Indépendants",
+  Center: "Centre",
+  "Center-right": "Centre droit",
+  Right: "Droite",
+  "Far right": "Extrême droite",
+  Unknown: "Non rattaché",
+};
+const partySourceLabels = {
+  explicit: "explicite",
+  inferred_from_labeled_variant: "déduit du groupe",
+  unresolved: "non résolu",
+};
+const markerCategoryLabels = {
+  address: "Adresse",
+  procedure: "Séance",
+  stance: "Position",
+  negation: "Négation",
+  pronoun: "Pronoms",
+};
+const honorifics = new Set(["m", "mme", "mlle", "mr", "dr"]);
+
+const COPY = {
+  appTitle: "L'hémicycle des idées et des mots",
+  appEyebrow: "La parole des députés",
+  modeCitizen: "Citoyen",
+  modeScientific: "Scientifique",
+  modeGroup: "Mode d'affichage",
+  search: "Rechercher",
+  searchPlaceholder: "Nom",
+  party: "Groupe",
+  allParties: "Tous les groupes",
+  unlabeled: "Non rattachés",
+  ngram: { citizen: "Groupes de mots", scientific: "N-gramme" },
+  ngram1: { citizen: "1 mot", scientific: "Unigrammes" },
+  ngram2: { citizen: "2 mots", scientific: "Bigrammes" },
+  ngram3: { citizen: "3 mots", scientific: "Trigrammes" },
+  ngram4: { citizen: "4 mots", scientific: "4-grammes" },
+  ngramHelp: {
+    citizen: "Choisissez si vous comparez des mots isolés ou des suites de 2, 3 ou 4 mots extraits des discours.",
+    scientific: "Taille des n-grammes extraits des discours, d'unigrammes à 4-grammes.",
+  },
+  tabPolitician: "Député",
+  tabParty: "Groupe",
+  tabMarkers: { citizen: "Style", scientific: "Marqueurs" },
+  tabCorpus: "Assemblée",
+  politicians: "Députés",
+  speeches: "Interventions",
+  surfaceTokens: { citizen: "Mots prononcés", scientific: "Tokens de surface" },
+  contentTokens: { citizen: "Mots de contenu", scientific: "Tokens de contenu" },
+  parties: "Groupes",
+  tokens: { citizen: "Mots", scientific: "Tokens" },
+  sources: "Sources",
+  presidency: "Présidence",
+  noMatches: "Aucune correspondance",
+  noResults: "Aucun résultat",
+  close: "Fermer",
+  moreInfo: "Plus d'informations",
+  chamberAria: "Carte de l'hémicycle",
+  chamberSvgAria: "Répartition des groupes en hémicycle",
+  analysisAria: "Sections d'analyse",
+  noPhrases: "Aucune expression pour cette sélection.",
+  marker: { citizen: "Indicateur", scientific: "Marqueur" },
+  noLanguageMarkers: { citizen: "Aucun indicateur de langage disponible.", scientific: "Aucun marqueur de langage disponible." },
+  noPronounMarkers: "Aucune donnée de pronoms disponible.",
+  languageProfile: "Profil de langage",
+  languageProfileHelp: {
+    citizen: "Ces indicateurs décrivent comment un groupe s'exprime : part des mots porteurs de sens, mots longs, longueur des phrases et variété du vocabulaire.",
+    scientific: "Profil lexical agrégé (LD, BW, MWL, MSL, TTR) et distribution des pronoms.",
+  },
+  noPartyMarker: "Aucun profil de langage n'a été associé à ce groupe.",
+  sourceParty: "Source :",
+  pronouns: "Pronoms",
+  distinctiveTitle: { citizen: "Ce qui le distingue", scientific: "Phrases TF-IDF" },
+  distinctiveHelp: {
+    citizen: "Les formules que cette personne emploie plus que le reste de l'Assemblée.",
+    scientific: "N-grammes les plus discriminants selon le score TF-IDF par rapport au reste du corpus.",
+  },
+  topContent: { citizen: "Expressions les plus dites", scientific: "Expressions de contenu" },
+  speechMarkers: { citizen: "Signatures oratoires", scientific: "Marqueurs de discours" },
+  speechMarkersHelp: {
+    citizen: "Repères de langage : formules d'adresse, vocabulaire de séance, prises de position, négations et pronoms qui colorent le discours.",
+    scientific: "N-grammes classés en catégories linguistiques : adresse, procédure, position, négation, pronoms.",
+  },
+  partyCommon: { citizen: "Expressions partagées du groupe", scientific: "N-grammes communs du groupe" },
+  partyDistinctive: { citizen: "Expressions caractéristiques du groupe", scientific: "N-grammes distinctifs du groupe" },
+  distinctiveHelpParty: {
+    citizen: "Les formules que ce groupe emploie plus que les autres groupes.",
+    scientific: "N-grammes distinctifs selon le score log-odds par rapport aux autres groupes.",
+  },
+  commonPhrases: { citizen: "Expressions partagées", scientific: "N-grammes communs" },
+  distinctivePhrases: { citizen: "Expressions caractéristiques", scientific: "N-grammes distinctifs" },
+  noPolitician: "Aucun député sélectionné.",
+  partyAssignment: "Attribution du groupe :",
+  languageMarkersTitle: { citizen: "Style de langage", scientific: "Marqueurs linguistiques" },
+  languageMarkersHelp: {
+    citizen: "Comparez comment les groupes parlent : mots porteurs de sens, mots longs, longueur des phrases, variété du vocabulaire.",
+    scientific: "Indicateurs lexicaux agrégés par groupe : LD, BW, MWL, MSL, TTR et pronoms.",
+  },
+  highest: "Plus élevé",
+  mean: "Moyenne",
+  lowest: "Plus bas",
+  na: "n.d.",
+  pronounDistribution: "Répartition des pronoms",
+  lexicalMeasures: { citizen: "Mesures de langage", scientific: "Mesures lexicales" },
+  dataSource: "Source des données",
+  dataSources: "Sources des données",
+  corpusTitle: { citizen: "Assemblée", scientific: "Corpus" },
+  globalCommon: { citizen: "Expressions partagées à l'Assemblée", scientific: "N-grammes communs globaux" },
+  partyVolume: "Volume par groupe",
+  charsUnit: "car.",
+  wordsUnit: "mots",
+  seatSpeeches: "interventions",
+};
+
+const METRIC_COPY = {
+  LD: {
+    citizen: {
+      label: "Mots porteurs de sens",
+      shortLabel: "Sens",
+      description: "Part des noms, verbes et adjectifs, par rapport aux petits mots grammaticaux.",
+    },
+    scientific: {
+      label: "Densité lexicale (LD)",
+      shortLabel: "LD",
+      description: "Part des mots lexicaux / de contenu (LD).",
+    },
+  },
+  BW: {
+    citizen: {
+      label: "Mots longs",
+      shortLabel: "Longs",
+      description: "Part des mots de plus de 6 lettres.",
+    },
+    scientific: {
+      label: "Mots longs (BW)",
+      shortLabel: "BW",
+      description: "Part des mots de plus de 6 caractères (BW).",
+    },
+  },
+  MWL: {
+    citizen: {
+      label: "Longueur des mots",
+      shortLabel: "Mots",
+      description: "Nombre moyen de lettres par mot.",
+    },
+    scientific: {
+      label: "Longueur moyenne des mots (MWL)",
+      shortLabel: "MWL",
+      description: "Longueur moyenne des mots en caractères (MWL).",
+    },
+  },
+  MSL: {
+    citizen: {
+      label: "Longueur des phrases",
+      shortLabel: "Phrases",
+      description: "Nombre moyen de mots par phrase.",
+    },
+    scientific: {
+      label: "Longueur moyenne des phrases (MSL)",
+      shortLabel: "MSL",
+      description: "Longueur moyenne des phrases en mots (MSL).",
+    },
+  },
+  TTR: {
+    citizen: {
+      label: "Variété du vocabulaire",
+      shortLabel: "Variété",
+      description: "Diversité des mots employés : plus le score est élevé, moins le discours se répète.",
+    },
+    scientific: {
+      label: "Ratio types/tokens (TTR)",
+      shortLabel: "TTR",
+      description: "Type-token ratio, mesure de diversité lexicale (TTR).",
+    },
+  },
+  nous: {
+    citizen: { label: "nous", shortLabel: "nous", description: "Occurrences pour mille mots." },
+    scientific: { label: "nous", shortLabel: "nous", description: "Occurrences pour mille mots." },
+  },
+  je: {
+    citizen: { label: "je", shortLabel: "je", description: "Occurrences pour mille mots." },
+    scientific: { label: "je", shortLabel: "je", description: "Occurrences pour mille mots." },
+  },
+  il: {
+    citizen: { label: "il", shortLabel: "il", description: "Occurrences pour mille mots." },
+    scientific: { label: "il", shortLabel: "il", description: "Occurrences pour mille mots." },
+  },
+  vous: {
+    citizen: { label: "vous", shortLabel: "vous", description: "Occurrences pour mille mots." },
+    scientific: { label: "vous", shortLabel: "vous", description: "Occurrences pour mille mots." },
+  },
+};
 
 const state = {
+  audienceMode: "citizen",
   activeTab: "politician",
   selectedId: null,
   selectedParty: "ALL",
@@ -50,6 +246,21 @@ const state = {
   search: "",
   showUnlabeled: false,
 };
+
+function isScientific() {
+  return state.audienceMode === "scientific";
+}
+
+function copy(key) {
+  const entry = COPY[key];
+  if (entry == null) {
+    return key;
+  }
+  if (typeof entry === "string") {
+    return entry;
+  }
+  return isScientific() ? entry.scientific : entry.citizen;
+}
 
 function normalize(value) {
   return String(value || "")
@@ -68,18 +279,26 @@ function escapeHtml(value) {
 }
 
 function fmtInt(value) {
-  return Number(value || 0).toLocaleString("en-US");
+  return Number(value || 0).toLocaleString("fr-FR");
 }
 
 function fmtCompact(value) {
-  return Intl.NumberFormat("en-US", {
+  return Intl.NumberFormat("fr-FR", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(Number(value || 0));
 }
 
 function languageMetric(key) {
-  return languageMetricMap.get(key) || { key, label: key, shortLabel: key, unit: "value" };
+  const source = languageMetricMap.get(key) || { key, unit: "value" };
+  const localized = METRIC_COPY[key]?.[state.audienceMode] || {};
+  return {
+    key,
+    unit: source.unit || "value",
+    label: localized.label || source.label || key,
+    shortLabel: localized.shortLabel || source.shortLabel || key,
+    description: localized.description || source.description || "",
+  };
 }
 
 function languageValue(row, key) {
@@ -98,10 +317,10 @@ function fmtLanguageValue(key, value) {
     return `${Number(value || 0).toFixed(1)}\u2030`;
   }
   if (unit === "chars") {
-    return `${Number(value || 0).toFixed(1)} ch`;
+    return `${Number(value || 0).toFixed(1)} ${copy("charsUnit")}`;
   }
   if (unit === "words") {
-    return `${Number(value || 0).toFixed(1)} w`;
+    return `${Number(value || 0).toFixed(1)} ${copy("wordsUnit")}`;
   }
   return Number(value || 0).toFixed(2);
 }
@@ -125,6 +344,9 @@ function languageRowForDashboardParty(partyId) {
 }
 
 function partyLabel(partyId) {
+  if (partyId === "UNLABELED") {
+    return copy("unlabeled");
+  }
   return partyMap.get(partyId)?.label || partyId;
 }
 
@@ -132,8 +354,40 @@ function partyColor(partyId) {
   return partyMap.get(partyId)?.color || "#8f969e";
 }
 
+function partyFamilyLabel(family) {
+  return partyFamilyLabels[family] || family || "";
+}
+
+function partySourceLabel(source) {
+  return partySourceLabels[source] || source || "";
+}
+
+function markerCategoryLabel(category) {
+  return markerCategoryLabels[category] || category;
+}
+
 function selectedPolitician() {
   return politiciansById.get(state.selectedId) || data.politicians[0];
+}
+
+function shortPoliticianName(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  let index = 0;
+  while (index < parts.length && honorifics.has(normalize(parts[index]).replace(/\./g, ""))) {
+    index += 1;
+  }
+  const rest = parts.slice(index);
+  if (!rest.length) {
+    return String(name || "").trim();
+  }
+  if (rest.length === 1) {
+    return rest[0];
+  }
+  const initial = Array.from(rest[0])[0] || "";
+  return `${initial.toUpperCase()}. ${rest.slice(1).join(" ")}`;
 }
 
 function chooseInitialPolitician() {
@@ -144,12 +398,73 @@ function chooseInitialPolitician() {
   state.selectedParty = selectedPolitician()?.party || "ALL";
 }
 
+function infoTip(helpKey) {
+  const text = copy(helpKey);
+  if (!text) {
+    return "";
+  }
+  return `
+    <button class="info-tip" type="button" aria-label="${escapeHtml(copy("moreInfo"))}">
+      <span aria-hidden="true">?</span>
+      <span class="info-tip-bubble">${escapeHtml(text)}</span>
+    </button>
+  `;
+}
+
+function labeledTitle(tag, labelKey, helpKey) {
+  return `<${tag} class="section-title">${escapeHtml(copy(labelKey))}${helpKey ? infoTip(helpKey) : ""}</${tag}>`;
+}
+
+function headingWithTip(tag, text, helpKey) {
+  return `<${tag} class="section-title">${escapeHtml(text)}${helpKey ? infoTip(helpKey) : ""}</${tag}>`;
+}
+
+function ngramOptionsHtml(selected) {
+  return ["1", "2", "3", "4"]
+    .map(
+      (value) =>
+        `<option value="${value}" ${selected === value ? "selected" : ""}>${escapeHtml(copy(`ngram${value}`))}</option>`,
+    )
+    .join("");
+}
+
+function setAudienceMode(mode) {
+  state.audienceMode = mode === "scientific" ? "scientific" : "citizen";
+  document.body.dataset.mode = state.audienceMode;
+  render();
+}
+
+function renderChrome() {
+  document.title = copy("appTitle");
+  document.getElementById("appEyebrow").textContent = copy("appEyebrow");
+  document.getElementById("appTitle").textContent = copy("appTitle");
+  document.getElementById("searchLabel").textContent = copy("search");
+  searchInput.placeholder = copy("searchPlaceholder");
+  document.getElementById("partyFilterLabel").textContent = copy("party");
+  document.getElementById("unlabeledLabel").textContent = copy("unlabeled");
+  document.getElementById("ngramFieldLabel").innerHTML = `${escapeHtml(copy("ngram"))}${infoTip("ngramHelp")}`;
+  document.getElementById("chamberPanel").setAttribute("aria-label", copy("chamberAria"));
+  chamberSvg.setAttribute("aria-label", copy("chamberSvgAria"));
+  document.getElementById("analysisTabs").setAttribute("aria-label", copy("analysisAria"));
+  document.getElementById("closeDialog").setAttribute("aria-label", copy("close"));
+  document.querySelector(".mode-toggle").setAttribute("aria-label", copy("modeGroup"));
+  document.querySelector('[data-audience-mode="citizen"]').textContent = copy("modeCitizen");
+  document.querySelector('[data-audience-mode="scientific"]').textContent = copy("modeScientific");
+  document.querySelectorAll("[data-audience-mode]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.audienceMode === state.audienceMode);
+  });
+  document.querySelector('[data-tab="politician"]').textContent = copy("tabPolitician");
+  document.querySelector('[data-tab="party"]').textContent = copy("tabParty");
+  document.querySelector('[data-tab="markers"]').textContent = copy("tabMarkers");
+  document.querySelector('[data-tab="corpus"]').textContent = copy("tabCorpus");
+}
+
 function renderSummary() {
   const metrics = [
-    ["Politicians", data.meta.politicians],
-    ["Speeches", data.meta.totalSpeeches],
-    ["Surface tokens", data.meta.totalSurfaceTokens],
-    ["Parties", data.meta.eligibleParties.length],
+    [copy("politicians"), data.meta.politicians],
+    [copy("speeches"), data.meta.totalSpeeches],
+    [copy("surfaceTokens"), data.meta.totalSurfaceTokens],
+    [copy("parties"), data.meta.eligibleParties.length],
   ];
   document.getElementById("summaryStrip").innerHTML = metrics
     .map(
@@ -165,20 +480,23 @@ function renderSummary() {
 
 function populatePartyFilter() {
   const options = [
-    `<option value="ALL">All parties</option>`,
+    `<option value="ALL">${escapeHtml(copy("allParties"))}</option>`,
     ...data.parties
       .filter((party) => party.politicianCount > 0)
       .map(
         (party) =>
-          `<option value="${escapeHtml(party.id)}">${escapeHtml(party.label)} (${party.politicianCount})</option>`,
+          `<option value="${escapeHtml(party.id)}">${escapeHtml(partyLabel(party.id))} (${party.politicianCount})</option>`,
       ),
   ];
   partyFilter.innerHTML = options.join("");
 }
 
 function syncControls() {
+  renderChrome();
+  populatePartyFilter();
   partyFilter.value = state.partyFilter;
   searchInput.value = state.search;
+  ngramSize.innerHTML = ngramOptionsHtml(state.ngram);
   ngramSize.value = state.ngram;
   showUnlabeled.checked = state.showUnlabeled;
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -292,9 +610,20 @@ function layoutPartySeats(people, sector) {
   return seats;
 }
 
+function seatLabelPoint(x, y, extra) {
+  const dx = x - 500;
+  const dy = y - 585;
+  const dist = Math.hypot(dx, dy) || 1;
+  return {
+    x: x + (dx / dist) * extra,
+    y: y + (dy / dist) * extra,
+  };
+}
+
 function renderChamber() {
   const visible = getVisiblePoliticians();
   const sectors = buildSectors(visible);
+  const showSeatNames = state.partyFilter !== "ALL";
   chamberSvg.replaceChildren();
 
   [116, 169, 222, 275, 328, 381, 434, 486].forEach((radius) => {
@@ -316,7 +645,7 @@ function renderChamber() {
       }),
     );
 
-    if (sector.width > 7) {
+    if (sector.width > 7 && !showSeatNames) {
       const labelPoint = polarPoint(500, 585, 548, sector.mid);
       const label = svgEl("text", {
         x: labelPoint.x.toFixed(1),
@@ -342,12 +671,12 @@ function renderChamber() {
     y: 590,
     class: "tribune-text",
   });
-  tribuneText.textContent = "Presidence";
+  tribuneText.textContent = copy("presidency");
   chamberSvg.appendChild(tribuneText);
 
   if (!visible.length) {
     const empty = svgEl("text", { x: 500, y: 300, class: "empty-label" });
-    empty.textContent = "No matches";
+    empty.textContent = copy("noMatches");
     chamberSvg.appendChild(empty);
     renderLegend(new Map());
     return;
@@ -373,6 +702,9 @@ function renderChamber() {
   });
 
   const dots = svgEl("g");
+  const names = svgEl("g", { class: "seat-names", "aria-hidden": "true" });
+  const nameSize = visible.length > 100 ? 6.4 : visible.length > 60 ? 7.4 : visible.length > 30 ? 8.8 : 10.4;
+
   allSeats.forEach(({ person, x, y }) => {
     const dot = svgEl("circle", {
       cx: x.toFixed(1),
@@ -386,11 +718,27 @@ function renderChamber() {
       "data-politician-id": person.id,
     });
     const title = svgEl("title");
-    title.textContent = `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} speeches`;
+    title.textContent = `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} ${copy("seatSpeeches")}`;
     dot.appendChild(title);
     dots.appendChild(dot);
+
+    if (showSeatNames) {
+      const extra = 11 + seatRadius(person);
+      const point = seatLabelPoint(x, y, extra);
+      const label = svgEl("text", {
+        x: point.x.toFixed(1),
+        y: point.y.toFixed(1),
+        class: "seat-name",
+        "font-size": String(nameSize),
+      });
+      label.textContent = shortPoliticianName(person.name);
+      names.appendChild(label);
+    }
   });
   chamberSvg.appendChild(dots);
+  if (showSeatNames) {
+    chamberSvg.appendChild(names);
+  }
   renderLegend(byParty);
 }
 
@@ -434,19 +782,20 @@ function renderSearchResults() {
           `,
         )
         .join("")
-    : `<span class="source-note">No results</span>`;
+    : `<span class="source-note">${escapeHtml(copy("noResults"))}</span>`;
 }
 
 function phraseList(rows, options = {}) {
-  const metric = options.metric || "count";
-  const scoreLabel = options.scoreLabel || null;
+  const useScore = isScientific() && options.scoreLabel;
+  const metric = useScore ? options.metric || "count" : "count";
+  const scoreLabel = useScore ? options.scoreLabel : null;
   const scoreDigits = options.scoreDigits ?? 2;
   const maxValue = Math.max(
     1,
     ...rows.map((row) => Math.abs(Number(row[metric] ?? row.count ?? 0))),
   );
   if (!rows.length) {
-    return `<p class="source-note">No phrases for this selection.</p>`;
+    return `<p class="source-note">${escapeHtml(copy("noPhrases"))}</p>`;
   }
   return `
     <div class="phrase-list">
@@ -475,16 +824,17 @@ function phraseList(rows, options = {}) {
 function renderLanguageMetricSelect(selectId = "languageMetricSelect") {
   return `
     <label class="field">
-      <span>Marker</span>
+      <span class="field-heading">${escapeHtml(copy("marker"))}${infoTip("languageMarkersHelp")}</span>
       <select id="${escapeHtml(selectId)}">
         ${(languageMarkers.metrics || [])
-          .map(
-            (metric) => `
+          .map((metric) => {
+            const display = languageMetric(metric.key);
+            return `
               <option value="${escapeHtml(metric.key)}" ${metric.key === state.languageMetric ? "selected" : ""}>
-                ${escapeHtml(metric.label)}
+                ${escapeHtml(display.label)}
               </option>
-            `,
-          )
+            `;
+          })
           .join("")}
       </select>
     </label>
@@ -494,7 +844,7 @@ function renderLanguageMetricSelect(selectId = "languageMetricSelect") {
 function renderLanguageMetricChart(metricKey) {
   const rows = languageRowsForMetric(metricKey);
   if (!rows.length) {
-    return `<p class="source-note">No language markers available.</p>`;
+    return `<p class="source-note">${escapeHtml(copy("noLanguageMarkers"))}</p>`;
   }
 
   const values = rows.map((row) => languageValue(row, metricKey));
@@ -557,7 +907,7 @@ function renderPronounDistribution() {
   });
 
   if (!rows.length) {
-    return `<p class="source-note">No pronoun markers available.</p>`;
+    return `<p class="source-note">${escapeHtml(copy("noPronounMarkers"))}</p>`;
   }
 
   return `
@@ -590,7 +940,7 @@ function renderPronounDistribution() {
 }
 
 function renderLanguageMatrix() {
-  const rows = [...(languageMarkers.partyRows || [])].sort((a, b) => a.party.localeCompare(b.party));
+  const rows = [...(languageMarkers.partyRows || [])].sort((a, b) => a.party.localeCompare(b.party, "fr"));
   if (!rows.length) {
     return "";
   }
@@ -600,7 +950,7 @@ function renderLanguageMatrix() {
       <table class="language-table">
         <thead>
           <tr>
-            <th>Party</th>
+            <th>${escapeHtml(copy("party"))}</th>
             ${lexicalMetricKeys
               .map((key) => `<th>${escapeHtml(languageMetric(key).shortLabel)}</th>`)
               .join("")}
@@ -628,29 +978,30 @@ function renderLanguageMatrix() {
 function renderPartyLanguageProfile(row) {
   if (!row) {
     return `
-      <h3 class="section-title">Language profile</h3>
-      <p class="source-note">No party-level marker row matched this dashboard group.</p>
+      ${labeledTitle("h3", "languageProfile", "languageProfileHelp")}
+      <p class="source-note">${escapeHtml(copy("noPartyMarker"))}</p>
     `;
   }
 
   return `
-    <h3 class="section-title">Language profile</h3>
-    <p class="source-note">Source party: ${escapeHtml(row.party)}</p>
+    ${labeledTitle("h3", "languageProfile", "languageProfileHelp")}
+    <p class="source-note">${escapeHtml(copy("sourceParty"))} ${escapeHtml(row.party)}</p>
     <div class="language-mini-grid">
       ${lexicalMetricKeys
-        .map(
-          (key) => `
-            <div class="stat">
-              <span>${escapeHtml(languageMetric(key).shortLabel)}</span>
+        .map((key) => {
+          const metric = languageMetric(key);
+          return `
+            <div class="stat" title="${escapeHtml(metric.description)}">
+              <span>${escapeHtml(metric.shortLabel)}</span>
               <strong>${escapeHtml(fmtLanguageValue(key, languageValue(row, key)))}</strong>
             </div>
-          `,
-        )
+          `;
+        })
         .join("")}
     </div>
     <div class="party-pronoun-card">
       <div class="language-bar-label">
-        <span>Pronouns</span>
+        <span>${escapeHtml(copy("pronouns"))}</span>
         <strong>${escapeHtml(
           fmtLanguageValue(
             "nous",
@@ -686,7 +1037,7 @@ function markerTabs(markers) {
         .map(
           (category) => `
             <button class="subtab ${category === state.markerCategory ? "is-active" : ""}" type="button" data-marker-category="${escapeHtml(category)}">
-              ${escapeHtml(category)}
+              ${escapeHtml(markerCategoryLabel(category))}
             </button>
           `,
         )
@@ -698,7 +1049,7 @@ function markerTabs(markers) {
 function renderPoliticianDetail(personId) {
   const person = politiciansById.get(personId);
   if (!person) {
-    return `<div class="detail-body"><p class="source-note">No politician selected.</p></div>`;
+    return `<div class="detail-body"><p class="source-note">${escapeHtml(copy("noPolitician"))}</p></div>`;
   }
 
   const party = partyMap.get(person.party);
@@ -717,35 +1068,35 @@ function renderPoliticianDetail(personId) {
           <h2>${escapeHtml(person.name)}</h2>
           <span class="party-pill">
             <span class="swatch" style="background:${partyColor(person.party)}"></span>
-            ${escapeHtml(party?.label || person.party)}
+            ${escapeHtml(partyLabel(person.party))}
           </span>
         </div>
         <div class="stat-grid">
-          <div class="stat"><span>Speeches</span><strong>${fmtInt(person.speechCount)}</strong></div>
-          <div class="stat"><span>Tokens</span><strong>${fmtInt(person.surfaceTokenCount)}</strong></div>
-          <div class="stat"><span>Sources</span><strong>${fmtInt(person.sourcePathCount)}</strong></div>
+          <div class="stat"><span>${escapeHtml(copy("speeches"))}</span><strong>${fmtInt(person.speechCount)}</strong></div>
+          <div class="stat"><span>${escapeHtml(copy("tokens"))}</span><strong>${fmtInt(person.surfaceTokenCount)}</strong></div>
+          <div class="stat"><span>${escapeHtml(copy("sources"))}</span><strong>${fmtInt(person.sourcePathCount)}</strong></div>
         </div>
-        <p class="source-note">Party assignment: ${escapeHtml(person.partySource)}</p>
+        <p class="source-note">${escapeHtml(copy("partyAssignment"))} ${escapeHtml(partySourceLabel(person.partySource))}</p>
       </div>
 
-      <h3 class="section-title">TF-IDF phrases</h3>
+      ${labeledTitle("h3", "distinctiveTitle", "distinctiveHelp")}
       ${phraseList(tfidfRows, {
         metric: "tf_idf_vs_rest",
         scoreLabel: "tf_idf_vs_rest",
         scoreDigits: 4,
       })}
 
-      <h3 class="section-title">Top content phrases</h3>
+      ${labeledTitle("h3", "topContent")}
       ${phraseList(contentRows)}
 
-      <h3 class="section-title">Speech markers</h3>
+      ${labeledTitle("h3", "speechMarkers", "speechMarkersHelp")}
       ${markerCategory}
       ${phraseList(markerRows)}
 
-      <h3 class="section-title">Party common phrases</h3>
+      ${labeledTitle("h3", "partyCommon")}
       ${phraseList(partyPhrases.common?.[state.ngram] || [])}
 
-      <h3 class="section-title">Party-distinctive phrases</h3>
+      ${labeledTitle("h3", "partyDistinctive", "distinctiveHelpParty")}
       ${phraseList(partyPhrases.distinctive?.[state.ngram] || [], {
         metric: "log_odds_vs_rest",
         scoreLabel: "log_odds_vs_rest",
@@ -759,7 +1110,7 @@ function partyOptions(selectedParty) {
     .filter((party) => party.politicianCount > 0)
     .map(
       (party) =>
-        `<option value="${escapeHtml(party.id)}" ${party.id === selectedParty ? "selected" : ""}>${escapeHtml(party.label)}</option>`,
+        `<option value="${escapeHtml(party.id)}" ${party.id === selectedParty ? "selected" : ""}>${escapeHtml(partyLabel(party.id))}</option>`,
     )
     .join("");
 }
@@ -775,39 +1126,36 @@ function renderPartyPanel() {
     <div class="detail-body">
       <div class="panel-control">
         <label class="field">
-          <span>Party</span>
+          <span>${escapeHtml(copy("party"))}</span>
           <select id="partyPanelSelect">${partyOptions(partyId)}</select>
         </label>
         <label class="field">
-          <span>N-gram</span>
+          <span class="field-heading">${escapeHtml(copy("ngram"))}${infoTip("ngramHelp")}</span>
           <select id="partyPanelNgram">
-            <option value="1" ${state.ngram === "1" ? "selected" : ""}>Unigrams</option>
-            <option value="2" ${state.ngram === "2" ? "selected" : ""}>Bigrams</option>
-            <option value="3" ${state.ngram === "3" ? "selected" : ""}>Trigrams</option>
-            <option value="4" ${state.ngram === "4" ? "selected" : ""}>Four-grams</option>
+            ${ngramOptionsHtml(state.ngram)}
           </select>
         </label>
       </div>
       <div class="panel-title-row">
-        <h2>${escapeHtml(party?.label || partyId)}</h2>
+        <h2>${escapeHtml(partyLabel(partyId))}</h2>
         <span class="party-pill">
           <span class="swatch" style="background:${partyColor(partyId)}"></span>
-          ${escapeHtml(party?.family || "")}
+          ${escapeHtml(partyFamilyLabel(party?.family))}
         </span>
       </div>
       <div class="stat-grid">
-        <div class="stat"><span>Politicians</span><strong>${fmtInt(party?.politicianCount)}</strong></div>
-        <div class="stat"><span>Speeches</span><strong>${fmtInt(party?.speechCount)}</strong></div>
-        <div class="stat"><span>Tokens</span><strong>${fmtInt(party?.analysisTokenCount)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("politicians"))}</span><strong>${fmtInt(party?.politicianCount)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("speeches"))}</span><strong>${fmtInt(party?.speechCount)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("tokens"))}</span><strong>${fmtInt(party?.analysisTokenCount)}</strong></div>
       </div>
       ${renderPartyLanguageProfile(languageRow)}
       <div class="two-column">
         <section>
-          <h3 class="section-title">Common phrases</h3>
+          ${labeledTitle("h3", "commonPhrases")}
           ${phraseList(phrases.common?.[state.ngram] || [])}
         </section>
         <section>
-          <h3 class="section-title">Distinctive phrases</h3>
+          ${labeledTitle("h3", "distinctivePhrases", "distinctiveHelpParty")}
           ${phraseList(phrases.distinctive?.[state.ngram] || [], {
             metric: "log_odds_vs_rest",
             scoreLabel: "log_odds_vs_rest",
@@ -830,30 +1178,30 @@ function renderLanguageMarkersPanel() {
       <div class="panel-control marker-control">
         ${renderLanguageMetricSelect()}
       </div>
-      <h2>Language markers</h2>
+      <h2 class="panel-heading">${escapeHtml(copy("languageMarkersTitle"))}${infoTip("languageMarkersHelp")}</h2>
       <div class="stat-grid">
-        <div class="stat"><span>Parties</span><strong>${fmtInt(languageMarkers.partyRows?.length || 0)}</strong></div>
-        <div class="stat"><span>Highest ${escapeHtml(metric.shortLabel)}</span><strong>${escapeHtml(
-          highest ? fmtLanguageValue(state.languageMetric, languageValue(highest, state.languageMetric)) : "n/a",
+        <div class="stat"><span>${escapeHtml(copy("parties"))}</span><strong>${fmtInt(languageMarkers.partyRows?.length || 0)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("highest"))} (${escapeHtml(metric.shortLabel)})</span><strong>${escapeHtml(
+          highest ? fmtLanguageValue(state.languageMetric, languageValue(highest, state.languageMetric)) : copy("na"),
         )}</strong></div>
-        <div class="stat"><span>Mean ${escapeHtml(metric.shortLabel)}</span><strong>${escapeHtml(
-          summary.mean === undefined ? "n/a" : fmtLanguageValue(state.languageMetric, summary.mean),
+        <div class="stat"><span>${escapeHtml(copy("mean"))} (${escapeHtml(metric.shortLabel)})</span><strong>${escapeHtml(
+          summary.mean === undefined ? copy("na") : fmtLanguageValue(state.languageMetric, summary.mean),
         )}</strong></div>
       </div>
 
-      <h3 class="section-title">${escapeHtml(metric.label)}</h3>
+      ${headingWithTip("h3", metric.label, "languageMarkersHelp")}
       <p class="source-note">${escapeHtml(metric.description || "")}</p>
       ${renderLanguageMetricChart(state.languageMetric)}
 
-      <h3 class="section-title">Pronoun distribution</h3>
+      ${labeledTitle("h3", "pronounDistribution")}
       ${renderPronounDistribution()}
 
-      <h3 class="section-title">Lexical measures</h3>
+      ${labeledTitle("h3", "lexicalMeasures")}
       ${renderLanguageMatrix()}
 
-      <p class="source-note section-title">Data source</p>
+      <p class="source-note section-title">${escapeHtml(copy("dataSource"))}</p>
       <p class="source-note">${escapeHtml(languageMarkers.source || data.meta.sources.languageMarkers || "")}</p>
-      <p class="source-note">${escapeHtml(lowest ? `Lowest ${metric.shortLabel}: ${lowest.party}` : "")}</p>
+      <p class="source-note">${escapeHtml(lowest ? `${copy("lowest")} (${metric.shortLabel}) : ${lowest.party}` : "")}</p>
     </div>
   `;
 }
@@ -869,26 +1217,23 @@ function renderCorpusPanel() {
     <div class="detail-body">
       <div class="panel-control">
         <label class="field">
-          <span>N-gram</span>
+          <span class="field-heading">${escapeHtml(copy("ngram"))}${infoTip("ngramHelp")}</span>
           <select id="corpusPanelNgram">
-            <option value="1" ${state.ngram === "1" ? "selected" : ""}>Unigrams</option>
-            <option value="2" ${state.ngram === "2" ? "selected" : ""}>Bigrams</option>
-            <option value="3" ${state.ngram === "3" ? "selected" : ""}>Trigrams</option>
-            <option value="4" ${state.ngram === "4" ? "selected" : ""}>Four-grams</option>
+            ${ngramOptionsHtml(state.ngram)}
           </select>
         </label>
       </div>
-      <h2>Corpus</h2>
+      <h2>${escapeHtml(copy("corpusTitle"))}</h2>
       <div class="stat-grid">
-        <div class="stat"><span>Speeches</span><strong>${fmtInt(data.meta.totalSpeeches)}</strong></div>
-        <div class="stat"><span>Surface tokens</span><strong>${fmtInt(data.meta.totalSurfaceTokens)}</strong></div>
-        <div class="stat"><span>Content tokens</span><strong>${fmtInt(data.meta.totalAnalysisTokens)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("speeches"))}</span><strong>${fmtInt(data.meta.totalSpeeches)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("surfaceTokens"))}</span><strong>${fmtInt(data.meta.totalSurfaceTokens)}</strong></div>
+        <div class="stat"><span>${escapeHtml(copy("contentTokens"))}</span><strong>${fmtInt(data.meta.totalAnalysisTokens)}</strong></div>
       </div>
 
-      <h3 class="section-title">Global common phrases</h3>
+      ${labeledTitle("h3", "globalCommon")}
       ${phraseList(globalRows)}
 
-      <h3 class="section-title">Party volume</h3>
+      ${labeledTitle("h3", "partyVolume")}
       <div class="phrase-list">
         ${rankedParties
           .map((party) => {
@@ -897,7 +1242,7 @@ function renderCorpusPanel() {
               <div class="phrase-row">
                 <div class="phrase-track">
                   <span class="phrase-bar" style="width:${width.toFixed(1)}%; background:${party.color}22"></span>
-                  <span class="phrase-text">${escapeHtml(party.label)}</span>
+                  <span class="phrase-text">${escapeHtml(partyLabel(party.id))}</span>
                 </div>
                 <span class="phrase-count">${fmtCompact(party.analysisTokenCount)}</span>
               </div>
@@ -905,7 +1250,7 @@ function renderCorpusPanel() {
           })
           .join("")}
       </div>
-      <p class="source-note section-title">Data sources</p>
+      <p class="source-note section-title">${escapeHtml(copy("dataSources"))}</p>
       <p class="source-note">${Object.values(data.meta.sources).map(escapeHtml).join("<br />")}</p>
     </div>
   `;
@@ -934,6 +1279,7 @@ function renderDialog() {
 
 function render() {
   syncControls();
+  renderSummary();
   renderSearchResults();
   renderChamber();
   renderAnalysis();
@@ -961,6 +1307,20 @@ function selectPolitician(personId, openDialog = false) {
 }
 
 document.body.addEventListener("click", (event) => {
+  const infoButton = event.target.closest(".info-tip");
+  if (infoButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    infoButton.focus();
+    return;
+  }
+
+  const modeButton = event.target.closest("[data-audience-mode]");
+  if (modeButton) {
+    setAudienceMode(modeButton.dataset.audienceMode);
+    return;
+  }
+
   const tab = event.target.closest("[data-tab]");
   if (tab) {
     state.activeTab = tab.dataset.tab;
@@ -1056,6 +1416,4 @@ dialog.addEventListener("click", (event) => {
 document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
 
 chooseInitialPolitician();
-renderSummary();
-populatePartyFilter();
 render();

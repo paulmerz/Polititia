@@ -1,60 +1,61 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Assemblee N-gram Explorer</title>
+    <title>L'hémicycle des idées et des mots</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body data-mode="citizen">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">French parliamentary speeches</p>
-        <h1>Assemblee N-gram Explorer</h1>
+      <div class="brand-block">
+        <p class="eyebrow" id="appEyebrow">La parole des députés</p>
+        <h1 id="appTitle">L'hémicycle des idées et des mots</h1>
       </div>
-      <div class="summary-strip" id="summaryStrip"></div>
+      <div class="topbar-side">
+        <div class="mode-toggle" role="group" aria-label="Mode d'affichage">
+          <button class="mode-button is-active" type="button" data-audience-mode="citizen">Citoyen</button>
+          <button class="mode-button" type="button" data-audience-mode="scientific">Scientifique</button>
+        </div>
+        <div class="summary-strip" id="summaryStrip"></div>
+      </div>
     </header>
 
     <main class="app-shell">
-      <section class="chamber-panel" aria-label="Politician chamber map">
+      <section class="chamber-panel" id="chamberPanel" aria-label="Carte de l'hémicycle">
         <div class="toolbar">
           <label class="field search-field">
-            <span>Search</span>
-            <input id="searchInput" type="search" autocomplete="off" placeholder="Name" />
+            <span id="searchLabel">Rechercher</span>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Nom" />
           </label>
           <label class="field">
-            <span>Party</span>
+            <span id="partyFilterLabel">Groupe</span>
             <select id="partyFilter"></select>
           </label>
           <label class="field">
-            <span>N-gram</span>
-            <select id="ngramSize">
-              <option value="1">Unigrams</option>
-              <option value="2" selected>Bigrams</option>
-              <option value="3">Trigrams</option>
-              <option value="4">Four-grams</option>
-            </select>
+            <span id="ngramFieldLabel" class="field-heading">Groupes de mots</span>
+            <select id="ngramSize"></select>
           </label>
           <label class="toggle-field">
             <input id="showUnlabeled" type="checkbox" />
-            <span>Unlabeled</span>
+            <span id="unlabeledLabel">Non rattachés</span>
           </label>
         </div>
 
         <div class="search-results" id="searchResults"></div>
 
         <div class="chamber-wrap">
-          <svg id="chamberSvg" viewBox="0 0 1000 640" role="img" aria-label="Semicircle party layout"></svg>
+          <svg id="chamberSvg" viewBox="0 0 1000 640" role="img" aria-label="Répartition des groupes en hémicycle"></svg>
           <div class="legend" id="partyLegend"></div>
         </div>
       </section>
 
       <aside class="analysis-panel">
-        <div class="tabs" role="tablist" aria-label="Analysis sections">
-          <button class="tab is-active" data-tab="politician" type="button">Politician</button>
-          <button class="tab" data-tab="party" type="button">Party</button>
-          <button class="tab" data-tab="markers" type="button">Markers</button>
-          <button class="tab" data-tab="corpus" type="button">Corpus</button>
+        <div class="tabs" id="analysisTabs" role="tablist" aria-label="Sections d'analyse">
+          <button class="tab is-active" data-tab="politician" type="button">Député</button>
+          <button class="tab" data-tab="party" type="button">Groupe</button>
+          <button class="tab" data-tab="markers" type="button">Style</button>
+          <button class="tab" data-tab="corpus" type="button">Assemblée</button>
         </div>
         <div id="analysisContent"></div>
       </aside>
@@ -63,7 +64,7 @@
     <dialog id="politicianDialog" class="detail-dialog">
       <div class="dialog-bar">
         <div id="dialogTitle"></div>
-        <button class="close-button" id="closeDialog" type="button" aria-label="Close">x</button>
+        <button class="close-button" id="closeDialog" type="button" aria-label="Fermer">x</button>
       </div>
       <div id="dialogContent"></div>
     </dialog>
