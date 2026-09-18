@@ -359,7 +359,13 @@ function partyFamilyLabel(family) {
 }
 
 function partySourceLabel(source) {
-  return partySourceLabels[source] || source || "";
+  let text = String(source || "");
+  Object.entries(partySourceLabels)
+    .sort((a, b) => b[0].length - a[0].length)
+    .forEach(([key, label]) => {
+      text = text.replaceAll(key, label);
+    });
+  return text;
 }
 
 function markerCategoryLabel(category) {
@@ -580,18 +586,38 @@ function seatRadius(person) {
   return 3.4 + scaled * 5.8;
 }
 
-function layoutPartySeats(people, sector) {
-  const rows = Math.min(8, Math.max(2, Math.ceil(Math.sqrt(people.length / 1.6))));
-  const rowGroups = Array.from({ length: rows }, () => []);
-  people.forEach((person, index) => {
-    const rowIndex = Math.min(rows - 1, Math.floor((index / Math.max(1, people.length)) * rows));
-    rowGroups[rowIndex].push(person);
+function layoutPartySeats(people, sector, { labeled = false } = {}) {
+  const rows = labeled
+    ? Math.min(10, Math.max(4, Math.ceil(people.length / 8)))
+    : Math.min(8, Math.max(2, Math.ceil(Math.sqrt(people.length / 1.6))));
+  const inner = labeled ? 175 : 116;
+  const outer = labeled ? 502 : 486;
+  const radii = Array.from({ length: rows }, (_, rowIndex) =>
+    rows === 1 ? inner : inner + ((outer - inner) * rowIndex) / (rows - 1),
+  );
+  const weights = radii.map((radius) => (labeled ? radius : 1));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || 1;
+  const counts = weights.map((weight) => Math.max(1, Math.round((weight / totalWeight) * people.length)));
+  while (counts.reduce((sum, value) => sum + value, 0) > people.length) {
+    const richest = counts.reduce((best, value, index) => (value >= counts[best] ? index : best), 0);
+    if (counts[richest] <= 1) {
+      break;
+    }
+    counts[richest] -= 1;
+  }
+  while (counts.reduce((sum, value) => sum + value, 0) < people.length) {
+    counts[counts.length - 1] += 1;
+  }
+
+  const rowGroups = counts.map(() => []);
+  let cursor = 0;
+  counts.forEach((count, rowIndex) => {
+    rowGroups[rowIndex] = people.slice(cursor, cursor + count);
+    cursor += count;
   });
 
   const seats = [];
-  const inner = 116;
-  const outer = 486;
-  const gap = Math.min(2.4, sector.width / 7);
+  const gap = Math.min(labeled ? 1.2 : 2.4, sector.width / 7);
   const start = sector.start - gap;
   const end = sector.end + gap;
 
@@ -599,11 +625,10 @@ function layoutPartySeats(people, sector) {
     if (!group.length) {
       return;
     }
-    const radius = rows === 1 ? inner : inner + ((outer - inner) * rowIndex) / (rows - 1);
     group.forEach((person, index) => {
       const fraction = (index + 0.5) / group.length;
       const theta = start + (end - start) * fraction;
-      seats.push({ person, ...polarPoint(500, 585, radius, theta) });
+      seats.push({ person, ...polarPoint(500, 585, radii[rowIndex], theta) });
     });
   });
 
@@ -698,12 +723,12 @@ function renderChamber() {
       return;
     }
     people.sort((a, b) => (b.surfaceTokenCount || 0) - (a.surfaceTokenCount || 0));
-    allSeats.push(...layoutPartySeats(people, sector));
+    allSeats.push(...layoutPartySeats(people, sector, { labeled: showSeatNames }));
   });
 
   const dots = svgEl("g");
   const names = svgEl("g", { class: "seat-names", "aria-hidden": "true" });
-  const nameSize = visible.length > 100 ? 6.4 : visible.length > 60 ? 7.4 : visible.length > 30 ? 8.8 : 10.4;
+  const nameSize = visible.length > 90 ? 6.8 : visible.length > 50 ? 7.6 : visible.length > 28 ? 8.6 : 10;
 
   allSeats.forEach(({ person, x, y }) => {
     const dot = svgEl("circle", {
@@ -723,7 +748,7 @@ function renderChamber() {
     dots.appendChild(dot);
 
     if (showSeatNames) {
-      const extra = 11 + seatRadius(person);
+      const extra = 7 + seatRadius(person);
       const point = seatLabelPoint(x, y, extra);
       const label = svgEl("text", {
         x: point.x.toFixed(1),
