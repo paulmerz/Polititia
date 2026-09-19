@@ -362,6 +362,7 @@ h1 {
 .tabs,
 .subtabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 12px;
   border-bottom: 1px solid var(--line);

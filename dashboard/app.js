@@ -849,7 +849,7 @@ function phraseList(rows, options = {}) {
 function renderLanguageMetricSelect(selectId = "languageMetricSelect") {
   return `
     <label class="field">
-      <span class="field-heading">${escapeHtml(copy("marker"))}${infoTip("languageMarkersHelp")}</span>
+      <span>${escapeHtml(copy("marker"))}</span>
       <select id="${escapeHtml(selectId)}">
         ${(languageMarkers.metrics || [])
           .map((metric) => {
