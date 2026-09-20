@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<compteRendu xmlns="http://schemas.assemblee-nationale.fr/referentiel">
+  <uid>CRTESTMINI001</uid>
+  <metadonnees>
+    <dateSeance>20240312150000000</dateSeance>
+    <dateSeanceJour>mardi 12 mars 2024</dateSeanceJour>
+    <numSeance>1</numSeance>
+    <legislature>17</legislature>
+    <session>Session de test</session>
+  </metadonnees>
+  <contenu>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme Sophie Panonacle EPR</nom>
+          <qualite>députée</qualite>
+        </orateur>
+      </orateurs>
+      <texte>Le débat sur l'aide à mourir et les soins palliatifs doit rester encadré par la loi.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme la présidente</nom>
+          <qualite/>
+        </orateur>
+      </orateurs>
+      <texte>La parole est à Mme Panot.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme Mathilde Panot LFI NFP</nom>
+          <qualite>députée</qualite>
+        </orateur>
+      </orateurs>
+      <texte>Nous défendons l'aide à mourir comme une liberté fondamentale pour les patients.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>M. Laurent Wauquiez DR</nom>
+          <qualite>député</qualite>
+        </orateur>
+      </orateurs>
+      <texte>Les soins palliatifs et l'éthique médicale restent notre boussole face à ce texte.</texte>
+    </paragraphe>
+  </contenu>
+</compteRendu>
