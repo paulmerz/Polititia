@@ -121,10 +121,11 @@ def speech_tokens(record: dict[str, str]) -> list[str]:
     return normalized.split()
 
 
-def match_themes(tokens: list[str], themes: list[dict[str, object]]) -> list[str]:
+def match_themes(*token_streams: list[str], themes: list[dict[str, object]]) -> list[str]:
     hits: list[str] = []
     for theme in themes:
-        if any(contains_alias(tokens, str(alias)) for alias in theme["aliases"]):  # type: ignore[index]
+        aliases = [str(alias) for alias in theme["aliases"]]  # type: ignore[index]
+        if any(contains_alias(tokens, alias) for tokens in token_streams for alias in aliases):
             hits.append(str(theme["id"]))
     return hits
 
@@ -276,6 +277,7 @@ def build_bundle(
         person_id = politician_id(speaker_name, party)
         parsed = parse_iso_date(raw.get("date", ""))
         tokens = speech_tokens(raw)
+        content = surface_content_tokens(raw.get("normalized_text") or "")
         row = {
             **raw,
             "party": party,
@@ -283,6 +285,7 @@ def build_bundle(
             "politician_id": person_id,
             "parsed_date": parsed,
             "tokens": tokens,
+            "content_tokens": content,
         }
         enriched.append(row)
         party_speech_totals[party] += 1
@@ -301,7 +304,7 @@ def build_bundle(
 
     attributions: list[tuple[dict[str, object], str]] = []
     for row in enriched:
-        for theme_id in match_themes(row["tokens"], all_themes):  # type: ignore[arg-type]
+        for theme_id in match_themes(row["tokens"], row["content_tokens"], themes=all_themes):  # type: ignore[arg-type]
             attributions.append((row, theme_id))
 
     dates_by_theme: dict[str, list[date]] = defaultdict(list)
@@ -418,6 +421,8 @@ def build_bundle(
             if len(selected) >= 3 and len(seen_parties) >= 2:
                 break
         excerpts[theme_id] = selected[:3]
+
+    catalog = [theme for theme in catalog if theme["type"] == "domain" or theme["speechCount"]]
 
     politician_scores: dict[str, dict[str, dict[str, object]]] = {}
     for person_id, counts in politician_theme_counts.items():

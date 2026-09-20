@@ -16,7 +16,7 @@ class ThemeMatchingTests(unittest.TestCase):
     def test_alias_subsequence(self) -> None:
         themes = load_lexicon(LEXICON_PATH)
         tokens = "nous défendons l aide à mourir comme une liberté".split()
-        self.assertIn("fin-de-vie", match_themes(tokens, themes))
+        self.assertIn("fin-de-vie", match_themes(tokens, themes=themes))
 
     def test_excerpt_centers_on_alias(self) -> None:
         text = "Avant le vote, l'aide à mourir doit rester un choix libre et accompagné."
