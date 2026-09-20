@@ -27,8 +27,18 @@ uv run python analyze_project_ngrams.py \
   --ngram-sizes 1 2 3 4 \
   --top-k 25 \
   --min-distinctive-count 50
+uv run python analyze_themes.py \
+  --speeches extracted_texts/project_full/speeches.jsonl \
+  --speaker-dir extracted_texts/project_full/by_speaker \
+  --lexicon themes/lexicon.json \
+  --out-dir analysis_outputs/themes
 uv run python dashboard/build_dashboard_data.py
 ```
+
+`extract_speeches.py` now writes a dated speech index at
+`extracted_texts/project_full/speeches.jsonl`. `analyze_themes.py` attributes
+those speeches to lexical domains in `themes/lexicon.json` and to emerging
+bigram signals. Without the index, the dashboard keeps an empty theme lens.
 
 ## Serve Dashboard
 

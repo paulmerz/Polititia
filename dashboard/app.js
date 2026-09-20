@@ -12,7 +12,10 @@ const analysisContent = document.getElementById("analysisContent");
 const partyFilter = document.getElementById("partyFilter");
 const searchInput = document.getElementById("searchInput");
 const searchResults = document.getElementById("searchResults");
-const ngramSize = document.getElementById("ngramSize");
+const themeSearch = document.getElementById("themeSearch");
+const themeMenu = document.getElementById("themeMenu");
+const themeContext = document.getElementById("themeContext");
+const themeTab = document.getElementById("themeTab");
 const showUnlabeled = document.getElementById("showUnlabeled");
 const dialog = document.getElementById("politicianDialog");
 const dialogTitle = document.getElementById("dialogTitle");
@@ -49,7 +52,42 @@ const state = {
   languageMetric: "LD",
   search: "",
   showUnlabeled: false,
+  themeId: "",
+  themeQuery: "",
+  themeMenuOpen: false,
 };
+
+function catalogThemes() {
+  return data.themes || [];
+}
+
+function selectedTheme() {
+  return catalogThemes().find((theme) => theme.id === state.themeId) || null;
+}
+
+function themeScore(personId) {
+  if (!state.themeId) {
+    return null;
+  }
+  return data.politicianThemeScores?.[personId]?.[state.themeId] || null;
+}
+
+function fmtShare(value) {
+  return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
+function trendLabel(trend) {
+  if (trend === "new") {
+    return "New";
+  }
+  if (trend === "rising") {
+    return "Rising";
+  }
+  if (trend === "falling") {
+    return "Falling";
+  }
+  return "Stable";
+}
 
 function normalize(value) {
   return String(value || "")
@@ -145,22 +183,34 @@ function chooseInitialPolitician() {
 }
 
 function renderSummary() {
-  const metrics = [
-    ["Politicians", data.meta.politicians],
-    ["Speeches", data.meta.totalSpeeches],
-    ["Surface tokens", data.meta.totalSurfaceTokens],
-    ["Parties", data.meta.eligibleParties.length],
-  ];
+  const theme = selectedTheme();
+  const metrics = theme
+    ? [
+        ["On theme", `${fmtInt(theme.politicianCount)} / ${fmtInt(data.meta.politicians)}`],
+        ["Theme speeches", theme.speechCount],
+        ["Opened by", partyLabel(theme.openerParty) || "n/a"],
+        ["Trend", trendLabel(theme.trend)],
+      ]
+    : [
+        ["Politicians", data.meta.politicians],
+        ["Speeches", data.meta.totalSpeeches],
+        ["Surface tokens", data.meta.totalSurfaceTokens],
+        ["Parties", data.meta.eligibleParties.length],
+      ];
   document.getElementById("summaryStrip").innerHTML = metrics
     .map(
       ([label, value]) => `
         <div class="metric">
-          <span class="metric-value">${fmtCompact(value)}</span>
+          <span class="metric-value">${typeof value === "number" ? fmtCompact(value) : escapeHtml(value)}</span>
           <span class="metric-label">${escapeHtml(label)}</span>
         </div>
       `,
     )
     .join("");
+  const eyebrow = document.querySelector(".eyebrow");
+  if (eyebrow) {
+    eyebrow.textContent = theme ? `Lens: ${theme.label}` : "French parliamentary speeches";
+  }
 }
 
 function populatePartyFilter() {
@@ -176,14 +226,94 @@ function populatePartyFilter() {
   partyFilter.innerHTML = options.join("");
 }
 
+function matchingThemes() {
+  const term = normalize(state.themeQuery.trim());
+  return catalogThemes().filter((theme) => {
+    if (!term) {
+      return true;
+    }
+    const aliases = (theme.aliases || []).join(" ");
+    return normalize(`${theme.label} ${aliases} ${theme.type}`).includes(term);
+  });
+}
+
+function renderThemeMenu() {
+  if (!state.themeMenuOpen) {
+    themeMenu.hidden = true;
+    themeMenu.innerHTML = "";
+    return;
+  }
+
+  const themes = matchingThemes();
+  const domains = themes.filter((theme) => theme.type !== "emerging");
+  const signals = themes.filter((theme) => theme.type === "emerging");
+  const sections = [];
+  sections.push(`<button class="theme-option ${state.themeId ? "" : "is-active"}" type="button" data-theme-id="">All issues</button>`);
+  if (!catalogThemes().length) {
+    sections.push(`<p class="source-note theme-option-label">No theme index. Rebuild the pipeline.</p>`);
+  }
+  if (domains.length) {
+    sections.push(`<div class="theme-group-label">Domains</div>`);
+    domains.forEach((theme) => {
+      sections.push(`
+        <button class="theme-option ${theme.id === state.themeId ? "is-active" : ""}" type="button" data-theme-id="${escapeHtml(theme.id)}">
+          ${escapeHtml(theme.label)}
+          <small>${fmtInt(theme.speechCount)} speeches · ${fmtInt(theme.politicianCount)} politicians</small>
+        </button>
+      `);
+    });
+  }
+  if (signals.length) {
+    sections.push(`<div class="theme-group-label">Signals</div>`);
+    signals.forEach((theme) => {
+      sections.push(`
+        <button class="theme-option ${theme.id === state.themeId ? "is-active" : ""}" type="button" data-theme-id="${escapeHtml(theme.id)}">
+          ${escapeHtml(theme.label)}
+          <small>${escapeHtml(trendLabel(theme.trend))} · ${fmtInt(theme.speechCount)} speeches</small>
+        </button>
+      `);
+    });
+  }
+  themeMenu.innerHTML = sections.join("");
+  themeMenu.hidden = false;
+}
+
+function renderThemeContext() {
+  const theme = selectedTheme();
+  if (!theme) {
+    themeContext.hidden = true;
+    themeContext.innerHTML = "";
+    return;
+  }
+  themeContext.hidden = false;
+  themeContext.innerHTML = `
+    <span class="theme-chip">
+      ${escapeHtml(theme.label)}
+      <button type="button" data-clear-theme="true" aria-label="Clear theme">x</button>
+    </span>
+    <span class="theme-context-meta">
+      ${theme.type === "emerging" ? "Signal" : "Domain"}
+      · ${fmtInt(theme.politicianCount)} politicians
+      · opened ${escapeHtml(theme.firstDate || "n/a")}
+    </span>
+  `;
+}
+
 function syncControls() {
   partyFilter.value = state.partyFilter;
   searchInput.value = state.search;
-  ngramSize.value = state.ngram;
+  searchInput.placeholder = selectedTheme() ? "Name, in this theme" : "Name";
+  themeSearch.value = selectedTheme() && !state.themeMenuOpen ? selectedTheme().label : state.themeQuery;
+  themeSearch.placeholder = selectedTheme() ? selectedTheme().label : "All issues";
   showUnlabeled.checked = state.showUnlabeled;
+  if (themeTab) {
+    themeTab.hidden = !selectedTheme();
+  }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.tab === state.activeTab);
   });
+  renderThemeMenu();
+  renderThemeContext();
 }
 
 function getVisiblePoliticians() {
@@ -347,7 +477,7 @@ function renderChamber() {
 
   if (!visible.length) {
     const empty = svgEl("text", { x: 500, y: 300, class: "empty-label" });
-    empty.textContent = "No matches";
+    empty.textContent = selectedTheme() ? "Nobody addresses this issue in the current filter" : "No matches";
     chamberSvg.appendChild(empty);
     renderLegend(new Map());
     return;
@@ -374,19 +504,43 @@ function renderChamber() {
 
   const dots = svgEl("g");
   allSeats.forEach(({ person, x, y }) => {
+    const score = themeScore(person.id);
+    const themed = Boolean(selectedTheme());
+    const muted = themed && !score;
+    const share = Number(score?.share || 0);
+    const radius = seatRadius(person) * (themed && score ? 1 + Math.min(0.7, share) : themed ? 0.72 : 1);
+    if (score) {
+      dots.appendChild(
+        svgEl("circle", {
+          cx: x.toFixed(1),
+          cy: y.toFixed(1),
+          r: (radius + 3.2).toFixed(2),
+          fill: partyColor(person.party),
+          opacity: 0.22 + Math.min(0.35, share),
+          class: "seat-halo",
+        }),
+      );
+    }
+    const themeNote = score
+      ? `, ${fmtInt(score.speechCount)} on theme, ${fmtShare(share)} of speaking time`
+      : themed
+        ? ", has not addressed this theme"
+        : "";
     const dot = svgEl("circle", {
       cx: x.toFixed(1),
       cy: y.toFixed(1),
-      r: seatRadius(person).toFixed(2),
+      r: radius.toFixed(2),
       fill: partyColor(person.party),
-      class: `seat-dot${person.id === state.selectedId ? " is-selected" : ""}`,
+      class: `seat-dot${person.id === state.selectedId ? " is-selected" : ""}${muted ? " is-muted" : ""}`,
       tabindex: 0,
       role: "button",
-      "aria-label": `${person.name}, ${partyLabel(person.party)}`,
+      "aria-label": `${person.name}, ${partyLabel(person.party)}${themeNote}`,
       "data-politician-id": person.id,
     });
     const title = svgEl("title");
-    title.textContent = `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} speeches`;
+    title.textContent = score
+      ? `${person.name} - ${partyLabel(person.party)} - ${fmtInt(score.speechCount)} theme speeches - first ${score.firstDate || "n/a"}`
+      : `${person.name} - ${partyLabel(person.party)} - ${fmtInt(person.speechCount)} speeches`;
     dot.appendChild(title);
     dots.appendChild(dot);
   });
@@ -695,6 +849,61 @@ function markerTabs(markers) {
   `;
 }
 
+function ngramSelect(selectId) {
+  return `
+    <label class="field">
+      <span>N-gram</span>
+      <select id="${escapeHtml(selectId)}">
+        <option value="1" ${state.ngram === "1" ? "selected" : ""}>Unigrams</option>
+        <option value="2" ${state.ngram === "2" ? "selected" : ""}>Bigrams</option>
+        <option value="3" ${state.ngram === "3" ? "selected" : ""}>Trigrams</option>
+        <option value="4" ${state.ngram === "4" ? "selected" : ""}>Four-grams</option>
+      </select>
+    </label>
+  `;
+}
+
+function renderExcerptList(excerpts) {
+  if (!excerpts?.length) {
+    return `<p class="source-note">No excerpts for this selection.</p>`;
+  }
+  return `
+    <div class="excerpt-list">
+      ${excerpts
+        .map(
+          (excerpt) => `
+            <button class="excerpt-card" type="button" data-select-politician="${escapeHtml(excerpt.politicianId)}">
+              <span class="source-note">${escapeHtml(excerpt.date || "n/a")} · ${escapeHtml(excerpt.speaker)} · ${escapeHtml(partyLabel(excerpt.party))}</span>
+              <p>${escapeHtml(excerpt.snippet || "")}</p>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderThemeLensNote(person) {
+  const theme = selectedTheme();
+  if (!theme) {
+    return "";
+  }
+  const score = themeScore(person.id);
+  const excerpts = data.politicianThemeExcerpts?.[person.id]?.[theme.id] || [];
+  if (!score) {
+    return `<p class="source-note theme-note">Has not addressed ${escapeHtml(theme.label)} in the current index.</p>`;
+  }
+  return `
+    <h3 class="section-title">On ${escapeHtml(theme.label)}</h3>
+    <div class="stat-grid">
+      <div class="stat"><span>Theme speeches</span><strong>${fmtInt(score.speechCount)}</strong></div>
+      <div class="stat"><span>Share</span><strong>${escapeHtml(fmtShare(score.share))}</strong></div>
+      <div class="stat"><span>First mention</span><strong>${escapeHtml(score.firstDate || "n/a")}</strong></div>
+    </div>
+    ${renderExcerptList(excerpts)}
+  `;
+}
+
 function renderPoliticianDetail(personId) {
   const person = politiciansById.get(personId);
   if (!person) {
@@ -712,6 +921,9 @@ function renderPoliticianDetail(personId) {
 
   return `
     <div class="detail-body">
+      <div class="panel-control">
+        ${ngramSelect("politicianPanelNgram")}
+      </div>
       <div class="detail-header">
         <div class="person-title-row">
           <h2>${escapeHtml(person.name)}</h2>
@@ -727,6 +939,7 @@ function renderPoliticianDetail(personId) {
         </div>
         <p class="source-note">Party assignment: ${escapeHtml(person.partySource)}</p>
       </div>
+      ${renderThemeLensNote(person)}
 
       <h3 class="section-title">TF-IDF phrases</h3>
       ${phraseList(tfidfRows, {
@@ -762,6 +975,97 @@ function partyOptions(selectedParty) {
         `<option value="${escapeHtml(party.id)}" ${party.id === selectedParty ? "selected" : ""}>${escapeHtml(party.label)}</option>`,
     )
     .join("");
+}
+
+function renderThemeChart(themeId) {
+  const series = data.partyThemeSeries?.[themeId] || {};
+  const weeks = [...new Set(Object.values(series).flatMap((rows) => rows.map((row) => row.week)))].sort();
+  if (weeks.length < 2) {
+    return `<p class="source-note">Too few occurrences for a trajectory.</p>`;
+  }
+  const width = 320;
+  const height = 140;
+  const pad = 16;
+  const parties = partyOrder.filter((party) => series[party]?.length);
+  const pointsFor = (party) =>
+    weeks.map((week, index) => {
+      const row = (series[party] || []).find((item) => item.week === week);
+      const x = pad + (index / Math.max(1, weeks.length - 1)) * (width - pad * 2);
+      const y = height - pad - Number(row?.share || 0) * (height - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+  return `
+    <svg class="theme-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Weekly party share">
+      ${parties
+        .map(
+          (party) => `
+            <polyline
+              fill="none"
+              stroke="${partyColor(party)}"
+              stroke-width="2"
+              points="${pointsFor(party).join(" ")}"
+            ></polyline>
+          `,
+        )
+        .join("")}
+    </svg>
+  `;
+}
+
+function renderOwnership(themeId) {
+  const rows = data.themeOwnership?.[themeId] || [];
+  if (!rows.length) {
+    return `<p class="source-note">No ownership scores for this theme.</p>`;
+  }
+  const maxLift = Math.max(1, ...rows.map((row) => Number(row.lift || 0)));
+  return `
+    <div class="ownership-list">
+      ${rows
+        .map((row) => {
+          const lift = Number(row.lift || 0);
+          const width = Math.max(6, (lift / maxLift) * 100);
+          return `
+            <div class="ownership-row">
+              <div class="language-bar-label">
+                <span>${escapeHtml(partyLabel(row.party))}</span>
+                <strong>${lift.toFixed(2)}x</strong>
+              </div>
+              <div class="ownership-track">
+                <span class="ownership-fill" style="width:${width.toFixed(1)}%; background:${partyColor(row.party)}"></span>
+              </div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderThemePanel() {
+  const theme = selectedTheme();
+  if (!theme) {
+    return `<div class="detail-body"><p class="source-note">Choose a theme to open the lens.</p></div>`;
+  }
+  return `
+    <div class="detail-body">
+      <div class="panel-title-row">
+        <h2>${escapeHtml(theme.label)}</h2>
+        <span class="party-pill">${theme.type === "emerging" ? "Signal" : "Domain"}</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><span>Speeches</span><strong>${fmtInt(theme.speechCount)}</strong></div>
+        <div class="stat"><span>Politicians</span><strong>${fmtInt(theme.politicianCount)}</strong></div>
+        <div class="stat"><span>Opened by</span><strong>${escapeHtml(partyLabel(theme.openerParty) || "n/a")}</strong></div>
+      </div>
+      <p class="source-note">${escapeHtml(trendLabel(theme.trend))} · first ${escapeHtml(theme.firstDate || "n/a")}</p>
+      <h3 class="section-title">Trajectory</h3>
+      ${renderThemeChart(theme.id)}
+      <h3 class="section-title">Who over-invests</h3>
+      ${renderOwnership(theme.id)}
+      <h3 class="section-title">Excerpts</h3>
+      ${renderExcerptList(data.themeExcerpts?.[theme.id] || [])}
+    </div>
+  `;
 }
 
 function renderPartyPanel() {
@@ -912,7 +1216,9 @@ function renderCorpusPanel() {
 }
 
 function renderAnalysis() {
-  if (state.activeTab === "party") {
+  if (state.activeTab === "theme") {
+    analysisContent.innerHTML = renderThemePanel();
+  } else if (state.activeTab === "party") {
     analysisContent.innerHTML = renderPartyPanel();
   } else if (state.activeTab === "markers") {
     analysisContent.innerHTML = renderLanguageMarkersPanel();
@@ -940,6 +1246,14 @@ function render() {
   if (dialog.open) {
     renderDialog();
   }
+}
+
+function selectTheme(themeId) {
+  state.themeId = themeId || "";
+  state.themeQuery = "";
+  state.themeMenuOpen = false;
+  state.activeTab = state.themeId ? "theme" : "politician";
+  render();
 }
 
 function selectPolitician(personId, openDialog = false) {
@@ -987,6 +1301,17 @@ document.body.addEventListener("click", (event) => {
     state.selectedParty = state.partyFilter;
     state.activeTab = "party";
     render();
+    return;
+  }
+
+  const themeButton = event.target.closest("[data-theme-id]");
+  if (themeButton) {
+    selectTheme(themeButton.dataset.themeId);
+    return;
+  }
+
+  if (event.target.closest("[data-clear-theme]")) {
+    selectTheme("");
   }
 });
 
@@ -1022,9 +1347,25 @@ searchInput.addEventListener("input", () => {
   render();
 });
 
-ngramSize.addEventListener("change", () => {
-  state.ngram = ngramSize.value;
+themeSearch.addEventListener("focus", () => {
+  state.themeMenuOpen = true;
+  state.themeQuery = selectedTheme() ? "" : themeSearch.value;
   render();
+});
+
+themeSearch.addEventListener("input", () => {
+  state.themeQuery = themeSearch.value;
+  state.themeMenuOpen = true;
+  render();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".theme-field")) {
+    if (state.themeMenuOpen) {
+      state.themeMenuOpen = false;
+      render();
+    }
+  }
 });
 
 showUnlabeled.addEventListener("change", () => {
@@ -1037,7 +1378,11 @@ analysisContent.addEventListener("change", (event) => {
     state.selectedParty = event.target.value;
     render();
   }
-  if (event.target.id === "partyPanelNgram" || event.target.id === "corpusPanelNgram") {
+  if (
+    event.target.id === "partyPanelNgram" ||
+    event.target.id === "corpusPanelNgram" ||
+    event.target.id === "politicianPanelNgram"
+  ) {
     state.ngram = event.target.value;
     render();
   }

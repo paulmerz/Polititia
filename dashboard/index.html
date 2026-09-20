@@ -26,14 +26,12 @@
             <span>Party</span>
             <select id="partyFilter"></select>
           </label>
-          <label class="field">
-            <span>N-gram</span>
-            <select id="ngramSize">
-              <option value="1">Unigrams</option>
-              <option value="2" selected>Bigrams</option>
-              <option value="3">Trigrams</option>
-              <option value="4">Four-grams</option>
-            </select>
+          <label class="field theme-field">
+            <span>Theme</span>
+            <div class="theme-combobox">
+              <input id="themeSearch" type="search" autocomplete="off" placeholder="All issues" />
+              <div class="theme-menu" id="themeMenu" hidden></div>
+            </div>
           </label>
           <label class="toggle-field">
             <input id="showUnlabeled" type="checkbox" />
@@ -42,6 +40,7 @@
         </div>
 
         <div class="search-results" id="searchResults"></div>
+        <div class="theme-context" id="themeContext" hidden></div>
 
         <div class="chamber-wrap">
           <svg id="chamberSvg" viewBox="0 0 1000 640" role="img" aria-label="Semicircle party layout"></svg>
@@ -51,6 +50,7 @@
 
       <aside class="analysis-panel">
         <div class="tabs" role="tablist" aria-label="Analysis sections">
+          <button class="tab" data-tab="theme" type="button" id="themeTab" hidden>Theme</button>
           <button class="tab is-active" data-tab="politician" type="button">Politician</button>
           <button class="tab" data-tab="party" type="button">Party</button>
           <button class="tab" data-tab="markers" type="button">Markers</button>
