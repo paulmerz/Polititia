@@ -710,6 +710,11 @@ h1 {
   font-weight: 700;
 }
 
+.quota-chip[hidden],
+.session-label[hidden] {
+  display: none !important;
+}
+
 .quota-chip.is-low {
   border-color: var(--accent);
   color: var(--accent-dark);
