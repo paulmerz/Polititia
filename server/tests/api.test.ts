@@ -9,6 +9,7 @@ test("bootstrap omits politician phrases and sets a device cookie", async () => 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("set-cookie") || "", /pt_did=/);
   assert.match(response.headers.get("content-security-policy") || "", /default-src 'self'/);
+  assert.equal(response.headers.get("strict-transport-security"), null);
   const body = await response.json();
   assert.equal(Object.keys(body.phrasesByPolitician).length, 0);
   assert.equal(body.quota.remaining, 10);

@@ -103,6 +103,9 @@ export async function createApp(config: AppConfig) {
       xFrameOptions: "DENY",
       xContentTypeOptions: "nosniff",
       referrerPolicy: "strict-origin-when-cross-origin",
+      strictTransportSecurity: config.baseURL.startsWith("https://")
+        ? "max-age=15552000; includeSubDomains"
+        : false,
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
