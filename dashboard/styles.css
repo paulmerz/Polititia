@@ -690,6 +690,75 @@ h1 {
   outline: none;
 }
 
+.access-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.quota-chip,
+.session-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.quota-chip.is-low {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.gate-dialog {
+  width: min(460px, calc(100vw - 28px));
+}
+
+.gate-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px 14px 18px;
+}
+
+.gate-body p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.gate-error {
+  margin: 0;
+  color: #9b1c2c;
+  font-size: 0.84rem;
+}
+
+.gate-submit {
+  justify-self: start;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-dark);
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gate-submit:hover,
+.gate-submit:focus-visible {
+  background: var(--accent-dark);
+  outline: none;
+}
+
+.gate-submit:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 @media (max-width: 1080px) {
   .topbar {
     align-items: start;

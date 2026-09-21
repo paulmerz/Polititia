@@ -11,6 +11,10 @@
       <div>
         <p class="eyebrow">French parliamentary speeches</p>
         <h1>Assemblee N-gram Explorer</h1>
+        <div class="access-status">
+          <span class="quota-chip" id="quotaChip">10/10 analyses</span>
+          <span class="session-label" id="sessionLabel" hidden></span>
+        </div>
       </div>
       <div class="summary-strip" id="summaryStrip"></div>
     </header>
@@ -68,7 +72,25 @@
       <div id="dialogContent"></div>
     </dialog>
 
-    <script src="data/dashboard-data.js"></script>
+    <dialog id="accessGate" class="detail-dialog gate-dialog">
+      <div class="dialog-bar">
+        <div>Continuer avec votre email</div>
+        <button class="close-button" id="closeGate" type="button" aria-label="Fermer">x</button>
+      </div>
+      <form id="gateForm" class="gate-body">
+        <p>Vous avez utilisé vos 10 analyses gratuites. L’accès illimité s’ouvre avec un email — c’est la seule contrepartie.</p>
+        <label class="field">
+          <span>Email</span>
+          <input id="gateEmail" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="vous@organisation.fr" />
+        </label>
+        <p class="source-note">En indiquant votre email, vous acceptez d’être recontacté au sujet de Polititia.</p>
+        <p class="source-note" id="gateHint">L’email débloque l’accès. C’est l’unique contrepartie demandée.</p>
+        <p class="gate-error" id="gateError" hidden></p>
+        <button class="gate-submit" id="gateSubmit" type="submit">Continuer</button>
+      </form>
+    </dialog>
+
+    <script src="quota-gate.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
