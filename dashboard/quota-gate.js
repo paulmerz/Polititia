@@ -39,6 +39,10 @@ window.PolititiaGate = (function createGate() {
     if (payload?.auth) {
       state.auth = payload.auth;
     }
+    const copy = $("gateCopy");
+    if (copy && state.quota?.limit) {
+      copy.textContent = `Vous avez utilisé vos ${state.quota.limit} analyses gratuites. L’accès illimité s’ouvre avec un email — c’est la seule contrepartie.`;
+    }
     renderChip();
   }
 
