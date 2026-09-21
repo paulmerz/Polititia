@@ -345,7 +345,7 @@ export async function createApp(config: AppConfig) {
       return new Response(readFileSync(absolute), {
         headers: {
           "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream",
-          "Cache-Control": ext === ".html" ? "no-store" : "public, max-age=300",
+          "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff",
         },
       });
