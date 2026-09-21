@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<compteRendu xmlns="http://schemas.assemblee-nationale.fr/referentiel">
+  <uid>CRTESTMINI002</uid>
+  <metadonnees>
+    <dateSeance>20240618150000000</dateSeance>
+    <dateSeanceJour>mardi 18 juin 2024</dateSeanceJour>
+    <numSeance>12</numSeance>
+    <legislature>17</legislature>
+    <session>Session de test</session>
+  </metadonnees>
+  <contenu>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme Sophie Panonacle EPR</nom>
+          <qualite>députée</qualite>
+        </orateur>
+      </orateurs>
+      <texte>Le médicament qasoldy charcot doit être autorisé sans délai après l'avis de la haute autorité.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme la présidente</nom>
+          <qualite/>
+        </orateur>
+      </orateurs>
+      <texte>La parole est à Mme Panot.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>Mme Mathilde Panot LFI NFP</nom>
+          <qualite>députée</qualite>
+        </orateur>
+      </orateurs>
+      <texte>Accélérons l'accès au médicament qasoldy charcot pour les malades et leurs familles.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE">
+      <orateurs>
+        <orateur>
+          <nom>M. Laurent Wauquiez DR</nom>
+          <qualite>député</qualite>
+        </orateur>
+      </orateurs>
+      <texte>L'aide à mourir ne doit pas remplacer un vrai investissement dans les soins palliatifs.</texte>
+    </paragraphe>
+  </contenu>
+</compteRendu>

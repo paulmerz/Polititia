@@ -29,8 +29,18 @@ uv run python analyze_project_ngrams.py \
   --min-distinctive-count 50
 uv run python scripts/index_session_dates.py
 uv run --extra topics python analyze_topics.py
+uv run python analyze_themes.py \
+  --speeches extracted_texts/project_full/speeches.jsonl \
+  --speaker-dir extracted_texts/project_full/by_speaker \
+  --lexicon themes/lexicon.json \
+  --out-dir analysis_outputs/themes
 uv run python dashboard/build_dashboard_data.py
 ```
+
+`extract_speeches.py` now writes a dated speech index at
+`extracted_texts/project_full/speeches.jsonl`. `analyze_themes.py` attributes
+those speeches to lexical domains in `themes/lexicon.json` and to emerging
+bigram signals. Without the index, the dashboard keeps an empty theme lens.
 
 ## Serve Dashboard
 
@@ -60,7 +70,9 @@ uv run --extra lemma python analyze_project_ngrams.py --token-mode lemma_content
 uv run --extra topics python analyze_topics.py
 ```
 
-The dashboard **Themes** tab needs the topic extra and `analyze_topics.py`. Seat size (speeches vs words) is a client-side toggle.
+The dashboard **Themes** tab needs the topic extra and `analyze_topics.py`.
+The hemicycle **Theme** lens needs `analyze_themes.py` and the dated speech index.
+Seat size (speeches vs words) is a client-side toggle. Without `speeches.jsonl`, the theme lens stays empty.
 
 ## Ignored Outputs
 

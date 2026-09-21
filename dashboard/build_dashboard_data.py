@@ -60,6 +60,11 @@ SPEAKER_TFIDF_PATH = ANALYSIS_DIR / "speaker_tfidf_ngrams.csv"
 TOPIC_TERMS_PATH = ANALYSIS_DIR / "topic_terms.csv"
 PARTY_TOPICS_PATH = ANALYSIS_DIR / "party_topics.csv"
 PARTY_TOPIC_MONTHLY_PATH = ANALYSIS_DIR / "party_topic_monthly.csv"
+THEMES_DIR = first_existing(
+    ROOT / "analysis_outputs" / "themes",
+    ROOT.parent / "analysis_outputs" / "themes",
+)
+THEME_BUNDLE_PATH = THEMES_DIR / "themes_bundle.json"
 LANGUAGE_MARKERS_PATH = first_existing(
     ROOT / "metrics_CSV" / "metriche_by_party.csv",
     ROOT / "Politica" / "metrics_CSV" / "metriche_by_party.csv",
@@ -614,6 +619,31 @@ def build_language_markers() -> dict[str, object]:
     }
 
 
+EMPTY_THEME_BUNDLE = {
+    "themes": [],
+    "politicianThemeScores": {},
+    "partyThemeSeries": {},
+    "themeOwnership": {},
+    "themeExcerpts": {},
+    "politicianThemeExcerpts": {},
+}
+
+
+def build_theme_bundle() -> dict[str, object]:
+    if not THEME_BUNDLE_PATH.exists():
+        return {
+            **EMPTY_THEME_BUNDLE,
+            "source": "",
+        }
+    payload = json.loads(THEME_BUNDLE_PATH.read_text(encoding="utf-8"))
+    bundle = {**EMPTY_THEME_BUNDLE}
+    for key in EMPTY_THEME_BUNDLE:
+        if key in payload:
+            bundle[key] = payload[key]
+    bundle["source"] = display_path(THEME_BUNDLE_PATH)
+    return bundle
+
+
 def build_party_data(politicians: list[dict[str, object]]) -> list[dict[str, object]]:
     party_activity = {row["party"]: row for row in read_csv(PARTY_ACTIVITY_PATH)}
     politician_counts = Counter(str(item["party"]) for item in politicians)
@@ -705,6 +735,7 @@ def main() -> None:
     parties = build_party_data(politicians)
     language_markers = build_language_markers()
     topics = build_topics_bundle()
+    theme_bundle = build_theme_bundle()
 
     party_common = group_ngram_rows(
         read_csv(PARTY_COMMON_PATH),
@@ -751,6 +782,7 @@ def main() -> None:
                 "speakerTfidfNgrams": display_path(SPEAKER_TFIDF_PATH),
                 "languageMarkers": language_markers["source"],
                 "topics": display_path(TOPIC_TERMS_PATH) if topics else None,
+                "themes": theme_bundle.get("source", ""),
             },
         },
         "partyOrder": [config["id"] for config in PARTY_CONFIG],
@@ -761,6 +793,12 @@ def main() -> None:
         "globalPhrases": global_common,
         "languageMarkers": language_markers,
         "topics": topics,
+        "themes": theme_bundle.get("themes", []),
+        "politicianThemeScores": theme_bundle.get("politicianThemeScores", {}),
+        "partyThemeSeries": theme_bundle.get("partyThemeSeries", {}),
+        "themeOwnership": theme_bundle.get("themeOwnership", {}),
+        "themeExcerpts": theme_bundle.get("themeExcerpts", {}),
+        "politicianThemeExcerpts": theme_bundle.get("politicianThemeExcerpts", {}),
     }
 
     json_path = OUTPUT_DIR / "dashboard-data.json"
