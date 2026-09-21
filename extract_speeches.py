@@ -28,6 +28,10 @@ header. The extractor also writes one normalized n-gram corpus per speaker to:
 
     <output_dir>/by_speaker/<speaker_slug>.txt
 
+and one dated speech index:
+
+    <output_dir>/speeches.jsonl
+
 Stage directions (Applaudissements, Mêmes mouvements, Mme X applaudit, ...)
 are wrapped in <italique>(...)</italique> in the schema. We drop any
 <italique> whose stripped content is parenthesised, plus a regex backup for
@@ -43,6 +47,7 @@ Usage
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import sys
@@ -55,6 +60,24 @@ NS = {"an": "http://schemas.assemblee-nationale.fr/referentiel"}
 INTERRUPTION_PREFIX = "INTERRUPTION"
 ELLIPSIS = "…"
 SPEAKER_CORPUS_DIR = "by_speaker"
+SPEECH_INDEX_NAME = "speeches.jsonl"
+FRENCH_MONTHS = {
+    "janvier": 1,
+    "fevrier": 2,
+    "février": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "aout": 8,
+    "août": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "decembre": 12,
+    "décembre": 12,
+}
 
 APOSTROPHE_TRANSLATION = str.maketrans({
     "’": "'",
@@ -213,7 +236,7 @@ def _get_metadata(root: ET.Element) -> dict[str, str]:
         meta["uid"] = uid.text.strip()
     md = root.find("an:metadonnees", NS)
     if md is not None:
-        for key in ("dateSeanceJour", "numSeance", "legislature", "session"):
+        for key in ("dateSeance", "dateSeanceJour", "numSeance", "legislature", "session"):
             node = md.find(f"an:{key}", NS)
             if node is not None and node.text:
                 meta[key] = node.text.strip()
@@ -221,6 +244,28 @@ def _get_metadata(root: ET.Element) -> dict[str, str]:
         if pres is not None and pres.text:
             meta["president"] = pres.text.strip()
     return meta
+
+
+def normalize_session_date(meta: dict[str, str]) -> str:
+    """Return YYYY-MM-DD from Syceron session metadata when possible."""
+    compact = (meta.get("dateSeance") or "").strip()
+    if len(compact) >= 8 and compact[:8].isdigit():
+        return f"{compact[0:4]}-{compact[4:6]}-{compact[6:8]}"
+
+    raw = (meta.get("dateSeanceJour") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return raw
+
+    match = re.search(r"(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})", raw)
+    if match:
+        day = int(match.group(1))
+        month_name = match.group(2).casefold()
+        month = FRENCH_MONTHS.get(month_name)
+        year = int(match.group(3))
+        if month:
+            return f"{year:04d}-{month:02d}-{day:02d}"
+
+    return ""
 
 
 def _resolve_role(orateur: ET.Element) -> str:
@@ -316,24 +361,50 @@ def write_speech_files(
     segments: list[dict],
     out_dir: str,
     source_file: str,
-) -> list[tuple[str, str, str]]:
+    meta: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
     os.makedirs(out_dir, exist_ok=True)
     src_stem = os.path.splitext(os.path.basename(source_file))[0]
     pad = max(2, len(str(len(segments))))
-    written: list[tuple[str, str, str]] = []
+    session_meta = meta or {}
+    session_date = normalize_session_date(session_meta)
+    written: list[dict[str, str]] = []
 
     for idx, seg in enumerate(segments, start=1):
         text = render_speech(seg)
         if not text:
             continue
 
-        fname = f"{src_stem}__{idx:0{pad}d}__{_safe_filename(seg['speaker'])}.txt"
-        path = os.path.join(out_dir, fname)
+        speaker_slug = _safe_filename(seg["speaker"])
+        speech_id = f"{src_stem}__{idx:0{pad}d}__{speaker_slug}"
+        path = os.path.join(out_dir, f"{speech_id}.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write(text + "\n")
-        written.append((path, seg["speaker"], text))
+        written.append({
+            "speech_id": speech_id,
+            "source_stem": src_stem,
+            "date": session_date,
+            "session_uid": session_meta.get("uid", ""),
+            "num_seance": session_meta.get("numSeance", ""),
+            "legislature": session_meta.get("legislature", ""),
+            "session": session_meta.get("session", ""),
+            "speaker": seg["speaker"],
+            "speaker_slug": speaker_slug,
+            "role": seg.get("role") or "",
+            "text": text,
+            "normalized_text": normalize_for_ngrams(text),
+        })
 
     return written
+
+
+def write_speeches_jsonl(records: list[dict[str, str]], out_dir: str) -> str:
+    path = os.path.join(out_dir, SPEECH_INDEX_NAME)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
 
 
 def write_speaker_corpora(speaker_texts: dict[str, list[str]], out_dir: str) -> list[str]:
@@ -378,17 +449,22 @@ def process_glob(input_glob: str, out_dir: str) -> list[str]:
         raise SystemExit(f"No files matched: {input_glob}")
     all_written: list[str] = []
     speaker_texts: dict[str, list[str]] = {}
+    speech_records: list[dict[str, str]] = []
     for xml_path in paths:
         segments, meta = extract_speeches(xml_path)
-        written = write_speech_files(segments, out_dir, xml_path)
-        all_written.extend(path for path, _speaker, _text in written)
-        for _path, speaker, text in written:
-            speaker_texts.setdefault(speaker, []).append(text)
+        written = write_speech_files(segments, out_dir, xml_path, meta)
+        all_written.extend(os.path.join(out_dir, f"{record['speech_id']}.txt") for record in written)
+        speech_records.extend(written)
+        for record in written:
+            speaker_texts.setdefault(record["speaker"], []).append(record["text"])
         print(f"[ok] {xml_path} -> {len(written)} speech file(s)")
 
     speaker_corpora = write_speaker_corpora(speaker_texts, out_dir)
     all_written.extend(speaker_corpora)
+    index_path = write_speeches_jsonl(speech_records, out_dir)
+    all_written.append(index_path)
     print(f"[ok] wrote {len(speaker_corpora)} speaker corpus file(s)")
+    print(f"[ok] wrote {len(speech_records)} speech index row(s) to {index_path}")
     return all_written
 
 

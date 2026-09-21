@@ -1,0 +1,134 @@
+{
+  "themes": [
+    {
+      "id": "fin-de-vie",
+      "label": "Fin de vie",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "aide à mourir",
+        "aide mourir",
+        "soins palliatifs",
+        "suicide assisté",
+        "fin de vie"
+      ]
+    },
+    {
+      "id": "climat-sol",
+      "label": "Climat et sols",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "zéro artificialisation",
+        "zero artificialisation",
+        "artificialisation nette",
+        "zan",
+        "zfe",
+        "zones à faibles émissions",
+        "faibles émissions"
+      ]
+    },
+    {
+      "id": "protection-sociale",
+      "label": "Protection sociale",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "sécurité sociale",
+        "securite sociale",
+        "assurance maladie",
+        "allocations chômage",
+        "minima sociaux"
+      ]
+    },
+    {
+      "id": "outre-mer",
+      "label": "Outre-mer",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "outre mer",
+        "outremer",
+        "départements d outre mer",
+        "collectivités d outre mer"
+      ]
+    },
+    {
+      "id": "logement",
+      "label": "Logement",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "logement social",
+        "hébergement d urgence",
+        "hebergement d urgence",
+        "parc hlm",
+        "crise du logement"
+      ]
+    },
+    {
+      "id": "immigration",
+      "label": "Immigration",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "immigration",
+        "droit d asile",
+        "obligation de quitter",
+        "titre de séjour",
+        "frontières"
+      ]
+    },
+    {
+      "id": "europe",
+      "label": "Europe",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "union européenne",
+        "union europeenne",
+        "commission européenne",
+        "parlement européen"
+      ]
+    },
+    {
+      "id": "securite",
+      "label": "Sécurité",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "sécurité intérieure",
+        "forces de l ordre",
+        "police nationale",
+        "gendarmerie",
+        "délinquance"
+      ]
+    },
+    {
+      "id": "education",
+      "label": "Éducation",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "éducation nationale",
+        "education nationale",
+        "carte scolaire",
+        "enseignement supérieur",
+        "école publique"
+      ]
+    },
+    {
+      "id": "fiscalite",
+      "label": "Fiscalité",
+      "type": "domain",
+      "parent": null,
+      "aliases": [
+        "impôt sur le revenu",
+        "impot sur le revenu",
+        "impôt sur les sociétés",
+        "niche fiscale",
+        "fraude fiscale"
+      ]
+    }
+  ]
+}
