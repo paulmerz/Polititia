@@ -13,3 +13,12 @@ data/raw/
 extracted_texts/
 analysis_outputs/
 dashboard/data/
+
+# Node server
+server/node_modules/
+server/data/
+server/.env
+.env
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal

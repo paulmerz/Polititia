@@ -32,14 +32,36 @@ uv run python dashboard/build_dashboard_data.py
 
 ## Serve Dashboard
 
-Build `dashboard/data/dashboard-data.js` first with the pipeline command above,
-then serve the dashboard directory:
+The dashboard is no longer a static dump of every phrase. A small Node server
+meters per-politician analysis, captures emails, and keeps sessions in a local
+SQLite file (`server/data/auth.sqlite`) plus an append-only `emails.jsonl`.
 
 ```bash
-uv run python -m http.server 8000 --directory dashboard
+cp server/.env.example server/.env
+# set BETTER_AUTH_SECRET to a 32+ character random string before production
+cd server && npm install && npm start
 ```
 
-Open http://localhost:8000 in a browser. Stop the server with `Ctrl-C`.
+Open http://127.0.0.1:8000. Anonymous visitors can open 10 deputy analyses
+(IP **and** device cookie). Further analyses require an email. With no mailer
+configured, submitting the email creates the session immediately (the email is
+still stored). Set `RESEND_API_KEY` and `EMAIL_FROM` to send a Better Auth
+magic link instead.
+
+Do not use `python -m http.server` for the dashboard in production: it would
+serve `dashboard/data/` in full and bypass the quota.
+
+Production checklist:
+
+- `NODE_ENV=production`
+- `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
+- `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY=1`
+- optional `ADMIN_TOKEN` for `GET /api/admin/emails`
+- `server/data/` is not published (gitignored)
+
+```bash
+cd server && npm test
+```
 
 Optional per-speaker distribution export:
 

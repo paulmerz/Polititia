@@ -1,0 +1,559 @@
+{
+  "meta": {
+    "politicians": 12,
+    "totalSpeeches": 120,
+    "totalSurfaceTokens": 12000,
+    "totalAnalysisTokens": 8000,
+    "eligibleParties": [
+      "LFI_NFP"
+    ],
+    "sources": {
+      "summary": "fixture"
+    }
+  },
+  "partyOrder": [
+    "LFI_NFP"
+  ],
+  "parties": [
+    {
+      "id": "LFI_NFP",
+      "label": "LFI",
+      "family": "left",
+      "color": "#c43b58",
+      "speakerFileCount": 12,
+      "politicianCount": 12,
+      "speechCount": 120,
+      "analysisTokenCount": 8000,
+      "partySourceBreakdown": {}
+    }
+  ],
+  "politicians": [
+    {
+      "id": "m-alice-0--lfi-nfp",
+      "name": "Alice 0",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_0"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-1--lfi-nfp",
+      "name": "Alice 1",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_1"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-2--lfi-nfp",
+      "name": "Alice 2",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_2"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-3--lfi-nfp",
+      "name": "Alice 3",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_3"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-4--lfi-nfp",
+      "name": "Alice 4",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_4"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-5--lfi-nfp",
+      "name": "Alice 5",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_5"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-6--lfi-nfp",
+      "name": "Alice 6",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_6"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-7--lfi-nfp",
+      "name": "Alice 7",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_7"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-8--lfi-nfp",
+      "name": "Alice 8",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_8"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-9--lfi-nfp",
+      "name": "Alice 9",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_9"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-10--lfi-nfp",
+      "name": "Alice 10",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_10"
+      ],
+      "sourcePathCount": 1
+    },
+    {
+      "id": "m-alice-11--lfi-nfp",
+      "name": "Alice 11",
+      "party": "LFI_NFP",
+      "partySource": "explicit",
+      "speechCount": 10,
+      "surfaceTokenCount": 1000,
+      "sourceSlugs": [
+        "Alice_11"
+      ],
+      "sourcePathCount": 1
+    }
+  ],
+  "phrasesByPolitician": {
+    "m-alice-0--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 0",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-0--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-1--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 1",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-1--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-2--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 2",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-2--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-3--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 3",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-3--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-4--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 4",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-4--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-5--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 5",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-5--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-6--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 6",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-6--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-7--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 7",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-7--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-8--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 8",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-8--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-9--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 9",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-9--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-10--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 10",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-10--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    },
+    "m-alice-11--lfi-nfp": {
+      "content": {
+        "1": [],
+        "2": [
+          {
+            "rank": 1,
+            "ngram": "alice 11",
+            "count": 3,
+            "frequency": 0.1,
+            "speechCount": 2,
+            "speechFrequency": 0.2
+          }
+        ],
+        "3": [],
+        "4": []
+      },
+      "markers": {},
+      "tfidf": {
+        "2": [
+          {
+            "ngram": "m-alice-11--lfi-nfp",
+            "count": 1,
+            "tf_idf_vs_rest": 0.4
+          }
+        ]
+      }
+    }
+  },
+  "partyPhrases": {
+    "LFI_NFP": {
+      "common": {
+        "2": [
+          {
+            "ngram": "la france",
+            "count": 12
+          }
+        ]
+      },
+      "distinctive": {
+        "2": [
+          {
+            "ngram": "justice sociale",
+            "count": 9,
+            "log_odds_vs_rest": 1.2
+          }
+        ]
+      }
+    }
+  },
+  "globalPhrases": {
+    "2": [
+      {
+        "ngram": "messieurs les",
+        "count": 30
+      }
+    ]
+  },
+  "languageMarkers": {
+    "source": "fixture",
+    "metrics": [
+      {
+        "key": "LD",
+        "label": "Lexical density",
+        "shortLabel": "LD",
+        "unit": "percent"
+      }
+    ],
+    "partyRows": [
+      {
+        "party": "La France Insoumise",
+        "values": {
+          "LD": 0.5,
+          "nous": 0.1,
+          "je": 0.1,
+          "il": 0.1,
+          "vous": 0.1
+        }
+      }
+    ],
+    "summary": {
+      "LD": {
+        "mean": 0.5
+      }
+    }
+  }
+}
