@@ -70,9 +70,11 @@ uv run --extra lemma python analyze_project_ngrams.py --token-mode lemma_content
 uv run --extra topics python analyze_topics.py
 ```
 
-The dashboard **Themes** tab needs the topic extra and `analyze_topics.py`.
-The hemicycle **Theme** lens needs `analyze_themes.py` and the dated speech index.
-Seat size (speeches vs words) is a client-side toggle. Without `speeches.jsonl`, the theme lens stays empty.
+The dashboard **Sujets** tab needs the topic extra and `analyze_topics.py`.
+The hemicycle **Enjeu** lens needs `analyze_themes.py` and the dated speech index.
+Seat size (interventions vs words) is a client-side toggle. Without `speeches.jsonl`, the theme lens stays empty.
+
+The dashboard defaults to **Citoyen** mode (French plain-language labels) with a **Scientifique** toggle.
 
 ## Ignored Outputs
 
