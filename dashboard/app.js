@@ -307,6 +307,27 @@ const METRIC_COPY = {
   },
 };
 
+// The server CSP forbids inline style attributes (style-src 'self'). Markup
+// carries computed styles in data-style and they are applied through the
+// CSSOM, which the policy allows. The observer runs before paint.
+function applyDataStyles(root) {
+  if (root.nodeType !== 1) {
+    return;
+  }
+  const targets = root.matches("[data-style]") ? [root] : [];
+  targets.push(...root.querySelectorAll("[data-style]"));
+  for (const element of targets) {
+    element.style.cssText = element.dataset.style;
+    element.removeAttribute("data-style");
+  }
+}
+
+new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    mutation.addedNodes.forEach(applyDataStyles);
+  }
+}).observe(document.body, { childList: true, subtree: true });
+
 function hydrate(payload) {
   data = payload;
   data.phrasesByPolitician = data.phrasesByPolitician || {};
@@ -1195,7 +1216,7 @@ function renderLegend(byParty) {
       const count = byParty.get(party)?.length || 0;
       return `
         <button class="legend-item result-button" type="button" data-party-filter="${escapeHtml(party)}">
-          <span class="swatch" style="background:${partyColor(party)}"></span>
+          <span class="swatch" data-style="background:${partyColor(party)}"></span>
           <span>${escapeHtml(partyLabel(party))} ${fmtInt(count)}</span>
         </button>
       `;
@@ -1254,7 +1275,7 @@ function phraseList(rows, options = {}) {
           return `
             <div class="phrase-row">
               <div class="phrase-track" title="${escapeHtml(row.ngram)}">
-                <span class="phrase-bar" style="width:${width.toFixed(1)}%"></span>
+                <span class="phrase-bar" data-style="width:${width.toFixed(1)}%"></span>
                 <span class="phrase-text">${escapeHtml(row.ngram)}</span>
               </div>
               <span class="phrase-count">${escapeHtml(countText)}</span>
@@ -1310,7 +1331,7 @@ function renderLanguageMetricChart(metricKey) {
                 <strong>${escapeHtml(fmtLanguageValue(metricKey, value))}</strong>
               </div>
               <div class="language-track" aria-hidden="true">
-                <span class="language-fill" style="width:${width.toFixed(1)}%; background:${languageColor(index)}"></span>
+                <span class="language-fill" data-style="width:${width.toFixed(1)}%; background:${languageColor(index)}"></span>
               </div>
             </div>
           `;
@@ -1334,7 +1355,7 @@ function renderPronounStack(row) {
           const width = (value / total) * 100;
           return `
             <span
-              style="width:${width.toFixed(1)}%; background:${languageColor(index)}"
+              data-style="width:${width.toFixed(1)}%; background:${languageColor(index)}"
               title="${escapeHtml(key)} ${escapeHtml(fmtLanguageValue(key, value))}"
             ></span>
           `;
@@ -1360,7 +1381,7 @@ function renderPronounDistribution() {
       ${pronounKeys
         .map(
           (key, index) => `
-            <span><span class="swatch" style="background:${languageColor(index)}"></span>${escapeHtml(key)}</span>
+            <span><span class="swatch" data-style="background:${languageColor(index)}"></span>${escapeHtml(key)}</span>
           `,
         )
         .join("")}
@@ -1459,7 +1480,7 @@ function renderPartyLanguageProfile(row) {
         ${pronounKeys
           .map(
             (key, index) => `
-              <span><span class="swatch" style="background:${languageColor(index)}"></span>${escapeHtml(key)}</span>
+              <span><span class="swatch" data-style="background:${languageColor(index)}"></span>${escapeHtml(key)}</span>
             `,
           )
           .join("")}
@@ -1570,7 +1591,7 @@ function renderPoliticianDetail(personId) {
         <div class="person-title-row">
           <h2>${escapeHtml(person.name)}</h2>
           <span class="party-pill">
-            <span class="swatch" style="background:${partyColor(person.party)}"></span>
+            <span class="swatch" data-style="background:${partyColor(person.party)}"></span>
             ${escapeHtml(partyLabel(person.party))}
           </span>
         </div>
@@ -1675,7 +1696,7 @@ function renderOwnership(themeId) {
                 <strong>${lift.toFixed(2)}x</strong>
               </div>
               <div class="ownership-track">
-                <span class="ownership-fill" style="width:${width.toFixed(1)}%; background:${partyColor(row.party)}"></span>
+                <span class="ownership-fill" data-style="width:${width.toFixed(1)}%; background:${partyColor(row.party)}"></span>
               </div>
             </div>
           `;
@@ -1736,7 +1757,7 @@ function renderPartyPanel() {
       <div class="panel-title-row">
         <h2>${escapeHtml(partyLabel(partyId))}</h2>
         <span class="party-pill">
-          <span class="swatch" style="background:${partyColor(partyId)}"></span>
+          <span class="swatch" data-style="background:${partyColor(partyId)}"></span>
           ${escapeHtml(partyFamilyLabel(party?.family))}
         </span>
       </div>
@@ -1838,7 +1859,7 @@ function renderCorpusPanel() {
             return `
               <div class="phrase-row">
                 <div class="phrase-track">
-                  <span class="phrase-bar" style="width:${width.toFixed(1)}%; background:${party.color}22"></span>
+                  <span class="phrase-bar" data-style="width:${width.toFixed(1)}%; background:${party.color}22"></span>
                   <span class="phrase-text">${escapeHtml(partyLabel(party.id))}</span>
                 </div>
                 <span class="phrase-count">${fmtCompact(party.analysisTokenCount)}</span>
@@ -1978,7 +1999,7 @@ function renderThemesPanel() {
             const active = isolated === line.id;
             return `
               <button class="topic-legend-item${active ? " is-active" : ""}${dimmed ? " is-dimmed" : ""}" type="button" data-topic-id="${escapeHtml(line.id)}">
-                <span class="swatch" style="background:${line.color}"></span>
+                <span class="swatch" data-style="background:${line.color}"></span>
                 ${escapeHtml(line.label.split(",")[0])}
               </button>
             `;
