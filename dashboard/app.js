@@ -1,12 +1,17 @@
-const data = window.DASHBOARD_DATA;
+let data = {
+  parties: [],
+  partyOrder: [],
+  politicians: [],
+  phrasesByPolitician: {},
+  partyPhrases: {},
+  globalPhrases: {},
+  languageMarkers: { metrics: [], partyRows: [], summary: {} },
+  meta: { politicians: 0, totalSpeeches: 0, totalSurfaceTokens: 0, eligibleParties: [], sources: {} },
+};
 
-if (!data) {
-  throw new Error("Les données du tableau de bord n'ont pas été chargées. Exécutez dashboard/build_dashboard_data.py.");
-}
-
-const partyMap = new Map(data.parties.map((party) => [party.id, party]));
-const partyOrder = data.partyOrder;
-const politiciansById = new Map(data.politicians.map((person) => [person.id, person]));
+let partyMap = new Map();
+let partyOrder = [];
+let politiciansById = new Map();
 const chamberSvg = document.getElementById("chamberSvg");
 const analysisContent = document.getElementById("analysisContent");
 const partyFilter = document.getElementById("partyFilter");
@@ -22,8 +27,8 @@ const dialog = document.getElementById("politicianDialog");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogContent = document.getElementById("dialogContent");
 
-const languageMarkers = data.languageMarkers || { metrics: [], partyRows: [], summary: {} };
-const languageMetricMap = new Map((languageMarkers.metrics || []).map((metric) => [metric.key, metric]));
+let languageMarkers = data.languageMarkers;
+let languageMetricMap = new Map();
 const pronounKeys = ["nous", "je", "il", "vous"];
 const lexicalMetricKeys = ["LD", "BW", "MWL", "MSL", "TTR"];
 const topicPalette = ["#2f6f73", "#b35d32", "#6f5b9e", "#2d9b68", "#c43b58", "#3156a3", "#e4a72c", "#8e4bb5", "#42a9b8", "#26324d"];
@@ -301,6 +306,40 @@ const METRIC_COPY = {
     scientific: { label: "vous", shortLabel: "vous", description: "Occurrences pour mille mots." },
   },
 };
+
+function hydrate(payload) {
+  data = payload;
+  data.phrasesByPolitician = data.phrasesByPolitician || {};
+  partyMap = new Map(data.parties.map((party) => [party.id, party]));
+  partyOrder = data.partyOrder;
+  politiciansById = new Map(data.politicians.map((person) => [person.id, person]));
+  languageMarkers = data.languageMarkers || { metrics: [], partyRows: [], summary: {} };
+  languageMetricMap = new Map((languageMarkers.metrics || []).map((metric) => [metric.key, metric]));
+  window.PolititiaGate?.updateFrom(payload);
+}
+
+const phraseRequests = new Map();
+
+async function ensurePhrases(personId) {
+  if (data.phrasesByPolitician[personId]) {
+    return data.phrasesByPolitician[personId];
+  }
+  if (phraseRequests.has(personId)) {
+    return phraseRequests.get(personId);
+  }
+  const request = window.PolititiaGate.fetchPolitician(personId)
+    .then((payload) => {
+      data.phrasesByPolitician[personId] = payload.phrases;
+      window.PolititiaGate.updateFrom(payload);
+      return payload.phrases;
+    })
+    .catch((error) => {
+      phraseRequests.delete(personId);
+      throw error;
+    });
+  phraseRequests.set(personId, request);
+  return request;
+}
 
 const state = {
   audienceMode: "citizen",
@@ -1511,7 +1550,10 @@ function renderPoliticianDetail(personId) {
   }
 
   const party = partyMap.get(person.party);
-  const phrases = data.phrasesByPolitician[person.id] || { content: {}, markers: {}, tfidf: {} };
+  const phrases = data.phrasesByPolitician[person.id];
+  if (!phrases) {
+    return `<div class="detail-body"><p class="source-note">Chargement de l’analyse…</p></div>`;
+  }
   const contentRows = phrases.content?.[state.ngram] || [];
   const tfidfRows = phrases.tfidf?.[state.ngram] || [];
   const markers = phrases.markers || {};
@@ -2006,17 +2048,25 @@ function selectPolitician(personId, openDialog = false) {
   if (!person) {
     return;
   }
-  state.selectedId = person.id;
-  state.selectedParty = person.party;
-  if (person.party === "UNLABELED") {
-    state.showUnlabeled = true;
-  }
-  state.activeTab = "politician";
-  render();
-  if (openDialog) {
-    renderDialog();
-    dialog.showModal();
-  }
+  ensurePhrases(person.id)
+    .then(() => {
+      state.selectedId = person.id;
+      state.selectedParty = person.party;
+      if (person.party === "UNLABELED") {
+        state.showUnlabeled = true;
+      }
+      state.activeTab = "politician";
+      render();
+      if (openDialog) {
+        renderDialog();
+        dialog.showModal();
+      }
+    })
+    .catch((error) => {
+      if (error?.code !== "quota_exceeded") {
+        console.error(error);
+      }
+    });
 }
 
 document.querySelectorAll("[data-seat-metric]").forEach((button) => {
@@ -2182,5 +2232,43 @@ dialog.addEventListener("click", (event) => {
 
 document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
 
-chooseInitialPolitician();
-render();
+async function boot() {
+  window.PolititiaGate?.bind();
+  const response = await fetch("/api/bootstrap", {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    analysisContent.innerHTML = `<div class="detail-body"><p class="source-note">Les données du tableau de bord n'ont pas été chargées. Exécutez dashboard/build_dashboard_data.py puis démarrez le serveur Polititia.</p></div>`;
+    return;
+  }
+  hydrate(await response.json());
+  chooseInitialPolitician();
+  render();
+  if (state.selectedId) {
+    try {
+      await ensurePhrases(state.selectedId);
+      render();
+    } catch (error) {
+      if (error?.code !== "quota_exceeded") {
+        console.error(error);
+      }
+    }
+  }
+}
+
+window.addEventListener("polititia:unlocked", () => {
+  if (!state.selectedId) {
+    return;
+  }
+  phraseRequests.delete(state.selectedId);
+  ensurePhrases(state.selectedId)
+    .then(() => render())
+    .catch((error) => {
+      if (error?.code !== "quota_exceeded") {
+        console.error(error);
+      }
+    });
+});
+
+boot();

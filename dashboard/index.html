@@ -4,13 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>L'hémicycle des idées et des mots</title>
-    <link rel="stylesheet" href="styles.css?v=merged-1" />
+    <link rel="stylesheet" href="styles.css?v=merged-2" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
       <div class="brand-block">
         <p class="eyebrow" id="appEyebrow">La parole des députés</p>
         <h1 id="appTitle">L'hémicycle des idées et des mots</h1>
+        <div class="access-status">
+          <span class="quota-chip" id="quotaChip">10/10 analyses</span>
+          <span class="session-label" id="sessionLabel" hidden></span>
+        </div>
       </div>
       <div class="topbar-side">
         <div class="mode-toggle" role="group" aria-label="Mode d'affichage">
@@ -83,7 +87,25 @@
       <div id="dialogContent"></div>
     </dialog>
 
-    <script src="data/dashboard-data.js"></script>
-    <script src="app.js?v=merged-1"></script>
+    <dialog id="accessGate" class="detail-dialog gate-dialog">
+      <div class="dialog-bar">
+        <div>Continuer avec votre email</div>
+        <button class="close-button" id="closeGate" type="button" aria-label="Fermer">x</button>
+      </div>
+      <form id="gateForm" class="gate-body">
+        <p id="gateCopy">Vous avez utilisé vos analyses gratuites. L’accès illimité s’ouvre avec un email — c’est la seule contrepartie.</p>
+        <label class="field">
+          <span>Email</span>
+          <input id="gateEmail" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="vous@organisation.fr" />
+        </label>
+        <p class="source-note">En indiquant votre email, vous acceptez d’être recontacté au sujet de Polititia.</p>
+        <p class="source-note" id="gateHint">L’email débloque l’accès. C’est l’unique contrepartie demandée.</p>
+        <p class="gate-error" id="gateError" hidden></p>
+        <button class="gate-submit" id="gateSubmit" type="submit">Continuer</button>
+      </form>
+    </dialog>
+
+    <script src="quota-gate.js?v=merged-2"></script>
+    <script src="app.js?v=merged-2"></script>
   </body>
 </html>
