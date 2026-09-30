@@ -1806,22 +1806,24 @@ function languageValue(row, key) {
 function fmtLanguageValue(key, value) {
   const unit = languageMetric(key).unit;
   const number = Number(value || 0);
+  const fixed = (amount, digits) =>
+    amount.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   if (unit === "percent") {
-    return `${(number * 100).toFixed(1)} %`;
+    return `${fixed(number * 100, 1)}\u202f%`;
   }
   if (unit === "ratio") {
-    return number.toFixed(3);
+    return fixed(number, 3);
   }
   if (unit === "perMille") {
-    return `${number.toFixed(1)} ‰`;
+    return `${fixed(number, 1)}\u202f‰`;
   }
   if (unit === "chars") {
-    return `${number.toFixed(1)} car.`;
+    return `${fixed(number, 1)} car.`;
   }
   if (unit === "words") {
-    return `${number.toFixed(1)} mots`;
+    return `${fixed(number, 1)} mots`;
   }
-  return number.toFixed(2);
+  return fixed(number, 2);
 }
 
 function languageRowForParty(partyId) {
