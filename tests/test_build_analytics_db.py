@@ -60,6 +60,7 @@ class BuildTests(unittest.TestCase):
                 self.assertEqual(kept, everyone, "min count 1 keeps every n-gram")
             meta = {key: json.loads(value) for key, value in db.execute("SELECT key, value FROM meta")}
             self.assertEqual(meta["months"], sorted(meta["months"]))
+            self.assertEqual(meta["stanceVoteAgreement"], {"compared": 0, "agreeing": 0})
             themes = {row["id"]: row for row in meta["themes"]}
             self.assertEqual(themes["fin-de-vie"]["parent"], "social")
             self.assertEqual(themes["social"]["type"], "domain")

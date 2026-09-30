@@ -222,7 +222,34 @@ class Builder:
                 rows.append((sid, item["theme_id"], item["stance"], item["confidence"], item["method"], item.get("quote", "")))
         self.db.executemany("INSERT OR IGNORE INTO stances VALUES (?, ?, ?, ?, ?, ?)", rows)
 
-    def add_meta(self, corpus_totals: dict[int, int], catalog: list[dict] | None = None) -> None:
+    def stance_vote_agreement(self) -> dict[str, int]:
+        """Announced stances checked against the speaker's next key vote on the same bill."""
+        rows = self.db.execute(
+            """
+            WITH announced AS (
+              SELECT DISTINCT s.sid, s.pid, s.date, st.stance,
+                     (SELECT ta.dossier_title FROM theme_attributions ta
+                      WHERE ta.sid = s.sid AND ta.dossier_title != '' LIMIT 1) AS dossier
+              FROM stances st JOIN speeches s ON s.sid = st.sid
+            )
+            SELECT a.stance, (
+              SELECT vp.position FROM votes v JOIN vote_positions vp ON vp.vid = v.vid AND vp.pid = a.pid
+              WHERE v.dossier_title = a.dossier AND v.is_key = 1 AND v.vote_type != 'MOC' AND v.date >= a.date
+              ORDER BY v.date LIMIT 1
+            ) AS position
+            FROM announced a WHERE a.dossier IS NOT NULL
+            """
+        ).fetchall()
+        expected = {"favorable": "pour", "defavorable": "contre", "abstention": "abstention"}
+        compared = [(stance, position) for stance, position in rows if position in ("pour", "contre", "abstention")]
+        return {
+            "compared": len(compared),
+            "agreeing": sum(1 for stance, position in compared if expected.get(stance) == position),
+        }
+
+    def add_meta(
+        self, corpus_totals: dict[int, int], catalog: list[dict] | None = None, stance_check: dict | None = None
+    ) -> None:
         first_day, last_day = self.db.execute("SELECT MIN(date), MAX(date) FROM speeches").fetchone()
         months = [row[0] for row in self.db.execute("SELECT DISTINCT month FROM speeches ORDER BY month")]
         meta = {
@@ -234,6 +261,7 @@ class Builder:
             "corpusTotals": {str(size): total for size, total in corpus_totals.items()},
             "builtOn": date.today().isoformat(),
             "themes": catalog or [],
+            "stanceVoteAgreement": stance_check or {"compared": 0, "agreeing": 0},
         }
         self.db.executemany("INSERT INTO meta VALUES (?, ?)", [(key, json.dumps(value)) for key, value in meta.items()])
 
@@ -277,7 +305,7 @@ def build(
     builder.add_themes(attributions)
     vote_count = builder.add_votes(reference, vote_theme_matcher())
     builder.add_stances(stances or [])
-    builder.add_meta(corpus_totals, theme_catalog(lexicon))
+    builder.add_meta(corpus_totals, theme_catalog(lexicon), builder.stance_vote_agreement())
     db.commit()
     db.execute("ANALYZE")
     db.close()
