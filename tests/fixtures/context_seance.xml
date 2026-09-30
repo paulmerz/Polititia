@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<compteRendu xmlns="http://schemas.assemblee-nationale.fr/referentiel">
+  <uid>CRTESTCONTEXT01</uid>
+  <metadonnees>
+    <dateSeance>20250527150000000</dateSeance>
+    <numSeance>1</numSeance>
+    <legislature>17</legislature>
+  </metadonnees>
+  <contenu>
+    <point nivpoint="1" code_grammaire="TITRE_TEXTE_DISCUSSION" id_syceron="100"><orateurs/><texte>Questions au gouvernement</texte></point>
+    <point nivpoint="2" code_grammaire="QG_1_1" id_syceron="101"><orateurs/><texte>Indemnisation des chômeurs</texte></point>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA111">
+      <orateurs><orateur><nom>Mme Justine Gruet</nom><id>111</id><qualite/></orateur></orateurs>
+      <texte>Les demandeurs d'emploi diplômés de l'enseignement supérieur bénéficient de droits longs.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA999">
+      <orateurs><orateur><nom>M. le président</nom><id>999</id><qualite/></orateur></orateurs>
+      <texte>La parole est à Mme la ministre.</texte>
+    </paragraphe>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA222">
+      <orateurs><orateur><nom>Mme Astrid Panosyan-Bouvet</nom><id>222</id><qualite>ministre du travail</qualite></orateur></orateurs>
+      <texte>Nous réformons l'assurance chômage.</texte>
+    </paragraphe>
+    <point nivpoint="1" code_grammaire="TITRE_TEXTE_DISCUSSION" id_syceron="200"><orateurs/><texte>Droit à l’aide à mourir</texte></point>
+    <point nivpoint="2" code_grammaire="DISC_GENERALE_1_1" id_syceron="201"><orateurs/><texte>Discussion générale</texte></point>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA333">
+      <orateurs><orateur><nom>M. Olivier Falorni</nom><id>333</id><qualite/></orateur></orateurs>
+      <texte>Ce texte ouvre un droit nouveau.</texte>
+    </paragraphe>
+    <point nivpoint="2" code_grammaire="DISC_ARTICLES_1_1" id_syceron="202" bibard=" (n[[o]] 1100)"><orateurs/><texte>Discussion des articles</texte>
+      <point nivpoint="3" code_grammaire="DISC_ARTICLES_2_4" id_syceron="203" bibard=" (n[[o]] 1100)" art=" 2"><orateurs/><texte>Article 2</texte>
+        <point nivpoint="4" code_grammaire="DISC_ARTICLES_3_1" id_syceron="204" bibard=" (n[[o]] 1100)" art=" 2" adt=" 57"><orateurs/><texte/>
+          <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA444">
+            <orateurs><orateur><nom>M. Patrick Hetzel</nom><id>444</id><qualite/></orateur></orateurs>
+            <texte>Cet amendement de suppression vise à supprimer l’article 2.</texte>
+          </paragraphe>
+        </point>
+      </point>
+    </point>
+    <point nivpoint="2" code_grammaire="DISC_ARTICLES_1_2" id_syceron="205"><orateurs/><texte>Explications de vote</texte></point>
+    <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA444">
+      <orateurs><orateur><nom>M. Patrick Hetzel</nom><id>444</id><qualite/></orateur></orateurs>
+      <texte>Notre groupe votera contre ce texte.</texte>
+    </paragraphe>
+  </contenu>
+</compteRendu>

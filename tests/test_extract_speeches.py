@@ -16,6 +16,7 @@ from extract_speeches import (
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 MINI_XML = FIXTURE_DIR / "compte_rendu_mini.xml"
 LATER_XML = FIXTURE_DIR / "compte_rendu_later.xml"
+CONTEXT_XML = FIXTURE_DIR / "context_seance.xml"
 
 
 class NormalizeSessionDateTests(unittest.TestCase):
@@ -78,6 +79,38 @@ class ExtractSpeechesTests(unittest.TestCase):
             self.assertEqual(len(records), 3)
             self.assertTrue((Path(tmp) / f"{records[0]['speech_id']}.txt").exists())
             self.assertEqual(records[0]["date"], "2024-03-12")
+
+
+class AgendaContextTests(unittest.TestCase):
+    def records(self) -> list[dict[str, str]]:
+        segments, meta = extract_speeches(str(CONTEXT_XML))
+        with tempfile.TemporaryDirectory() as tmp:
+            return write_speech_files(segments, tmp, str(CONTEXT_XML), meta)
+
+    def test_question_topic_comes_from_level_two_title(self) -> None:
+        gruet = self.records()[0]
+        self.assertEqual(gruet["acteur_id"], "PA111")
+        self.assertEqual(gruet["point_title"], "Questions au gouvernement")
+        self.assertEqual(gruet["debate_topic"], "Indemnisation des chômeurs")
+        self.assertEqual(gruet["section_code"], "QG_1_1")
+
+    def test_bill_article_and_amendment(self) -> None:
+        by_speaker = {}
+        for record in self.records():
+            by_speaker.setdefault(record["speaker"], []).append(record)
+        amendment, explanation = by_speaker["M. Patrick Hetzel"]
+        self.assertEqual(amendment["debate_topic"], "Droit à l’aide à mourir")
+        self.assertEqual(amendment["bill_number"], "1100")
+        self.assertEqual(amendment["article"], "2")
+        self.assertEqual(amendment["amendment"], "57")
+        self.assertEqual(explanation["point_subtitle"], "Explications de vote")
+        self.assertEqual(explanation["amendment"], "")
+
+    def test_general_discussion_borrows_bill_number(self) -> None:
+        falorni = next(record for record in self.records() if record["speaker"] == "M. Olivier Falorni")
+        self.assertEqual(falorni["point_subtitle"], "Discussion générale")
+        self.assertEqual(falorni["bill_number"], "1100")
+        self.assertEqual(falorni["article"], "")
 
 
 if __name__ == "__main__":
