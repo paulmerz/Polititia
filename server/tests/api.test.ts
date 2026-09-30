@@ -206,3 +206,18 @@ test("terms and method pages are served", async () => {
   assert.match(terms, /prévention des abus/);
   assert.doesNotMatch(terms, /recontact/);
 });
+
+test("the dashboard carries every element the access gate drives and says why the email is asked", async () => {
+  const { request } = await startTestApp();
+  const index = await (await request("/")).text();
+  const gate = await (await request("/quota-gate.js")).text();
+  const ids = [...new Set([...gate.matchAll(/\$\("([A-Za-z]+)"\)/g)].map((match) => match[1]))];
+  assert.ok(ids.length > 15);
+  for (const id of ids) {
+    assert.match(index, new RegExp(`id="${id}"`), id);
+  }
+  assert.match(index, /usages abusifs/);
+  assert.match(index, /href="\/conditions"/);
+  assert.match(index, /name="website"/);
+  assert.doesNotMatch(index, /recontact/);
+});
