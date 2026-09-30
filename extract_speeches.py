@@ -314,13 +314,18 @@ def _point_context(point: ET.Element, parent: dict[str, str]) -> dict[str, str]:
     ctx = dict(parent)
     if level == "1":
         ctx = {"point_title": text, "point_id": point.attrib.get("id_syceron", "")}
+        # The title's own "valeur" names the bill; the "bibard" of the
+        # sub-points is sometimes left over from another debate.
+        if numbers := _bill_numbers(point.attrib.get("valeur")):
+            ctx["bill_number"] = numbers
+            ctx["title_bill"] = "1"
     elif level == "2":
-        ctx = {key: value for key, value in ctx.items() if key in ("point_title", "point_id")}
+        ctx = {key: value for key, value in ctx.items() if key in ("point_title", "point_id", "bill_number", "title_bill")}
         ctx["point_subtitle"] = text
     elif level not in ("3", "4", "5"):
         return parent
     ctx["section_code"] = code
-    if bibard := _bill_numbers(point.attrib.get("bibard")):
+    if not ctx.get("title_bill") and (bibard := _bill_numbers(point.attrib.get("bibard"))):
         ctx["bill_number"] = bibard
     if level in ("3", "4", "5"):
         if article := _clean_attr(point.attrib.get("art")):
