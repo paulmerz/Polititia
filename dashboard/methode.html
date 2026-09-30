@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Méthode · La parole des députés</title>
+    <link rel="stylesheet" href="styles.css?v=pages-1" />
+  </head>
+  <body class="page-body">
+    <header class="page-header">
+      <a class="page-back" href="/">← Retour à l’hémicycle</a>
+      <p class="eyebrow">La parole des députés</p>
+      <h1>Méthode</h1>
+      <p class="page-lead">
+        Comment nous passons des comptes rendus de séance aux thèmes, aux expressions distinctives et aux votes
+        affichés dans l’outil, et ce que ces chiffres ne disent pas.
+      </p>
+    </header>
+
+    <main class="page-main">
+      <section class="page-card">
+        <h2>1. Les sources</h2>
+        <ul>
+          <li><strong>Interventions :</strong> comptes rendus officiels des séances publiques de la XVII<sup>e</sup>
+            législature, découpés en une intervention par prise de parole.</li>
+          <li><strong>Groupes politiques :</strong> données ouvertes « acteurs et organes » de l’Assemblée nationale.
+            Le groupe retenu est celui du député <em>à la date de l’intervention</em>, ce qui suit les changements de
+            groupe. Les ministres qui s’expriment au banc du gouvernement sont regroupés sous « Gouvernement » ; les
+            personnes auditionnées sans mandat sous « Autres intervenants ». Ces deux catégories sont masquées par
+            défaut.</li>
+          <li><strong>Votes :</strong> scrutins publics de l’Assemblée nationale (données ouvertes), avec la position
+            de chaque député.</li>
+        </ul>
+        <p>
+          Toutes les données sont agrégées par mois : une période choisie commence au premier jour du mois de départ
+          et se termine au dernier jour du mois d’arrivée.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>2. Les thèmes</h2>
+        <p>
+          Chaque intervention est rattachée à des thèmes d’une liste établie à la main (santé, sécurité, fin de vie,
+          budget…). Pour éviter les rapprochements hors sujet, un simple mot-clé ne suffit jamais :
+        </p>
+        <ol>
+          <li><strong>Le débat d’abord.</strong> Si le texte débattu (titre du projet ou de la proposition de loi,
+            commission saisie) relève clairement d’un thème, toutes les interventions de ce débat y sont rattachées.
+            C’est le cas de 86 % des rattachements.</li>
+          <li><strong>Le texte ensuite.</strong> En dehors de ces débats (questions au gouvernement, discussions
+            générales larges), une intervention n’est rattachée à un thème que si plusieurs termes distincts du thème
+            y apparaissent avec une densité suffisante. Une mention en passant ne compte pas.</li>
+        </ol>
+        <p>
+          Nous avons vérifié à la main 251 rattachements tirés au hasard. Précision mesurée :
+          <strong>100 %</strong> pour les rattachements par le débat, <strong>91,9 %</strong> pour ceux fondés sur
+          le texte, soit <strong>98,9 %</strong> au total une fois pondéré par leur part respective. Les extraits
+          affichés sont des paragraphes entiers, accompagnés du titre du débat et d’un lien vers le compte rendu.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>3. Les expressions distinctives</h2>
+        <p>
+          « Ce qui le distingue » liste les expressions qu’un député (ou un groupe) emploie nettement plus que
+          l’ensemble de l’Assemblée sur la même période. Nous utilisons un test statistique classique en analyse
+          du discours politique (log-odds avec a priori de Dirichlet, Monroe et al., 2008) : une expression n’est
+          retenue que si l’écart est significatif (au seuil de 95 %) et si elle apparaît au moins 3 fois.
+        </p>
+        <p>
+          Le badge <strong>×N</strong> indique combien de fois plus souvent, en proportion, l’expression est employée
+          par rapport à l’ensemble des orateurs. Les listes sont ensuite triées par nombre d’emplois décroissant. Les
+          numéros, nombres et didascalies (« applaudissements », « exclamations ») sont exclus.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>4. Les votes</h2>
+        <ul>
+          <li><strong>Position du groupe :</strong> calculée à partir du décompte réel des voix de ses membres
+            (l’option la plus choisie parmi pour, contre et abstention), et non à partir de la position déclarée, qui
+            est parfois incohérente dans les données sources.</li>
+          <li><strong>Vote comme son groupe :</strong> part des scrutins où le député a voté comme la majorité de son
+            groupe, parmi ceux où il a voté et où le groupe avait une majorité nette.</li>
+          <li><strong>Absences :</strong> scrutins clés tenus pendant la période où le député pouvait voter et
+            auxquels il n’a pas pris part. Les motions de censure sont exclues : seuls les députés favorables
+            votent, ne pas voter n’y est donc pas une absence.</li>
+          <li><strong>Votes clés :</strong> votes sur l’ensemble d’un texte et motions de censure.</li>
+        </ul>
+        <p>
+          Ne pas voter peut avoir de nombreuses raisons (travail en commission, délégation, mission) : un taux
+          d’absence ne mesure pas à lui seul l’engagement d’un député.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>5. Les positions estimées</h2>
+        <p>
+          Quand un député annonce explicitement son vote sur un texte (« nous voterons contre ce texte », « je
+          m’abstiendrai »), notamment lors des explications de vote, nous en déduisons une position : favorable,
+          défavorable ou abstention. Les formules ambiguës, négatives ou portant sur un simple amendement sont
+          ignorées plutôt que devinées.
+        </p>
+        <p>
+          Ces positions portent la mention <strong>« estimation automatique »</strong> et sont toujours accompagnées
+          de la citation. Elles ne sont publiées que si leur précision, mesurée sur un échantillon vérifié à la main,
+          atteint au moins 85 %. Le vote réel, quand il existe, fait foi.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>6. Les limites</h2>
+        <ul>
+          <li>Seule la parole en séance publique est analysée : les travaux en commission, les questions écrites et
+            les amendements ne sont pas pris en compte.</li>
+          <li>Parler beaucoup d’un thème ne dit pas si l’on y est favorable ou opposé : c’est le rôle des votes et
+            des positions estimées.</li>
+          <li>Le temps de parole dépend des fonctions (rapporteur, président de groupe, ministre) : les comparaisons
+            entre députés doivent en tenir compte.</li>
+          <li>Les attributions automatiques restent faillibles. En cas de doute, le compte rendu officiel fait
+            foi.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <a href="/">Hémicycle</a> · <a href="/methode">Méthode</a> · <a href="/conditions">Conditions et confidentialité</a>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conditions d’utilisation et confidentialité · La parole des députés</title>
+    <link rel="stylesheet" href="styles.css?v=pages-1" />
+  </head>
+  <body class="page-body">
+    <header class="page-header">
+      <a class="page-back" href="/">← Retour à l’hémicycle</a>
+      <p class="eyebrow">La parole des députés</p>
+      <h1>Conditions d’utilisation et confidentialité</h1>
+      <p class="page-lead">
+        En bref : l’outil est gratuit. Après 10 analyses, nous vous demandons de confirmer une adresse email
+        pour une seule raison, la <strong>prévention des abus</strong> (robots, aspiration massive des données).
+        Nous n’envoyons ni lettre d’information ni publicité, et nous ne cédons votre adresse à personne.
+      </p>
+    </header>
+
+    <main class="page-main">
+      <section id="compte" class="page-card account-card" aria-live="polite">
+        <h2>Mon compte</h2>
+        <p id="accountStatus" class="source-note">Vérification de votre session…</p>
+        <div class="account-actions" id="accountActions" hidden>
+          <button type="button" class="page-button" id="signOutButton">Se déconnecter</button>
+          <button type="button" class="page-button is-danger" id="deleteAccountButton">Supprimer mon compte</button>
+        </div>
+        <p id="accountMessage" class="source-note" hidden></p>
+      </section>
+
+      <section class="page-card">
+        <h2>1. Le service</h2>
+        <p>
+          « La parole des députés » permet d’explorer les interventions en séance publique et les votes des députés
+          de la XVII<sup>e</sup> législature. Les textes proviennent des comptes rendus officiels et des données
+          ouvertes de l’Assemblée nationale (Licence Ouverte). Les thèmes, les expressions distinctives et les
+          positions estimées sont calculés automatiquement : la page <a href="/methode">Méthode</a> en explique le
+          fonctionnement et les limites.
+        </p>
+        <p>
+          Chaque action d’analyse (ouvrir la fiche d’un député, un groupe, un thème, ou changer de période) compte
+          pour une analyse. Revoir une analyse déjà consultée depuis le même appareil est gratuit. Les 10 premières
+          analyses se font sans compte ; au-delà, l’accès reste gratuit et illimité après confirmation d’une adresse
+          email.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>2. Pourquoi une adresse email</h2>
+        <p>
+          Pour éviter les usages abusifs (robots, aspiration massive des données), nous vérifions que chaque
+          utilisateur est une personne réelle. Votre email sert uniquement à cela : il permet de vous envoyer un
+          lien de connexion à usage unique, valable 15 minutes.
+        </p>
+        <ul>
+          <li>Aucune lettre d’information, aucune prospection commerciale ou politique.</li>
+          <li>Aucune cession, location ou revente de votre adresse.</li>
+          <li>Les adresses jetables (boîtes temporaires) sont refusées, car elles ne prouvent rien.</li>
+          <li>Votre adresse n’est enregistrée qu’au moment où vous ouvrez le lien reçu : une demande non confirmée
+            est effacée à l’expiration du lien.</li>
+        </ul>
+      </section>
+
+      <section class="page-card">
+        <h2>3. Données traitées et durées de conservation</h2>
+        <table class="terms-table">
+          <thead>
+            <tr><th>Donnée</th><th>Pourquoi</th><th>Conservation</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Adresse email (après confirmation)</td>
+              <td>Vous reconnaître comme personne réelle et vous reconnecter</td>
+              <td>Jusqu’à la suppression de votre compte, et au plus 3 ans après votre dernière connexion</td>
+            </tr>
+            <tr>
+              <td>Demande de lien en attente (adresse et jeton)</td>
+              <td>Envoyer le lien de confirmation</td>
+              <td>15 minutes, puis effacement</td>
+            </tr>
+            <tr>
+              <td>Cookie de session</td>
+              <td>Rester connecté</td>
+              <td>30 jours, renouvelé quand vous revenez</td>
+            </tr>
+            <tr>
+              <td>Compteur d’analyses gratuites</td>
+              <td>Appliquer la limite de 10 analyses sans compte</td>
+              <td>12 mois après la dernière analyse</td>
+            </tr>
+            <tr>
+              <td>Liste des analyses déjà consultées depuis un appareil</td>
+              <td>Ne pas faire payer deux fois la même analyse</td>
+              <td>90 jours</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Le compteur n’enregistre ni votre adresse IP ni votre identité en clair : il conserve des empreintes
+          chiffrées et irréversibles (HMAC) de l’adresse IP et d’un identifiant aléatoire placé dans un cookie
+          technique. Nous ne mesurons pas votre navigation et n’utilisons aucun outil de publicité ni de mesure
+          d’audience tiers.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>4. Base légale et destinataires</h2>
+        <p>
+          Ce traitement repose sur l’intérêt légitime de l’éditeur à protéger le service contre les abus
+          (article 6.1.f du RGPD). Les cookies utilisés sont strictement nécessaires au fonctionnement du service et
+          ne demandent donc pas de consentement.
+        </p>
+        <p>
+          Seuls y accèdent l’éditeur, son hébergeur et, pour l’envoi du lien de confirmation, son prestataire
+          d’envoi d’emails. Si une vérification anti-robot (Cloudflare Turnstile) est activée, elle est chargée
+          uniquement dans le formulaire d’inscription.
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>5. Vos droits</h2>
+        <p>
+          Vous pouvez accéder à vos données, les rectifier, vous opposer à leur traitement ou en demander
+          l’effacement. Le bouton « Supprimer mon compte » ci-dessus efface immédiatement votre adresse et vos
+          sessions. Pour toute autre demande, écrivez à l’éditeur du service. Vous pouvez aussi adresser une
+          réclamation à la CNIL (<a href="https://www.cnil.fr/fr/plaintes" rel="noopener">cnil.fr</a>).
+        </p>
+      </section>
+
+      <section class="page-card">
+        <h2>6. Utilisation des contenus</h2>
+        <p>
+          Les analyses sont fournies à titre informatif. Un thème attribué ou une position estimée peut être
+          erroné : vérifiez toujours la citation dans le compte rendu officiel, accessible depuis chaque extrait.
+          L’aspiration automatisée du service est interdite ; les données sources restent disponibles sur
+          <a href="https://data.assemblee-nationale.fr" rel="noopener">data.assemblee-nationale.fr</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <a href="/">Hémicycle</a> · <a href="/methode">Méthode</a> · <a href="/conditions">Conditions et confidentialité</a>
+    </footer>
+    <script src="pages.js?v=pages-1"></script>
+  </body>
+</html>
