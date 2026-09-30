@@ -202,6 +202,8 @@ const COPY = {
   whoOverinvests: { citizen: "Qui insiste davantage", scientific: "Sur-investissement" },
   excerpts: "Extraits",
   noExcerpts: "Aucun extrait pour cette sélection.",
+  inDebate: "débat",
+  readReport: "Lire le compte rendu de la séance",
   noOwnership: "Aucun score d'appropriation pour cet enjeu.",
   firstMention: "Première mention",
   themeShare: "Part",
@@ -1598,10 +1600,14 @@ function renderExcerptList(excerpts) {
       ${excerpts
         .map(
           (excerpt) => `
-            <button class="excerpt-card" type="button" data-select-politician="${escapeHtml(excerpt.politicianId)}">
-              <span class="source-note">${escapeHtml(excerpt.date || copy("na"))} · ${escapeHtml(excerpt.speaker)} · ${escapeHtml(partyLabel(excerpt.party))}</span>
-              <p>${escapeHtml(excerpt.snippet || "")}</p>
-            </button>
+            <article class="excerpt-card">
+              <button class="excerpt-speaker" type="button" data-select-politician="${escapeHtml(excerpt.politicianId)}">
+                ${escapeHtml(excerpt.speaker)} · ${escapeHtml(partyLabel(excerpt.party))}
+              </button>
+              <span class="source-note">${escapeHtml(excerpt.date || copy("na"))}${excerpt.debate ? ` · ${escapeHtml(copy("inDebate"))} « ${escapeHtml(excerpt.debate)} »` : ""}</span>
+              <blockquote>${escapeHtml(excerpt.snippet || "")}</blockquote>
+              ${excerpt.url ? `<a class="excerpt-link" href="${escapeHtml(excerpt.url)}" target="_blank" rel="noopener">${escapeHtml(copy("readReport"))}</a>` : ""}
+            </article>
           `,
         )
         .join("")}
