@@ -4,28 +4,36 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, type AppConfig } from "../src/config.ts";
 import { createApp } from "../src/app.ts";
+import { ALICES, buildAnalyticsFixture } from "./analytics-fixture.ts";
 
 const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const ORIGIN = "http://127.0.0.1:8000";
-export const POLITICIANS = Array.from({ length: 12 }, (_, index) => `m-alice-${index}--lfi-nfp`);
+export const POLITICIANS = ALICES;
 
-export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+let analyticsPath: string | null = null;
+
+export function analyticsFixturePath(): string {
+  analyticsPath ||= buildAnalyticsFixture();
+  return analyticsPath;
+}
+
+export function testConfig(overrides: Partial<AppConfig> = {}, env: Record<string, string> = {}): AppConfig {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "polititia-auth-"));
   return {
     ...loadConfig({
       NODE_ENV: "test",
       BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-32-abcdef",
       BETTER_AUTH_URL: ORIGIN,
-      AUTH_TRUST_EMAIL: "1",
       TRUST_PROXY: "1",
       FREE_REQUEST_LIMIT: "10",
       DATA_DIR: dataDir,
       DASHBOARD_DIR: path.join(SERVER_DIR, "..", "dashboard"),
       DASHBOARD_DATA_PATH: path.join(SERVER_DIR, "fixtures", "dashboard-data.json"),
-      ADMIN_TOKEN: "admin-test-token",
+      ANALYTICS_DB_PATH: analyticsFixturePath(),
       HOST: "127.0.0.1",
       PORT: "8000",
+      ...env,
     }),
     ...overrides,
   };
@@ -45,7 +53,13 @@ export class CookieJar {
       const pair = raw.split(";", 1)[0];
       const eq = pair.indexOf("=");
       if (eq > 0) {
-        this.cookies.set(pair.slice(0, eq), pair.slice(eq + 1));
+        const name = pair.slice(0, eq);
+        const value = pair.slice(eq + 1);
+        if (!value || /max-age=0/i.test(raw)) {
+          this.cookies.delete(name);
+        } else {
+          this.cookies.set(name, value);
+        }
       }
     }
   }
@@ -55,8 +69,8 @@ export class CookieJar {
   }
 }
 
-export async function startTestApp(overrides: Partial<AppConfig> = {}) {
-  const config = testConfig(overrides);
+export async function startTestApp(overrides: Partial<AppConfig> = {}, env: Record<string, string> = {}) {
+  const config = testConfig(overrides, env);
   const started = await createApp(config);
   const jar = new CookieJar();
 
@@ -70,5 +84,19 @@ export async function startTestApp(overrides: Partial<AppConfig> = {}) {
     return response;
   }
 
-  return { ...started, config, jar, request };
+  async function register(email: string, extra: Record<string, unknown> = {}) {
+    return request("/api/register", {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json" },
+      body: JSON.stringify({ email, ...extra }),
+    });
+  }
+
+  // Follows the emailed link the way a browser would.
+  async function verify(link: string) {
+    const url = new URL(link);
+    return request(`${url.pathname}${url.search}`, { redirect: "manual" });
+  }
+
+  return { ...started, config, jar, request, register, verify };
 }
