@@ -1,133 +1,924 @@
 {
+  "description": "Taxonomie des enjeux. Les domaines reprennent les 8 commissions permanentes de l'Assemblée. Chaque enjeu est rattaché d'abord par le titre du débat (title_keywords, comparés au titre du point de l'ordre du jour, à la question posée et au dossier législatif), puis, à défaut, par le texte de l'intervention (aliases) sous condition de densité et de pertinence. Un alias peut exiger (requires) ou interdire (excludes) des mots dans la même intervention pour lever une ambiguïté. Les expressions « weak » désignent des acteurs souvent cités en passant (maires, loi de finances…) : elles comptent pour la densité mais ne suffisent jamais seules à rattacher une intervention.",
+  "domains": [
+    {
+      "id": "lois",
+      "label": "Justice, sécurité et institutions",
+      "committee": "Commission des lois"
+    },
+    {
+      "id": "social",
+      "label": "Santé, travail et solidarités",
+      "committee": "Commission des affaires sociales"
+    },
+    {
+      "id": "finances",
+      "label": "Budget et impôts",
+      "committee": "Commission des finances"
+    },
+    {
+      "id": "economie",
+      "label": "Économie, agriculture et énergie",
+      "committee": "Commission des affaires économiques"
+    },
+    {
+      "id": "culture-education",
+      "label": "Éducation, culture et sport",
+      "committee": "Commission des affaires culturelles et de l'éducation"
+    },
+    {
+      "id": "territoires",
+      "label": "Environnement, transports et territoires",
+      "committee": "Commission du développement durable"
+    },
+    {
+      "id": "international",
+      "label": "Europe et international",
+      "committee": "Commission des affaires étrangères"
+    },
+    {
+      "id": "defense",
+      "label": "Défense",
+      "committee": "Commission de la défense"
+    }
+  ],
   "themes": [
     {
       "id": "fin-de-vie",
       "label": "Fin de vie",
-      "type": "domain",
-      "parent": null,
+      "parent": "social",
+      "title_keywords": [
+        "fin de vie",
+        "aide a mourir",
+        "soins palliatifs",
+        "soins d accompagnement"
+      ],
       "aliases": [
         "aide à mourir",
-        "aide mourir",
         "soins palliatifs",
+        "accès aux soins palliatifs",
         "suicide assisté",
-        "fin de vie"
+        "euthanasie",
+        "fin de vie",
+        "soins d accompagnement",
+        "unités de soins palliatifs"
       ]
     },
     {
-      "id": "climat-sol",
-      "label": "Climat et sols",
-      "type": "domain",
-      "parent": null,
+      "id": "sante",
+      "label": "Santé et hôpital",
+      "parent": "social",
+      "title_keywords": [
+        "sante",
+        "hopital",
+        "hopitaux",
+        "medecin",
+        "medecins",
+        "deserts medicaux",
+        "urgences",
+        "medicaments",
+        "infirmier",
+        "psychiatrie",
+        "sante mentale",
+        "pharmacie"
+      ],
       "aliases": [
-        "zéro artificialisation",
-        "zero artificialisation",
-        "artificialisation nette",
-        "zan",
-        "zfe",
-        "zones à faibles émissions",
-        "faibles émissions"
+        "déserts médicaux",
+        "hôpital public",
+        "services d urgence",
+        "accès aux soins",
+        "professionnels de santé",
+        "médecins généralistes",
+        "santé mentale",
+        "assurance maladie",
+        "ondam",
+        "médicaments",
+        "infirmiers"
+      ]
+    },
+    {
+      "id": "retraites",
+      "label": "Retraites",
+      "parent": "social",
+      "title_keywords": [
+        "retraite",
+        "retraites",
+        "age de depart",
+        "pension",
+        "pensions"
+      ],
+      "aliases": [
+        "réforme des retraites",
+        "âge légal",
+        "âge de départ",
+        "pensions de retraite",
+        "système de retraite",
+        "retraités",
+        "conclave",
+        "soixante quatre ans"
+      ]
+    },
+    {
+      "id": "emploi-chomage",
+      "label": "Emploi et chômage",
+      "parent": "social",
+      "title_keywords": [
+        "chomage",
+        "chomeurs",
+        "assurance chomage",
+        "emploi",
+        "demandeurs d emploi",
+        "france travail",
+        "plein emploi",
+        "licenciements",
+        "salaires",
+        "smic"
+      ],
+      "aliases": [
+        "assurance chômage",
+        "demandeurs d emploi",
+        "france travail",
+        "indemnisation du chômage",
+        "plein emploi",
+        "taux de chômage",
+        "allocation chômage",
+        "retour à l emploi",
+        "licenciements",
+        "smic"
+      ],
+      "weak": [
+        "france travail"
       ]
     },
     {
       "id": "protection-sociale",
-      "label": "Protection sociale",
-      "type": "domain",
-      "parent": null,
+      "label": "Sécurité sociale et solidarités",
+      "parent": "social",
+      "title_keywords": [
+        "securite sociale",
+        "plfss",
+        "handicap",
+        "minima sociaux",
+        "rsa",
+        "pauvrete",
+        "dependance",
+        "autonomie",
+        "ehpad"
+      ],
       "aliases": [
         "sécurité sociale",
-        "securite sociale",
-        "assurance maladie",
-        "allocations chômage",
-        "minima sociaux"
+        "minima sociaux",
+        "revenu de solidarité active",
+        "allocation aux adultes handicapés",
+        "personnes handicapées",
+        "perte d autonomie",
+        "ehpad",
+        "cotisations sociales",
+        "exonérations de cotisations",
+        "pauvreté"
+      ],
+      "weak": [
+        "sécurité sociale"
       ]
     },
     {
-      "id": "outre-mer",
-      "label": "Outre-mer",
-      "type": "domain",
-      "parent": null,
+      "id": "famille-enfance",
+      "label": "Familles et protection de l'enfance",
+      "parent": "social",
+      "title_keywords": [
+        "enfance",
+        "enfants",
+        "mineurs",
+        "famille",
+        "familles",
+        "parentalite",
+        "creches",
+        "inceste",
+        "violences faites aux enfants",
+        "pedocriminalite"
+      ],
       "aliases": [
-        "outre mer",
-        "outremer",
-        "départements d outre mer",
-        "collectivités d outre mer"
+        "protection de l enfance",
+        "aide sociale à l enfance",
+        "violences faites aux enfants",
+        "crèches",
+        "congé parental",
+        "petite enfance",
+        "inceste",
+        "pédocriminalité"
+      ]
+    },
+    {
+      "id": "immigration",
+      "label": "Immigration et asile",
+      "parent": "lois",
+      "title_keywords": [
+        "immigration",
+        "migratoire",
+        "migrants",
+        "asile",
+        "etrangers",
+        "oqtf",
+        "titre de sejour",
+        "naturalisation",
+        "mariages simules",
+        "droit du sol",
+        "retention"
+      ],
+      "aliases": [
+        "immigration",
+        "politique migratoire",
+        "droit d asile",
+        "demandeurs d asile",
+        "obligation de quitter le territoire",
+        "oqtf",
+        "titre de séjour",
+        "titres de séjour",
+        "aide médicale de l état",
+        "régularisation",
+        "centres de rétention",
+        {
+          "alias": "frontières",
+          "requires": [
+            "migrants",
+            "migratoire",
+            "immigration",
+            "asile",
+            "étrangers",
+            "clandestins"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "securite",
+      "label": "Sécurité et police",
+      "parent": "lois",
+      "title_keywords": [
+        "securite interieure",
+        "securite publique",
+        "securite globale",
+        "securite du quotidien",
+        "ordre public",
+        "forces de l ordre",
+        "police",
+        "policiers",
+        "gendarmerie",
+        "narcotrafic",
+        "delinquance",
+        "violences urbaines",
+        "terrorisme",
+        "drogue",
+        "stupefiants",
+        "legitime defense"
+      ],
+      "aliases": [
+        "forces de l ordre",
+        "police nationale",
+        "policiers",
+        "gendarmerie",
+        "gendarmes",
+        "narcotrafic",
+        "délinquance",
+        "trafic de drogue",
+        "stupéfiants",
+        "terrorisme",
+        "police municipale"
+      ]
+    },
+    {
+      "id": "justice",
+      "label": "Justice et prisons",
+      "parent": "lois",
+      "title_keywords": [
+        "justice penale",
+        "ministere de la justice",
+        "programmation de la justice",
+        "justice des mineurs",
+        "garde des sceaux",
+        "magistrature",
+        "juridictions",
+        "penitentiaire",
+        "prison",
+        "prisons",
+        "detention",
+        "magistrats",
+        "tribunal",
+        "cour criminelle",
+        "peine",
+        "peines",
+        "code penal",
+        "proces",
+        "droits de la defense"
+      ],
+      "aliases": [
+        "administration pénitentiaire",
+        "surpopulation carcérale",
+        "détention provisoire",
+        "magistrats",
+        "tribunaux",
+        "cours criminelles",
+        "exécution des peines",
+        "garde des sceaux",
+        "établissements pénitentiaires",
+        "prisons"
+      ]
+    },
+    {
+      "id": "institutions",
+      "label": "Institutions et démocratie",
+      "parent": "lois",
+      "title_keywords": [
+        "revision de la constitution",
+        "constitutionnelle",
+        "election",
+        "elections",
+        "electoral",
+        "scrutin proportionnel",
+        "proportionnelle",
+        "referendum",
+        "nouvelle caledonie",
+        "censure",
+        "article 49",
+        "parlement",
+        "deontologie"
+      ],
+      "aliases": [
+        "révision constitutionnelle",
+        "scrutin proportionnel",
+        "proportionnelle",
+        "référendum",
+        "motion de censure",
+        "article quarante neuf",
+        "conseil constitutionnel",
+        "nouvelle calédonie",
+        "cumul des mandats",
+        "démocratie parlementaire"
+      ],
+      "weak": [
+        "conseil constitutionnel"
+      ]
+    },
+    {
+      "id": "collectivites",
+      "label": "Communes et collectivités locales",
+      "parent": "lois",
+      "title_keywords": [
+        "communes",
+        "commune",
+        "collectivites",
+        "elus locaux",
+        "maires",
+        "decentralisation",
+        "intercommunalite",
+        "statut de l elu"
+      ],
+      "aliases": [
+        "élus locaux",
+        "collectivités territoriales",
+        "collectivités locales",
+        "maires",
+        "statut de l élu",
+        "dotation globale de fonctionnement",
+        "intercommunalités",
+        "décentralisation"
+      ],
+      "weak": [
+        "maires",
+        "élus locaux",
+        "collectivités territoriales",
+        "collectivités locales"
+      ]
+    },
+    {
+      "id": "droits-femmes",
+      "label": "Droits des femmes et violences sexuelles",
+      "parent": "lois",
+      "title_keywords": [
+        "droits des femmes",
+        "violences faites aux femmes",
+        "violences sexuelles",
+        "violences sexistes",
+        "viol",
+        "feminicide",
+        "feminicides",
+        "egalite entre les femmes et les hommes",
+        "egalite femmes hommes",
+        "egalite salariale",
+        "ivg",
+        "interruption volontaire de grossesse",
+        "avortement",
+        "contraception",
+        "violences conjugales",
+        "violences intrafamiliales"
+      ],
+      "aliases": [
+        "violences sexuelles",
+        "violences sexistes",
+        "violences conjugales",
+        "violences intrafamiliales",
+        "violences faites aux femmes",
+        "féminicides",
+        "féminicide",
+        "droits des femmes",
+        "égalité entre les femmes et les hommes",
+        "égalité salariale",
+        "interruption volontaire de grossesse",
+        "ivg",
+        "culture du viol",
+        "agressions sexuelles"
+      ]
+    },
+    {
+      "id": "budget",
+      "label": "Budget de l'État et dette",
+      "parent": "finances",
+      "title_keywords": [
+        "loi de finances",
+        "plf",
+        "budget",
+        "budgetaire",
+        "finances publiques",
+        "dette",
+        "deficit",
+        "loi speciale"
+      ],
+      "aliases": [
+        "déficit public",
+        "dette publique",
+        "finances publiques",
+        "loi de finances",
+        "projet de loi de finances",
+        "dépenses publiques",
+        "économies budgétaires",
+        "loi spéciale",
+        "trajectoire budgétaire"
+      ],
+      "weak": [
+        "loi de finances",
+        "projet de loi de finances",
+        "finances publiques"
+      ]
+    },
+    {
+      "id": "fiscalite",
+      "label": "Impôts et fiscalité",
+      "parent": "finances",
+      "title_keywords": [
+        "impot",
+        "impots",
+        "fiscalite",
+        "fiscal",
+        "fiscale",
+        "taxe",
+        "taxes",
+        "tva",
+        "taxe zucman",
+        "hauts patrimoines"
+      ],
+      "aliases": [
+        "impôt sur le revenu",
+        "impôt sur les sociétés",
+        "niches fiscales",
+        "niche fiscale",
+        "taxe zucman",
+        "impôt sur la fortune",
+        "hauts patrimoines",
+        "crédit d impôt",
+        "tva",
+        "ultra riches",
+        "justice fiscale",
+        "optimisation fiscale"
+      ]
+    },
+    {
+      "id": "fraude",
+      "label": "Lutte contre la fraude",
+      "parent": "finances",
+      "title_keywords": [
+        "fraude",
+        "fraudes",
+        "evasion fiscale"
+      ],
+      "aliases": [
+        "fraude fiscale",
+        "fraude sociale",
+        "évasion fiscale",
+        "lutte contre la fraude",
+        "fraudes sociales",
+        "fraudes fiscales"
+      ]
+    },
+    {
+      "id": "agriculture",
+      "label": "Agriculture et alimentation",
+      "parent": "economie",
+      "title_keywords": [
+        "agriculture",
+        "agricole",
+        "agricoles",
+        "agriculteurs",
+        "alimentation",
+        "alimentaire",
+        "duplomb",
+        "pesticides",
+        "elevage",
+        "peche"
+      ],
+      "aliases": [
+        "agriculteurs",
+        "exploitations agricoles",
+        "souveraineté alimentaire",
+        "pesticides",
+        "néonicotinoïdes",
+        "acétamipride",
+        "éleveurs",
+        "loi duplomb",
+        "mercosur",
+        "prix agricoles",
+        "pêcheurs"
+      ]
+    },
+    {
+      "id": "energie",
+      "label": "Énergie",
+      "parent": "economie",
+      "title_keywords": [
+        "energie",
+        "energetique",
+        "electricite",
+        "nucleaire",
+        "carburants",
+        "programmation pluriannuelle de l energie",
+        "ppe"
+      ],
+      "aliases": [
+        "prix de l électricité",
+        "énergies renouvelables",
+        "nucléaire",
+        "centrales nucléaires",
+        "éolien",
+        "éoliennes",
+        "programmation pluriannuelle de l énergie",
+        "photovoltaïque",
+        "carburants",
+        "souveraineté énergétique"
       ]
     },
     {
       "id": "logement",
       "label": "Logement",
-      "type": "domain",
-      "parent": null,
+      "parent": "economie",
+      "title_keywords": [
+        "logement",
+        "logements",
+        "hlm",
+        "locataires",
+        "loyers",
+        "hebergement d urgence",
+        "copropriete"
+      ],
       "aliases": [
         "logement social",
+        "logements sociaux",
+        "crise du logement",
         "hébergement d urgence",
-        "hebergement d urgence",
         "parc hlm",
-        "crise du logement"
+        "encadrement des loyers",
+        "mal logement",
+        "rénovation énergétique",
+        "locataires",
+        "passoires thermiques",
+        "maprimerénov"
       ]
     },
     {
-      "id": "immigration",
-      "label": "Immigration",
-      "type": "domain",
-      "parent": null,
+      "id": "entreprises",
+      "label": "Entreprises, industrie et commerce",
+      "parent": "economie",
+      "title_keywords": [
+        "entreprises",
+        "industrie",
+        "industriel",
+        "commerce",
+        "simplification de la vie economique",
+        "tpe",
+        "pme",
+        "artisans",
+        "consommateurs",
+        "banques"
+      ],
       "aliases": [
-        "immigration",
-        "droit d asile",
-        "obligation de quitter",
-        "titre de séjour",
-        "frontières"
-      ]
-    },
-    {
-      "id": "europe",
-      "label": "Europe",
-      "type": "domain",
-      "parent": null,
-      "aliases": [
-        "union européenne",
-        "union europeenne",
-        "commission européenne",
-        "parlement européen"
-      ]
-    },
-    {
-      "id": "securite",
-      "label": "Sécurité",
-      "type": "domain",
-      "parent": null,
-      "aliases": [
-        "sécurité intérieure",
-        "forces de l ordre",
-        "police nationale",
-        "gendarmerie",
-        "délinquance"
+        "petites et moyennes entreprises",
+        "réindustrialisation",
+        "tissu industriel",
+        "simplification de la vie économique",
+        "artisans",
+        "commerçants",
+        "sites industriels",
+        "délocalisations",
+        "plans sociaux"
       ]
     },
     {
       "id": "education",
-      "label": "Éducation",
-      "type": "domain",
-      "parent": null,
+      "label": "École et éducation",
+      "parent": "culture-education",
+      "title_keywords": [
+        "ecole",
+        "ecoles",
+        "education",
+        "scolaire",
+        "eleves",
+        "enseignants",
+        "college",
+        "lycee",
+        "bac"
+      ],
       "aliases": [
         "éducation nationale",
-        "education nationale",
+        "école publique",
+        "enseignants",
+        "élèves",
         "carte scolaire",
-        "enseignement supérieur",
-        "école publique"
+        "réussite scolaire",
+        "harcèlement scolaire",
+        "établissements scolaires",
+        "professeurs",
+        "choc des savoirs"
       ]
     },
     {
-      "id": "fiscalite",
-      "label": "Fiscalité",
-      "type": "domain",
-      "parent": null,
+      "id": "enseignement-superieur",
+      "label": "Universités et recherche",
+      "parent": "culture-education",
+      "title_keywords": [
+        "universite",
+        "universites",
+        "enseignement superieur",
+        "etudiants",
+        "recherche"
+      ],
       "aliases": [
-        "impôt sur le revenu",
-        "impot sur le revenu",
-        "impôt sur les sociétés",
-        "niche fiscale",
-        "fraude fiscale"
+        {
+          "alias": "enseignement supérieur",
+          "requires": [
+            "université",
+            "universités",
+            "étudiants",
+            "recherche",
+            "parcoursup",
+            "facultés"
+          ],
+          "excludes": [
+            "demandeurs d emploi",
+            "assurance chômage",
+            "allocation journalière"
+          ]
+        },
+        "universités",
+        "étudiants",
+        "parcoursup",
+        "précarité étudiante",
+        "chercheurs",
+        "recherche publique"
+      ]
+    },
+    {
+      "id": "culture-medias",
+      "label": "Culture et médias",
+      "parent": "culture-education",
+      "title_keywords": [
+        "culture",
+        "culturel",
+        "audiovisuel",
+        "medias",
+        "presse",
+        "patrimoine culturel",
+        "cinema"
+      ],
+      "aliases": [
+        "audiovisuel public",
+        "france télévisions",
+        "radio france",
+        "liberté de la presse",
+        "création artistique",
+        "patrimoine culturel",
+        "spectacle vivant",
+        "pluralisme des médias"
+      ]
+    },
+    {
+      "id": "sport",
+      "label": "Sport et Jeux olympiques",
+      "parent": "culture-education",
+      "title_keywords": [
+        "sport",
+        "sportif",
+        "sportive",
+        "jeux olympiques",
+        "paralympiques",
+        "football"
+      ],
+      "aliases": [
+        "jeux olympiques",
+        "jeux paralympiques",
+        "pratique sportive",
+        "fédérations sportives",
+        "sport amateur",
+        "clubs sportifs",
+        "supporters"
+      ]
+    },
+    {
+      "id": "climat-environnement",
+      "label": "Climat et environnement",
+      "parent": "territoires",
+      "title_keywords": [
+        "climat",
+        "climatique",
+        "environnement",
+        "environnemental",
+        "biodiversite",
+        "eau",
+        "artificialisation",
+        "zan",
+        "zfe",
+        "pollution",
+        "dechets",
+        "forets"
+      ],
+      "aliases": [
+        "réchauffement climatique",
+        "changement climatique",
+        "transition écologique",
+        "biodiversité",
+        "zéro artificialisation nette",
+        "artificialisation des sols",
+        "zones à faibles émissions",
+        "émissions de gaz à effet de serre",
+        "pollution",
+        "ressource en eau",
+        {
+          "alias": "zan",
+          "requires": [
+            "artificialisation",
+            "foncier",
+            "sols",
+            "urbanisme",
+            "communes"
+          ]
+        },
+        {
+          "alias": "zfe",
+          "requires": [
+            "émissions",
+            "véhicules",
+            "voitures",
+            "pollution",
+            "circulation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "transports",
+      "label": "Transports",
+      "parent": "territoires",
+      "title_keywords": [
+        "transport",
+        "transports",
+        "ferroviaire",
+        "sncf",
+        "train",
+        "routier",
+        "autoroutes",
+        "aerien",
+        "mobilite",
+        "mobilites"
+      ],
+      "aliases": [
+        "transports en commun",
+        "transport ferroviaire",
+        "petites lignes",
+        "sncf",
+        "autoroutes",
+        "transport aérien",
+        "mobilités",
+        "trains",
+        "transport routier"
+      ]
+    },
+    {
+      "id": "outre-mer",
+      "label": "Outre-mer",
+      "parent": "territoires",
+      "title_keywords": [
+        "outre mer",
+        "mayotte",
+        "guyane",
+        "guadeloupe",
+        "martinique",
+        "la reunion",
+        "nouvelle caledonie",
+        "polynesie",
+        "ultramarin",
+        "ultramarins"
+      ],
+      "aliases": [
+        "outre mer",
+        "mayotte",
+        "mahorais",
+        "guyane",
+        "guadeloupe",
+        "martinique",
+        "la réunion",
+        "ultramarins",
+        "territoires ultramarins",
+        "vie chère"
+      ]
+    },
+    {
+      "id": "europe",
+      "label": "Union européenne",
+      "parent": "international",
+      "title_keywords": [
+        "union europeenne",
+        "europe",
+        "europeen",
+        "europeenne",
+        "conseil europeen",
+        "commission europeenne"
+      ],
+      "aliases": [
+        "union européenne",
+        "commission européenne",
+        "parlement européen",
+        "conseil européen",
+        "construction européenne",
+        "traités européens",
+        "marché unique"
+      ],
+      "weak": [
+        "commission européenne"
+      ]
+    },
+    {
+      "id": "conflits",
+      "label": "Guerres et diplomatie",
+      "parent": "international",
+      "title_keywords": [
+        "ukraine",
+        "russie",
+        "gaza",
+        "israel",
+        "palestine",
+        "proche orient",
+        "liban",
+        "iran",
+        "diplomatie",
+        "geopolitique",
+        "etats unis"
+      ],
+      "aliases": [
+        "guerre en ukraine",
+        "ukrainiens",
+        "russie",
+        "gaza",
+        "palestiniens",
+        "israël",
+        "proche orient",
+        "cessez le feu",
+        "reconnaissance de l état de palestine",
+        "aide humanitaire"
+      ]
+    },
+    {
+      "id": "defense",
+      "label": "Défense et armées",
+      "parent": "defense",
+      "title_keywords": [
+        "de la defense",
+        "defense nationale",
+        "defense europeenne",
+        "armees",
+        "militaire",
+        "militaires",
+        "programmation militaire",
+        "lpm",
+        "service national",
+        "anciens combattants"
+      ],
+      "aliases": [
+        "loi de programmation militaire",
+        "nos armées",
+        "forces armées",
+        "industrie de défense",
+        "effort de défense",
+        "militaires",
+        "budget des armées",
+        "dissuasion nucléaire",
+        "service militaire volontaire"
       ]
     }
   ]

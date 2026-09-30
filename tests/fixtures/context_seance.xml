@@ -25,7 +25,7 @@
     <point nivpoint="2" code_grammaire="DISC_GENERALE_1_1" id_syceron="201"><orateurs/><texte>Discussion générale</texte></point>
     <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA333">
       <orateurs><orateur><nom>M. Olivier Falorni</nom><id>333</id><qualite/></orateur></orateurs>
-      <texte>Ce texte ouvre un droit nouveau.</texte>
+      <texte>Ce texte ouvre un droit nouveau pour les malades qui souffrent sans espoir de guérison.</texte>
     </paragraphe>
     <point nivpoint="2" code_grammaire="DISC_ARTICLES_1_1" id_syceron="202" bibard=" (n[[o]] 1100)"><orateurs/><texte>Discussion des articles</texte>
       <point nivpoint="3" code_grammaire="DISC_ARTICLES_2_4" id_syceron="203" bibard=" (n[[o]] 1100)" art=" 2"><orateurs/><texte>Article 2</texte>
