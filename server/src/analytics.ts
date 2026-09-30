@@ -552,7 +552,7 @@ export class Analytics {
       )
       .all(pid, period.firstDay, period.lastDay) as Array<VoteRow & { position: string; voteParty: string }>;
     if (!positioned.length) {
-      return { cast: 0, withGroup: 0, comparable: 0, list: [], deviations: [], absentKey: 0, themeVotes: 0 };
+      return { cast: 0, withGroup: 0, comparable: 0, list: [], deviations: [], absentKey: 0, keyVotesHeld: 0, missed: [], themeVotes: 0 };
     }
     const themeVids = themeId ? this.themeVoteIds(themeId) : null;
     let comparable = 0;
@@ -585,11 +585,12 @@ export class Analytics {
     const first = positioned[positioned.length - 1].date;
     const last = positioned[0].date;
     const cast = new Set(positioned.map((vote) => vote.vid));
-    const missed = (
+    const held = (
       this.db
         .prepare("SELECT * FROM votes WHERE is_key = 1 AND vote_type != 'MOC' AND date BETWEEN ? AND ? ORDER BY date DESC")
         .all(first, last) as VoteRow[]
-    ).filter((vote) => !cast.has(vote.vid) && (!themeVids || themeVids.has(vote.vid)));
+    ).filter((vote) => !themeVids || themeVids.has(vote.vid));
+    const missed = held.filter((vote) => !cast.has(vote.vid));
 
     const strip = ({ vid: _vid, ...rest }: (typeof entries)[number]) => rest;
     return {
@@ -600,6 +601,7 @@ export class Analytics {
       list: list.map(strip),
       deviations: onTheme.filter((entry) => entry.deviates).slice(0, 5).map(strip),
       absentKey: missed.length,
+      keyVotesHeld: held.length,
       missed: missed.slice(0, 5).map((vote) => ({ ...this.voteSummary(vote), position: "absent" })),
     };
   }

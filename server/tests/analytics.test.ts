@@ -80,6 +80,7 @@ test("censure motions: a group supports it when most members sign", () => {
   const bob = analytics.politician(BOB, analytics.period());
   assert.equal(bob?.votes.list.find((vote) => vote.number === 101)?.groups.RN, "contre");
   assert.equal(bob?.votes.absentKey, 0, "not signing a censure motion is not an absence");
+  assert.equal(bob?.votes.keyVotesHeld, 1, "censure motions are not counted among the key votes held");
   const nonSigner = analytics.politician(ALICES[8], analytics.period());
   assert.ok(!nonSigner?.votes.list.some((vote) => vote.number === 102));
 });
