@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { loadDotEnv } from "./load-env.ts";
 import { assertSafeHostBinding, loadConfig } from "./config.ts";
@@ -11,11 +12,11 @@ assertSafeHostBinding(config);
 if (config.usingDevSecret) {
   console.warn("Auth secret is a development default. Set BETTER_AUTH_SECRET before production.");
 }
-if (config.trustEmail) {
-  console.warn("AUTH_TRUST_EMAIL is on: submitting an email creates a session without mailbox proof.");
+if (config.exposeMagicLink) {
+  console.warn("No Resend mailer configured: magic links are logged and shown in the browser (development only).");
 }
-if (!config.hasMailer) {
-  console.warn("No Resend mailer configured. Emails are captured to", config.emailsPath);
+if (!existsSync(config.analyticsPath)) {
+  console.warn("Analytics database missing:", config.analyticsPath, "- run build_analytics_db.py.");
 }
 
 const { app } = await createApp(config);

@@ -7,6 +7,7 @@ const REPO_ROOT = path.resolve(SERVER_DIR, "..");
 
 export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
+export const EMAIL_RESEND_COOLDOWN_SECONDS = 60;
 export const DEVICE_COOKIE_NAME = "pt_did";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
 
@@ -18,19 +19,22 @@ export type AppConfig = {
   host: string;
   dataDir: string;
   sqlitePath: string;
-  emailsPath: string;
   dashboardDataPath: string;
+  analyticsPath: string;
   dashboardDir: string;
   usingDevSecret: boolean;
   secret: string;
   baseURL: string;
   trustedOrigins: string[];
   trustProxy: boolean;
-  trustEmail: boolean;
   hasMailer: boolean;
+  // Without a mailer (development and tests only) the magic link is returned
+  // to the browser instead of being emailed.
+  exposeMagicLink: boolean;
   resendApiKey: string;
   emailFrom: string;
-  adminToken: string;
+  turnstileSiteKey: string;
+  turnstileSecretKey: string;
   freeRequestLimit: number;
   allowInsecureHttp: boolean;
 };
@@ -75,11 +79,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const resendApiKey = (env.RESEND_API_KEY || "").trim();
   const emailFrom = (env.EMAIL_FROM || "").trim();
   const hasMailer = Boolean(resendApiKey && emailFrom);
-  const trustEmailExplicit = env.AUTH_TRUST_EMAIL;
-  const trustEmail =
-    trustEmailExplicit === undefined || trustEmailExplicit === ""
-      ? !hasMailer
-      : readBoolean(trustEmailExplicit, !hasMailer);
+  const turnstileSiteKey = (env.TURNSTILE_SITE_KEY || "").trim();
+  const turnstileSecretKey = (env.TURNSTILE_SECRET_KEY || "").trim();
+  const analyticsPath = path.resolve(
+    env.ANALYTICS_DB_PATH || path.join(REPO_ROOT, "analysis_outputs", "analytics.sqlite"),
+  );
   const allowInsecureHttp = readBoolean(env.ALLOW_INSECURE_HTTP, !isProduction);
 
   if (isProduction) {
@@ -92,6 +96,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (secret === DEV_SECRET) {
       throw new Error("Refusing to start with the development auth secret.");
     }
+    if (!hasMailer) {
+      throw new Error("RESEND_API_KEY and EMAIL_FROM are required in production: every email is verified.");
+    }
+  }
+  if (Boolean(turnstileSiteKey) !== Boolean(turnstileSecretKey)) {
+    throw new Error("Set both TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY, or neither.");
   }
 
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -104,19 +114,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     host: env.HOST || "127.0.0.1",
     dataDir,
     sqlitePath: path.join(dataDir, "auth.sqlite"),
-    emailsPath: path.join(dataDir, "emails.jsonl"),
     dashboardDataPath,
+    analyticsPath,
     dashboardDir,
     usingDevSecret: !secret,
     secret: secret || DEV_SECRET,
     baseURL,
     trustedOrigins: parseOrigins(baseURL, env.AUTH_TRUSTED_ORIGINS),
     trustProxy: readBoolean(env.TRUST_PROXY, false),
-    trustEmail,
     hasMailer,
+    exposeMagicLink: !isProduction && !hasMailer,
     resendApiKey,
     emailFrom,
-    adminToken: (env.ADMIN_TOKEN || "").trim(),
+    turnstileSiteKey,
+    turnstileSecretKey,
     freeRequestLimit: Math.max(1, Number(env.FREE_REQUEST_LIMIT || FREE_REQUEST_LIMIT_DEFAULT) || FREE_REQUEST_LIMIT_DEFAULT),
     allowInsecureHttp,
   };
