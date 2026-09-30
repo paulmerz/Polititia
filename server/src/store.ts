@@ -1,15 +1,32 @@
-import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-export type Store = Database.Database;
+export type Store = DatabaseSync;
+
+const RETURNS_ROWS = /^\s*(select|with|pragma|explain|values)\b/i;
+
+function patchStatementColumns(db: DatabaseSync): void {
+  const original = db.prepare.bind(db);
+  db.prepare = ((sql: string) => {
+    const stmt = original(sql);
+    if (typeof stmt.columns === "function") {
+      return stmt;
+    }
+    const returnsRows = RETURNS_ROWS.test(sql) || /\breturning\b/i.test(sql);
+    return Object.assign(stmt, {
+      columns: () => (returnsRows ? [{ name: "_" }] : []),
+    });
+  }) as DatabaseSync["prepare"];
+}
 
 export function openStore(sqlitePath: string): Store {
   mkdirSync(path.dirname(sqlitePath), { recursive: true, mode: 0o700 });
-  const db = new Database(sqlitePath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
+  const db = new DatabaseSync(sqlitePath);
+  patchStatementColumns(db);
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec(`
     CREATE TABLE IF NOT EXISTS quota_counters (
       kind TEXT NOT NULL,

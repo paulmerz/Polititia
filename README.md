@@ -48,7 +48,7 @@ The dashboard is no longer a static dump of every phrase. A small Node server
 meters per-politician analysis, captures emails, and keeps sessions in a local
 SQLite file (`server/data/auth.sqlite`) plus an append-only `emails.jsonl`.
 
-Node.js 22.13 or newer is required (`node -v`). From `server/`, install dependencies once, then start. `npm start` runs the TypeScript entry with Node itself; `tsx` does not need to be installed globally.
+Node.js 22.13 or newer is required (`node -v`). From `server/`, install dependencies once, then start. `npm start` runs the TypeScript entry with Node itself. Sessions are stored with Node's built-in SQLite, so the install does not compile a native module and does not need Visual Studio or `pnpm approve-builds`.
 
 ```bash
 cp server/.env.example server/.env
