@@ -129,7 +129,7 @@ const COPY = {
   pronouns: "Pronoms",
   distinctiveTitle: { citizen: "Ce qui le distingue", scientific: "Phrases TF-IDF" },
   distinctiveHelp: {
-    citizen: "Les formules que cette personne emploie plus que le reste de l'Assemblée.",
+    citizen: "Les formules que cette personne emploie nettement plus que le reste de l'Assemblée, classées par nombre d'emplois. Le badge ×N indique combien de fois plus souvent qu'un député moyen.",
     scientific: "N-grammes les plus discriminants selon le score TF-IDF par rapport au reste du corpus.",
   },
   topContent: { citizen: "Expressions les plus dites", scientific: "Expressions de contenu" },
@@ -141,7 +141,7 @@ const COPY = {
   partyCommon: { citizen: "Expressions partagées du groupe", scientific: "N-grammes communs du groupe" },
   partyDistinctive: { citizen: "Expressions caractéristiques du groupe", scientific: "N-grammes distinctifs du groupe" },
   distinctiveHelpParty: {
-    citizen: "Les formules que ce groupe emploie plus que les autres groupes.",
+    citizen: "Les formules que ce groupe emploie nettement plus que les autres groupes, classées par nombre d'emplois. Le badge ×N indique combien de fois plus souvent que le reste de l'Assemblée.",
     scientific: "N-grammes distinctifs selon le score log-odds par rapport aux autres groupes.",
   },
   commonPhrases: { citizen: "Expressions partagées", scientific: "N-grammes communs" },
@@ -1301,40 +1301,56 @@ function renderSearchResults() {
     : `<span class="source-note">${escapeHtml(copy("noResults"))}</span>`;
 }
 
+function phraseValue(row, key) {
+  return Math.abs(Number(row[key] ?? row.count ?? 0));
+}
+
+// The bar, the number and the order always use the same metric, in
+// decreasing order, whatever order the rows arrive in.
 function phraseList(rows, options = {}) {
   const useScore = isScientific() && options.scoreLabel;
-  const metric = useScore ? options.metric || "count" : "count";
-  const scoreLabel = useScore ? options.scoreLabel : null;
-  const scoreDigits = options.scoreDigits ?? 2;
-  const maxValue = Math.max(
-    1,
-    ...rows.map((row) => Math.abs(Number(row[metric] ?? row.count ?? 0))),
-  );
+  const metric = useScore ? options.scoreLabel : options.citizenMetric || "count";
+  const formatValue = useScore
+    ? (row) => Number(row[metric] || 0).toFixed(options.scoreDigits ?? 2)
+    : options.formatValue || ((row) => fmtInt(row[metric] ?? row.count));
   if (!rows.length) {
     return `<p class="source-note">${escapeHtml(copy("noPhrases"))}</p>`;
   }
+  const sorted = [...rows].sort((a, b) => phraseValue(b, metric) - phraseValue(a, metric));
+  const maxValue = Math.max(Number.EPSILON, ...sorted.map((row) => phraseValue(row, metric)));
   return `
     <div class="phrase-list">
-      ${rows
+      ${sorted
         .map((row) => {
-          const value = Math.abs(Number(row[metric] ?? row.count ?? 0));
-          const width = Math.max(4, (value / maxValue) * 100);
-          const countText = scoreLabel
-            ? `${Number(row[scoreLabel] || 0).toFixed(scoreDigits)}`
-            : fmtInt(row.count);
+          const width = Math.max(4, (phraseValue(row, metric) / maxValue) * 100);
+          const badge = options.badge ? options.badge(row) : "";
+          const title = options.title ? options.title(row) : row.title || row.ngram;
           return `
             <div class="phrase-row">
-              <div class="phrase-track" title="${escapeHtml(row.ngram)}">
+              <div class="phrase-track" title="${escapeHtml(title)}">
                 <span class="phrase-bar" data-style="width:${width.toFixed(1)}%"></span>
-                <span class="phrase-text">${escapeHtml(row.ngram)}</span>
+                <span class="phrase-text">${escapeHtml(row.ngram)}${row.detail ? `<small class="phrase-detail">${escapeHtml(row.detail)}</small>` : ""}</span>
+                ${badge ? `<span class="phrase-badge">${escapeHtml(badge)}</span>` : ""}
               </div>
-              <span class="phrase-count">${escapeHtml(countText)}</span>
+              <span class="phrase-count">${escapeHtml(formatValue(row))}</span>
             </div>
           `;
         })
         .join("")}
     </div>
   `;
+}
+
+function fmtRatio(value) {
+  const ratio = Number(value || 0);
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return "";
+  }
+  return `×${ratio >= 10 ? Math.round(ratio) : ratio.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}`;
+}
+
+function ratioBadge(row) {
+  return fmtRatio(row.ratio);
 }
 
 function renderLanguageMetricSelect(selectId = "languageMetricSelect") {
@@ -1656,9 +1672,9 @@ function renderPoliticianDetail(personId) {
 
       ${labeledTitle("h3", "distinctiveTitle", "distinctiveHelp")}
       ${phraseList(tfidfRows, {
-        metric: "tf_idf_vs_rest",
         scoreLabel: "tf_idf_vs_rest",
         scoreDigits: 4,
+        badge: ratioBadge,
       })}
 
       ${labeledTitle("h3", "topContent")}
@@ -1675,8 +1691,8 @@ function renderPoliticianDetail(personId) {
 
       ${labeledTitle("h3", "partyDistinctive", "distinctiveHelpParty")}
       ${phraseList(rowsForNgram(partyPhrases.distinctive, "log_odds_vs_rest"), {
-        metric: "log_odds_vs_rest",
         scoreLabel: "log_odds_vs_rest",
+        badge: ratioBadge,
       })}
     </div>
   `;
@@ -1825,8 +1841,8 @@ function renderPartyPanel() {
         <section>
           ${labeledTitle("h3", "distinctivePhrases", "distinctiveHelpParty")}
           ${phraseList(rowsForNgram(phrases.distinctive, "log_odds_vs_rest"), {
-            metric: "log_odds_vs_rest",
             scoreLabel: "log_odds_vs_rest",
+            badge: ratioBadge,
           })}
         </section>
       </div>
