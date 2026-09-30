@@ -33,67 +33,13 @@ DEFAULT_SPEECHES = Path("extracted_texts/project_full/speeches.jsonl")
 DEFAULT_SPEAKER_DIR = Path("extracted_texts/project_full/by_speaker")
 DEFAULT_ATTRIBUTIONS = Path("analysis_outputs/themes/attributions.jsonl")
 DEFAULT_STANCES = Path("analysis_outputs/stances/stances.jsonl")
+DEFAULT_LEXICON = Path("themes/lexicon.json")
 DEFAULT_OUTPUT = Path("analysis_outputs/analytics.sqlite")
 NGRAM_SIZES = (1, 2, 3, 4)
 MIN_NGRAM_COUNT = 5
 LEGISLATURE_START = "2024-07-18"
 
-SCHEMA = """
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE politicians (
-  pid INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-  party TEXT NOT NULL, acteur_id TEXT NOT NULL
-);
-CREATE TABLE speeches (
-  sid INTEGER PRIMARY KEY, speech_id TEXT UNIQUE NOT NULL, pid INTEGER NOT NULL,
-  party TEXT NOT NULL, date TEXT NOT NULL, month TEXT NOT NULL, session_uid TEXT NOT NULL,
-  debate_title TEXT NOT NULL, section_code TEXT NOT NULL, bill_number TEXT NOT NULL,
-  tokens INTEGER NOT NULL
-);
-CREATE INDEX speeches_pid_date ON speeches (pid, date);
-CREATE INDEX speeches_date ON speeches (date);
-CREATE TABLE ngrams (gid INTEGER PRIMARY KEY, n INTEGER NOT NULL, text TEXT NOT NULL, total INTEGER NOT NULL);
-CREATE TABLE person_ngram_month (
-  pid INTEGER, n INTEGER, month TEXT, gid INTEGER, count INTEGER,
-  PRIMARY KEY (pid, n, month, gid)
-) WITHOUT ROWID;
-CREATE TABLE party_ngram_month (
-  party TEXT, n INTEGER, month TEXT, gid INTEGER, count INTEGER,
-  PRIMARY KEY (party, n, month, gid)
-) WITHOUT ROWID;
-CREATE TABLE global_ngram_month (
-  gid INTEGER, month TEXT, count INTEGER, PRIMARY KEY (gid, month)
-) WITHOUT ROWID;
-CREATE TABLE person_totals (
-  pid INTEGER, n INTEGER, month TEXT, total INTEGER, PRIMARY KEY (pid, n, month)
-) WITHOUT ROWID;
-CREATE TABLE party_totals (
-  party TEXT, n INTEGER, month TEXT, total INTEGER, PRIMARY KEY (party, n, month)
-) WITHOUT ROWID;
-CREATE TABLE global_totals (n INTEGER, month TEXT, total INTEGER, PRIMARY KEY (n, month)) WITHOUT ROWID;
-CREATE TABLE theme_attributions (
-  sid INTEGER NOT NULL, theme TEXT NOT NULL, domain TEXT NOT NULL, method TEXT NOT NULL,
-  relevance REAL, terms TEXT NOT NULL, excerpt TEXT NOT NULL, dossier_title TEXT NOT NULL,
-  PRIMARY KEY (theme, sid)
-) WITHOUT ROWID;
-CREATE INDEX theme_attributions_sid ON theme_attributions (sid);
-CREATE TABLE votes (
-  vid INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL, number INTEGER NOT NULL, date TEXT NOT NULL,
-  title TEXT NOT NULL, adopted INTEGER NOT NULL, vote_type TEXT NOT NULL, is_key INTEGER NOT NULL,
-  dossier_title TEXT NOT NULL, group_majority TEXT NOT NULL
-);
-CREATE INDEX votes_date ON votes (date);
-CREATE TABLE vote_positions (
-  vid INTEGER, pid INTEGER, party TEXT, position TEXT, PRIMARY KEY (pid, vid)
-) WITHOUT ROWID;
-CREATE INDEX vote_positions_vid ON vote_positions (vid);
-CREATE TABLE vote_themes (vid INTEGER, theme TEXT, PRIMARY KEY (theme, vid)) WITHOUT ROWID;
-CREATE TABLE stances (
-  sid INTEGER NOT NULL, theme TEXT NOT NULL, stance TEXT NOT NULL, confidence REAL NOT NULL,
-  method TEXT NOT NULL, quote TEXT NOT NULL, PRIMARY KEY (theme, sid)
-) WITHOUT ROWID;
-CREATE INDEX stances_sid ON stances (sid);
-"""
+SCHEMA = (Path(__file__).resolve().parent / "analytics_schema.sql").read_text(encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--attributions", type=Path, default=DEFAULT_ATTRIBUTIONS)
     parser.add_argument("--stances", type=Path, default=DEFAULT_STANCES)
     parser.add_argument("--open-data", type=Path, default=DEFAULT_OPEN_DATA_DIR)
+    parser.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--min-ngram-count", type=int, default=MIN_NGRAM_COUNT)
     return parser.parse_args()
@@ -156,11 +103,12 @@ class Builder:
             speeches.append((
                 sid, raw["speech_id"], pid, identity.party_at_speech, raw["date"], month,
                 raw.get("session_uid", ""), raw.get("debate_topic") or raw.get("point_title", ""),
-                raw.get("section_code", ""), raw.get("bill_number", ""), len(tokens),
+                raw.get("section_code", ""), raw.get("bill_number", ""),
+                len((raw.get("normalized_text") or "").split()), len(tokens),
             ))
             self.speech_rows.append((pid, identity.party_at_speech, month, tokens))
         self.db.executemany("INSERT INTO politicians VALUES (?, ?, ?, ?, ?)", politicians)
-        self.db.executemany("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", speeches)
+        self.db.executemany("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", speeches)
 
     def add_ngrams(self) -> dict[int, int]:
         """One pass per n-gram size keeps memory bounded on the full corpus."""
@@ -251,6 +199,7 @@ class Builder:
             vote_rows.append((
                 vid, vote.uid, vote.number, vote.date, vote.title, int(vote.adopted), vote.vote_type,
                 int(is_key_vote(vote)), dossier.title if dossier else "", json.dumps(vote.group_majority),
+                json.dumps(vote.group_counts),
             ))
             for acteur_id, position in vote.positions.items():
                 pid = by_acteur.get(acteur_id)
@@ -260,7 +209,7 @@ class Builder:
                 position_rows.append((vid, pid, actor.party_on(vote.date), position))
             for theme in vote_themes(vote, dossier):
                 theme_rows.append((vid, theme))
-        self.db.executemany("INSERT INTO votes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", vote_rows)
+        self.db.executemany("INSERT INTO votes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", vote_rows)
         self.db.executemany("INSERT OR IGNORE INTO vote_positions VALUES (?, ?, ?, ?)", position_rows)
         self.db.executemany("INSERT OR IGNORE INTO vote_themes VALUES (?, ?)", theme_rows)
         return len(vote_rows)
@@ -273,7 +222,7 @@ class Builder:
                 rows.append((sid, item["theme_id"], item["stance"], item["confidence"], item["method"], item.get("quote", "")))
         self.db.executemany("INSERT OR IGNORE INTO stances VALUES (?, ?, ?, ?, ?, ?)", rows)
 
-    def add_meta(self, corpus_totals: dict[int, int]) -> None:
+    def add_meta(self, corpus_totals: dict[int, int], catalog: list[dict] | None = None) -> None:
         first_day, last_day = self.db.execute("SELECT MIN(date), MAX(date) FROM speeches").fetchone()
         months = [row[0] for row in self.db.execute("SELECT DISTINCT month FROM speeches ORDER BY month")]
         meta = {
@@ -284,8 +233,25 @@ class Builder:
             "alpha0": DEFAULT_ALPHA0,
             "corpusTotals": {str(size): total for size, total in corpus_totals.items()},
             "builtOn": date.today().isoformat(),
+            "themes": catalog or [],
         }
         self.db.executemany("INSERT INTO meta VALUES (?, ?)", [(key, json.dumps(value)) for key, value in meta.items()])
+
+
+def theme_catalog(lexicon: Path) -> list[dict]:
+    """Domains (the permanent committees) and their themes, in lexicon order."""
+    if not lexicon.is_file():
+        return []
+    payload = json.loads(lexicon.read_text(encoding="utf-8"))
+    rows = [
+        {"id": item["id"], "label": item["label"], "type": "domain", "parent": None, "committee": item.get("committee", "")}
+        for item in payload.get("domains", [])
+    ]
+    rows += [
+        {"id": item["id"], "label": item["label"], "type": "theme", "parent": item.get("parent"), "committee": ""}
+        for item in payload.get("themes", [])
+    ]
+    return rows
 
 
 def build(
@@ -296,6 +262,7 @@ def build(
     resolver: SpeakerResolver,
     stances: list[dict] | None = None,
     min_ngram_count: int = MIN_NGRAM_COUNT,
+    lexicon: Path = DEFAULT_LEXICON,
 ) -> dict[str, int]:
     from analyze_votes import vote_theme_matcher
 
@@ -310,7 +277,7 @@ def build(
     builder.add_themes(attributions)
     vote_count = builder.add_votes(reference, vote_theme_matcher())
     builder.add_stances(stances or [])
-    builder.add_meta(corpus_totals)
+    builder.add_meta(corpus_totals, theme_catalog(lexicon))
     db.commit()
     db.execute("ANALYZE")
     db.close()
@@ -331,6 +298,7 @@ def main() -> None:
         SpeakerResolver(reference, args.speaker_dir),
         load_jsonl(args.stances),
         args.min_ngram_count,
+        args.lexicon,
     )
     print(
         f"Wrote {args.out}: {counts['politicians']} politicians, {counts['speeches']} speeches, "
