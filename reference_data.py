@@ -145,6 +145,8 @@ class Vote:
     positions: dict[str, str]
     group_majority: dict[str, str]
     dossier_uid: str = ""
+    # {"pour", "contre", "abstention", "members"} per group, plus "_total".
+    group_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 class ReferenceData:
@@ -297,12 +299,21 @@ class ReferenceData:
             raw = _load(path, "scrutin")
             positions: dict[str, str] = {}
             majority: dict[str, str] = {}
+            counts: dict[str, dict[str, int]] = {}
+            total = ((raw.get("syntheseVote") or {}).get("decompte")) or {}
+            counts["_total"] = _vote_counts(total)
             groups = as_list(((raw.get("ventilationVotes") or {}).get("organe") or {}).get("groupes", {}).get("groupe"))
             for group in groups:
                 party = GROUP_CODES.get(self.organ_abbrev.get(group.get("organeRef", ""), ""), "")
                 vote = group.get("vote") or {}
                 if party:
-                    majority[party] = vote.get("positionMajoritaire") or ""
+                    counts[party] = {
+                        **_vote_counts(vote.get("decompteVoix") or {}),
+                        "members": _int(group.get("nombreMembresGroupe")),
+                    }
+                    # "positionMajoritaire" in the open data often contradicts the
+                    # group's own tally (e.g. "pour" with 106 of 118 votes against).
+                    majority[party] = majority_position(counts[party])
                 nominative = vote.get("decompteNominatif") or {}
                 for key, label in (("pours", "pour"), ("contres", "contre"), ("abstentions", "abstention"), ("nonVotants", "non-votant")):
                     for voter in as_list((nominative.get(key) or {}).get("votant")):
@@ -319,7 +330,30 @@ class ReferenceData:
                     vote_type=((raw.get("typeVote") or {}).get("codeTypeVote")) or "",
                     positions=positions,
                     group_majority=majority,
+                    group_counts=counts,
                 )
             )
         return votes
 
+
+def _int(value: object) -> int:
+    try:
+        return int(str(value or 0))
+    except ValueError:
+        return 0
+
+
+def majority_position(counts: dict[str, int]) -> str:
+    """Most common vote in a group; "" when nobody voted or on a tie."""
+    ranked = sorted(((counts.get(key, 0), key) for key in ("pour", "contre", "abstention")), reverse=True)
+    if ranked[0][0] == 0 or ranked[0][0] == ranked[1][0]:
+        return ""
+    return ranked[0][1]
+
+
+def _vote_counts(decompte: dict) -> dict[str, int]:
+    return {
+        "pour": _int(decompte.get("pour")),
+        "contre": _int(decompte.get("contre")),
+        "abstention": _int(decompte.get("abstentions")),
+    }
