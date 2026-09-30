@@ -87,12 +87,13 @@ const COPY = {
   allParties: "Tous les groupes",
   unlabeled: "Non rattachés",
   ngram: { citizen: "Groupes de mots", scientific: "N-gramme" },
+  ngramauto: { citizen: "Expressions (auto)", scientific: "Mixte 2 à 4" },
   ngram1: { citizen: "1 mot", scientific: "Unigrammes" },
   ngram2: { citizen: "2 mots", scientific: "Bigrammes" },
   ngram3: { citizen: "3 mots", scientific: "Trigrammes" },
   ngram4: { citizen: "4 mots", scientific: "4-grammes" },
   ngramHelp: {
-    citizen: "Choisissez si vous comparez des mots isolés ou des suites de 2, 3 ou 4 mots extraits des discours.",
+    citizen: "« Expressions (auto) » mélange les suites de 2 à 4 mots en retirant les doublons (« finances publiques » disparaît si « direction générale finances publiques » est déjà là). Vous pouvez aussi choisir une longueur précise.",
     scientific: "Taille des n-grammes extraits des discours, d'unigrammes à 4-grammes.",
   },
   tabPolitician: "Député",
@@ -368,7 +369,7 @@ const state = {
   selectedId: null,
   selectedParty: "ALL",
   partyFilter: "ALL",
-  ngram: "2",
+  ngram: "auto",
   markerCategory: null,
   languageMetric: "LD",
   search: "",
@@ -590,8 +591,57 @@ function headingWithTip(tag, text, helpKey) {
   return `<${tag} class="section-title">${escapeHtml(text)}${helpKey ? infoTip(helpKey) : ""}</${tag}>`;
 }
 
+const AUTO_NGRAM_SIZES = ["4", "3", "2"];
+const AUTO_NGRAM_LIMIT = 15;
+
+function containsPhrase(longer, shorter) {
+  return ` ${longer} `.includes(` ${shorter} `);
+}
+
+// A longer phrase replaces an overlapping shorter one when it carries at least
+// half of its occurrences ("direction générale finances publiques" absorbs
+// "finances publiques"); otherwise it is a minor variant and is dropped.
+const LONGER_PHRASE_SHARE = 0.5;
+
+function mergeNgramRows(bySize, rankKey = "count", limit = AUTO_NGRAM_LIMIT) {
+  const candidates = AUTO_NGRAM_SIZES.flatMap((size) =>
+    (bySize?.[size] || []).map((row) => ({ ...row, size: Number(size) })),
+  ).sort(
+    (a, b) =>
+      Number(b[rankKey] ?? b.count ?? 0) - Number(a[rankKey] ?? a.count ?? 0) || b.size - a.size,
+  );
+  const kept = [];
+  for (const row of candidates) {
+    const text = String(row.ngram || "");
+    const overlapIndex = kept.findIndex(
+      (other) => containsPhrase(other.ngram, text) || containsPhrase(text, other.ngram),
+    );
+    if (overlapIndex >= 0) {
+      const other = kept[overlapIndex];
+      if (row.size > other.size && Number(row.count || 0) >= LONGER_PHRASE_SHARE * Number(other.count || 0)) {
+        kept[overlapIndex] = row;
+      }
+      continue;
+    }
+    if (kept.length < limit) {
+      kept.push(row);
+    }
+  }
+  return kept.filter(
+    (row, index) =>
+      !kept.some((other, otherIndex) => otherIndex !== index && other.size > row.size && containsPhrase(other.ngram, row.ngram)),
+  );
+}
+
+function rowsForNgram(bySize, rankKey) {
+  if (state.ngram === "auto") {
+    return mergeNgramRows(bySize, rankKey);
+  }
+  return bySize?.[state.ngram] || [];
+}
+
 function ngramOptionsHtml(selected) {
-  return ["1", "2", "3", "4"]
+  return ["auto", "1", "2", "3", "4"]
     .map(
       (value) =>
         `<option value="${value}" ${selected === value ? "selected" : ""}>${escapeHtml(copy(`ngram${value}`))}</option>`,
@@ -1575,8 +1625,8 @@ function renderPoliticianDetail(personId) {
   if (!phrases) {
     return `<div class="detail-body"><p class="source-note">Chargement de l’analyse…</p></div>`;
   }
-  const contentRows = phrases.content?.[state.ngram] || [];
-  const tfidfRows = phrases.tfidf?.[state.ngram] || [];
+  const contentRows = rowsForNgram(phrases.content);
+  const tfidfRows = rowsForNgram(phrases.tfidf, "tf_idf_vs_rest");
   const markers = phrases.markers || {};
   const markerCategory = markerTabs(markers);
   const markerRows = markerCategory ? markers[state.markerCategory] || [] : [];
@@ -1621,10 +1671,10 @@ function renderPoliticianDetail(personId) {
       ${phraseList(markerRows)}
 
       ${labeledTitle("h3", "partyCommon")}
-      ${phraseList(partyPhrases.common?.[state.ngram] || [])}
+      ${phraseList(rowsForNgram(partyPhrases.common))}
 
       ${labeledTitle("h3", "partyDistinctive", "distinctiveHelpParty")}
-      ${phraseList(partyPhrases.distinctive?.[state.ngram] || [], {
+      ${phraseList(rowsForNgram(partyPhrases.distinctive, "log_odds_vs_rest"), {
         metric: "log_odds_vs_rest",
         scoreLabel: "log_odds_vs_rest",
       })}
@@ -1770,11 +1820,11 @@ function renderPartyPanel() {
       <div class="two-column">
         <section>
           ${labeledTitle("h3", "commonPhrases")}
-          ${phraseList(phrases.common?.[state.ngram] || [])}
+          ${phraseList(rowsForNgram(phrases.common))}
         </section>
         <section>
           ${labeledTitle("h3", "distinctivePhrases", "distinctiveHelpParty")}
-          ${phraseList(phrases.distinctive?.[state.ngram] || [], {
+          ${phraseList(rowsForNgram(phrases.distinctive, "log_odds_vs_rest"), {
             metric: "log_odds_vs_rest",
             scoreLabel: "log_odds_vs_rest",
           })}
@@ -1825,7 +1875,7 @@ function renderLanguageMarkersPanel() {
 }
 
 function renderCorpusPanel() {
-  const globalRows = data.globalPhrases?.[state.ngram] || [];
+  const globalRows = rowsForNgram(data.globalPhrases);
   const rankedParties = [...data.parties]
     .filter((party) => party.analysisTokenCount > 0)
     .sort((a, b) => b.analysisTokenCount - a.analysisTokenCount);
@@ -2221,7 +2271,7 @@ showUnlabeled.addEventListener("change", () => {
   render();
 });
 
-analysisContent.addEventListener("change", (event) => {
+function handlePanelChange(event) {
   if (event.target.id === "partyPanelSelect") {
     state.selectedParty = event.target.value;
     render();
@@ -2243,7 +2293,11 @@ analysisContent.addEventListener("change", (event) => {
     state.languageMetric = event.target.value;
     render();
   }
-});
+}
+
+// The deputy modal renders the same controls outside analysisContent.
+analysisContent.addEventListener("change", handlePanelChange);
+dialogContent.addEventListener("change", handlePanelChange);
 
 dialog.addEventListener("click", (event) => {
   if (event.target === dialog) {
