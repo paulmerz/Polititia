@@ -30,14 +30,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from analyze_project_ngrams import (
-    build_party_lookup,
-    infer_party_and_name,
-    read_speaker_files,
-    resolve_party,
-    surface_content_tokens,
-)
+from analyze_project_ngrams import surface_content_tokens
 from reference_data import DEFAULT_OPEN_DATA_DIR, ReferenceData, fold
+from speakers import SpeakerResolver
 
 
 DEFAULT_SPEECHES = Path("extracted_texts/project_full/speeches.jsonl")
@@ -73,14 +68,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--no-relevance", action="store_true", help="Skip the TF-IDF relevance check.")
     return parser.parse_args()
-
-
-def slugify(value: str) -> str:
-    return fold(value).replace(" ", "-") or "unknown"
-
-
-def politician_id(speaker_name: str, party: str) -> str:
-    return f"{slugify(speaker_name)}--{slugify(party)}"
 
 
 def parse_iso_date(value: str) -> date | None:
@@ -342,23 +329,6 @@ def build_relevance(documents: list[str], debate_rows: dict[str, list[int]]) -> 
     return relevance
 
 
-# -- speakers --------------------------------------------------------------
-
-
-def speaker_resolver(speaker_dir: Path):
-    speaker_files = read_speaker_files(speaker_dir) if speaker_dir.is_dir() else []
-    party_lookup = build_party_lookup(speaker_files) if speaker_files else {}
-
-    def resolve(raw: dict[str, str]) -> tuple[str, str]:
-        party, name, _source = resolve_party(raw["speaker_slug"], party_lookup)
-        if party == "UNLABELED":
-            inferred_party, name = infer_party_and_name(raw["speaker_slug"])
-            party = party_lookup.get(name, inferred_party)
-        return party, name
-
-    return resolve
-
-
 # -- attribution -----------------------------------------------------------
 
 
@@ -366,6 +336,7 @@ def speaker_resolver(speaker_dir: Path):
 class Speech:
     raw: dict[str, str]
     party: str
+    politician_party: str
     speaker: str
     person_id: str
     day: date | None
@@ -414,12 +385,14 @@ def prepare_speeches(
     speeches: list[dict[str, str]],
     lexicon: Lexicon,
     reference: ReferenceData,
-    resolve,
+    resolver: SpeakerResolver,
 ) -> list[Speech]:
     title_cache: dict[tuple[str, str, str], tuple[list[str], str, str]] = {}
     prepared: list[Speech] = []
     for raw in speeches:
-        party, name = resolve(raw)
+        identity = resolver.resolve(raw)
+        if identity is None:
+            continue
         title = debate_title_for(raw)
         key = (title, raw.get("point_title", ""), raw.get("bill_number", ""))
         if key not in title_cache:
@@ -437,9 +410,10 @@ def prepare_speeches(
         themes, dossier_title, dossier_domain = title_cache[key]
         prepared.append(Speech(
             raw=raw,
-            party=party,
-            speaker=name,
-            person_id=politician_id(name, party),
+            party=identity.party_at_speech,
+            politician_party=identity.party,
+            speaker=identity.name,
+            person_id=identity.politician_id,
             day=parse_iso_date(raw.get("date", "")),
             content=surface_content_tokens(raw.get("normalized_text") or ""),
             debate_title=title,
@@ -494,6 +468,7 @@ def attribute(
             "politician_id": speech.person_id,
             "speaker": speech.speaker,
             "party": speech.party,
+            "politician_party": speech.politician_party,
             "debate_title": speech.debate_title,
             "dossier_title": speech.dossier_title,
         }
@@ -699,7 +674,7 @@ def run(
     use_relevance: bool = True,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
     reference = ReferenceData(open_data)
-    speeches = prepare_speeches(raw_speeches, lexicon, reference, speaker_resolver(speaker_dir))
+    speeches = prepare_speeches(raw_speeches, lexicon, reference, SpeakerResolver(reference, speaker_dir))
     attributions = attribute(speeches, lexicon, use_relevance=use_relevance)
     return build_bundle(speeches, attributions, lexicon), attributions
 

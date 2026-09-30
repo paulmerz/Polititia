@@ -59,6 +59,7 @@ COMMITTEE_DOMAINS = {
 }
 
 DOCUMENT_NUMBER_RE = re.compile(r"ANR5L17B(?:TC)?(\d+)$")
+GOVERNMENT_ROLE_RE = re.compile(r"^(premi[eè]re? )?ministre|^secr[ée]taire d.[ée]tat|^garde des sceaux|^haut-commissaire", re.I)
 
 
 def fold(text: str) -> str:
@@ -102,8 +103,14 @@ class Actor:
     def name(self) -> str:
         return " ".join(part for part in (self.civility, self.first_name, self.last_name) if part)
 
-    def party_on(self, day: str) -> str:
-        """Group on ``day`` (YYYY-MM-DD); government membership wins."""
+    def party_on(self, day: str, role: str = "") -> str:
+        """Group on ``day`` (YYYY-MM-DD); government membership wins.
+
+        ``role`` is the speaker's quality in the report: resigning ministers
+        still speak as "ministre" after their mandate has ended.
+        """
+        if GOVERNMENT_ROLE_RE.search(role or ""):
+            return GOVERNMENT
         if any(start <= day <= (end or "9999") for start, end in self.government):
             return GOVERNMENT
         for membership in self.groups:
@@ -191,7 +198,10 @@ class ReferenceData:
                         if party:
                             actor.groups.append(Membership(start, end, party))
                 elif organ_type in ("GOUVERNEMENT", "MINISTERE") and start >= "2024-01-01":
-                    actor.government.append((start, end))
+                    quality = ((mandate.get("infosQualite") or {}).get("codeQualite") or "").lower()
+                    # Deputies "en mission" for a minister stay deputies.
+                    if quality != "en mission":
+                        actor.government.append((start, end))
             actor.groups.sort(key=lambda item: item.start)
             self.actors[uid] = actor
 
