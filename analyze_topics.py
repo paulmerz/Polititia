@@ -25,6 +25,8 @@ DEFAULT_SPEECH_DIR = Path("extracted_texts/project_full")
 DEFAULT_XML_DIR = Path("data/raw/xml/compteRendu")
 DEFAULT_OUT_DIR = Path("analysis_outputs/plain_project_content_stable")
 DEFAULT_TOPIC_COUNT = 15
+DEFAULT_TOPIC_LABELS = ROOT / "themes" / "topic_labels.json"
+MIN_LABEL_OVERLAP = 2
 MIN_CONTENT_TOKENS = 20
 
 
@@ -39,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-features", type=int, default=8000)
     parser.add_argument("--top-terms", type=int, default=10)
     parser.add_argument("--min-content-tokens", type=int, default=MIN_CONTENT_TOKENS)
+    parser.add_argument("--labels", type=Path, default=DEFAULT_TOPIC_LABELS)
     return parser.parse_args()
 
 
@@ -177,6 +180,43 @@ def fit_nmf(
     return topics, assignments
 
 
+def load_topic_labels(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return list(payload.get("labels", []))
+
+
+def assign_topic_titles(topics: list[dict[str, object]], labels: list[dict[str, object]]) -> None:
+    """Give each topic the curated title whose keywords best overlap its terms.
+
+    Matching on keywords instead of topic ids keeps titles stable when NMF
+    returns the same topics in another order. A title is used at most once;
+    topics without a match fall back to "Autre sujet : <first term>".
+    """
+    scored: list[tuple[int, int, int]] = []
+    for topic_index, topic in enumerate(topics):
+        terms = [term.strip() for term in str(topic["terms"]).split("|")]
+        weights = {term: len(terms) - rank for rank, term in enumerate(terms)}
+        for label_index, label in enumerate(labels):
+            keywords = {str(keyword) for keyword in label.get("keywords", [])}
+            overlap = [term for term in terms if term in keywords]
+            if len(overlap) >= MIN_LABEL_OVERLAP:
+                scored.append((sum(weights[term] for term in overlap), topic_index, label_index))
+    used_topics: set[int] = set()
+    used_labels: set[int] = set()
+    for _score, topic_index, label_index in sorted(scored, reverse=True):
+        if topic_index in used_topics or label_index in used_labels:
+            continue
+        topics[topic_index]["title"] = str(labels[label_index]["title"])
+        used_topics.add(topic_index)
+        used_labels.add(label_index)
+    for topic in topics:
+        if not topic.get("title"):
+            first = str(topic["terms"]).split("|")[0].strip()
+            topic["title"] = f"Autre sujet : {first}"
+
+
 def aggregate(
     parties: list[str],
     months: list[str],
@@ -239,10 +279,11 @@ def main() -> int:
         args.max_features,
         args.top_terms,
     )
+    assign_topic_titles(topics, load_topic_labels(args.labels))
     party_rows, monthly_rows = aggregate(parties, months, assignments, args.topic_count)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    write_csv(args.out_dir / "topic_terms.csv", topics, ["topic_id", "label", "terms"])
+    write_csv(args.out_dir / "topic_terms.csv", topics, ["topic_id", "title", "label", "terms"])
     write_csv(
         args.out_dir / "party_topics.csv",
         party_rows,

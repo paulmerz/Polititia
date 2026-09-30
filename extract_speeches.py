@@ -109,6 +109,15 @@ DIDASCALIE_RE = re.compile(
     r"\(\s*(?:" + "|".join(DIDASCALIE_KEYWORDS) + r")[^()]*\)",
     re.IGNORECASE,
 )
+# Parenthesised stage directions that open with a subject rather than a
+# keyword ("(Les députés du groupe LFI-NFP se lèvent et applaudissent.)").
+STAGE_ACTION_RE = re.compile(
+    r"\([^()]*?\b(?:"
+    r"applaudi\w*|se l[èe]v\w*|protest\w*|exclam\w*|coupe le micro|"
+    r"quitt\w* l.hémicycle|brandi\w*|hu[ée]\w*|rires?|sourires?|murmures?"
+    r")\b[^()]*\)",
+    re.IGNORECASE,
+)
 STAGE_DIRECTION_LINE_RE = re.compile(
     r"^\s*(?:"
     r"applaudissements?|vifs applaudissements?|sourires?|rires?|"
@@ -169,6 +178,7 @@ def _flatten_texte(texte_elem: ET.Element) -> str:
 
 def _clean(text: str) -> str:
     text = DIDASCALIE_RE.sub("", text)
+    text = STAGE_ACTION_RE.sub("", text)
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
     lines = [line for line in lines if line and not STAGE_DIRECTION_LINE_RE.match(line)]
     return "\n\n".join(lines)
@@ -222,6 +232,8 @@ def normalize_for_ngrams(text: str) -> str:
     text = text.translate(APOSTROPHE_TRANSLATION).lower()
     text = text.replace("\u00a0", " ").replace("\u202f", " ")
     text = re.sub(r"\bn\s*[°º]\s*", " ", text)
+    # "n<exposant>o</exposant> 2233" flattens to "no 2233".
+    text = re.sub(r"\bn(?:o|os)\s+(?=\d)", " ", text)
     text = re.sub(r"\b\d+(?:[.,]\d+)*(?:er|re|e|ème|eme|es|s)?\b", " ", text)
     text = text.replace("'", " ")
     text = re.sub(r"[\d_]+", " ", text)

@@ -214,10 +214,10 @@ const COPY = {
   otherThemes: { citizen: "Autres sujets", scientific: "Autres thèmes" },
   themesMissing: "Les sujets lexicaux manquent. Lancez analyze_topics.py puis dashboard/build_dashboard_data.py.",
   themesIntro: {
-    citizen: "Champs de parole extraits des interventions. La part indique le pourcentage des discours du groupe rattachés à chaque sujet.",
+    citizen: "Grands sujets repérés automatiquement dans les interventions. Chaque sujet a un titre, suivi de ses 3 mots les plus typiques en gris. Le pourcentage indique la part des interventions du groupe consacrées à ce sujet.",
     scientific: "Champs lexicaux issus de TF-IDF + NMF sur les interventions. Les parts sont le pourcentage des discours du groupe assignés à chaque thème.",
   },
-  partyLexicalFields: { citizen: "Champs de parole du groupe", scientific: "Champs lexicaux du groupe" },
+  partyLexicalFields: { citizen: "Sujets les plus abordés par le groupe", scientific: "Champs lexicaux du groupe" },
   noMonthlySeries: "Aucune série mensuelle pour ce groupe.",
   topicChartAria: "Part des sujets dans le temps",
   perThousand: "Pour 1 000 mots",
@@ -2001,6 +2001,10 @@ function renderTopicChart(months, lines) {
   `;
 }
 
+function topicKeywords(topic) {
+  return (topic.keywords?.length ? topic.keywords : topic.terms || []).slice(0, 3);
+}
+
 function renderThemesPanel() {
   const bundle = data.topics;
   if (!bundle || !bundle.topics?.length) {
@@ -2066,7 +2070,7 @@ function renderThemesPanel() {
             return `
               <button class="topic-legend-item${active ? " is-active" : ""}${dimmed ? " is-dimmed" : ""}" type="button" data-topic-id="${escapeHtml(line.id)}">
                 <span class="swatch" data-style="background:${line.color}"></span>
-                ${escapeHtml(line.label.split(",")[0])}
+                ${escapeHtml(line.label)}
               </button>
             `;
           })
@@ -2075,11 +2079,17 @@ function renderThemesPanel() {
       <h3 class="section-title">${escapeHtml(copy("partyLexicalFields"))}</h3>
       ${phraseList(
         partyTopics.map((topic) => ({
-          ngram: `${topic.label} · ${topic.terms.slice(0, 6).join(", ")}`,
-          count: topic.share,
+          ngram: topic.label,
+          detail: topicKeywords(topic).join(", "),
+          title: `${topic.label} : ${topicKeywords(topic).join(", ")}`,
           share_pct: (topic.share || 0) * 100,
         })),
-        { metric: "count", scoreLabel: "share_pct", scoreDigits: 1 },
+        {
+          citizenMetric: "share_pct",
+          scoreLabel: "share_pct",
+          scoreDigits: 1,
+          formatValue: (row) => `${Math.round(row.share_pct)} %`,
+        },
       )}
       <p class="source-note">${escapeHtml(bundle.source || "")}</p>
     </div>

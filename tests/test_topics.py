@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from analyze_topics import parse_speech_filename
+from analyze_topics import assign_topic_titles, load_topic_labels, parse_speech_filename
 from scripts.index_session_dates import normalize_session_date
 
 
@@ -19,6 +19,30 @@ class FilenameTests(unittest.TestCase):
 
     def test_rejects_speaker_corpus(self) -> None:
         self.assertIsNone(parse_speech_filename(Path("M_Dupont_SOC.txt")))
+
+
+class TopicTitleTests(unittest.TestCase):
+    def test_titles_follow_keywords_not_topic_order(self) -> None:
+        labels = load_topic_labels(Path(__file__).resolve().parents[1] / "themes" / "topic_labels.json")
+        topics = [
+            {"topic_id": 0, "terms": "droit | état | conseil | procédure | personnes | dispositif"},
+            {"topic_id": 1, "terms": "mourir | aide mourir | aide | patient | médecin | suicide"},
+            {"topic_id": 2, "terms": "zzz | yyy | xxx"},
+        ]
+        assign_topic_titles(topics, labels)
+        self.assertEqual(topics[0]["title"], "Justice, droit et procédures")
+        self.assertEqual(topics[1]["title"], "Fin de vie et aide à mourir")
+        self.assertEqual(topics[2]["title"], "Autre sujet : zzz")
+
+    def test_each_title_used_once(self) -> None:
+        labels = [{"title": "Outre-mer", "keywords": ["mayotte", "outre mer"]}]
+        topics = [
+            {"topic_id": 0, "terms": "mayotte | outre mer | mahorais"},
+            {"topic_id": 1, "terms": "outre mer | mayotte"},
+        ]
+        assign_topic_titles(topics, labels)
+        self.assertEqual(topics[0]["title"], "Outre-mer")
+        self.assertTrue(topics[1]["title"].startswith("Autre sujet"))
 
 
 class DateTests(unittest.TestCase):

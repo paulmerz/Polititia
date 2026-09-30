@@ -1,0 +1,24 @@
+{
+  "description": "Titres lisibles des sujets NMF. Chaque sujet reçoit le titre dont les mots-clés recouvrent le mieux ses 10 premiers termes (au moins 2 en commun), ce qui reste stable si l'ordre des sujets change d'une exécution à l'autre.",
+  "labels": [
+    { "title": "Clivages et affrontements politiques", "keywords": ["rassemblement national", "rassemblement", "extrême", "droite", "gauche", "êtes"] },
+    { "title": "Fin de vie et aide à mourir", "keywords": ["aide mourir", "mourir", "suicide", "euthanasie", "mort", "patient", "médecin"] },
+    { "title": "Budget de l'État et finances publiques", "keywords": ["milliards", "milliards euros", "budget", "déficit", "dépenses", "recettes", "finances"] },
+    { "title": "Soins palliatifs et accompagnement", "keywords": ["soins palliatifs", "palliatifs", "accompagnement", "accompagnement soins", "fin vie"] },
+    { "title": "Europe et affaires étrangères", "keywords": ["union européenne", "européenne", "europe", "européens", "défense", "union", "états"] },
+    { "title": "Logement et énergie", "keywords": ["logement", "logements", "rénovation", "énergie", "énergétique", "nucléaire", "énergies renouvelables"] },
+    { "title": "Santé et professionnels de santé", "keywords": ["santé", "médecins", "professionnels santé", "santé publique", "prévention", "hôpital"] },
+    { "title": "Justice, droit et procédures", "keywords": ["droit", "procédure", "code", "délai", "décision", "juge", "conseil", "état"] },
+    { "title": "Enfance, familles et violences", "keywords": ["enfants", "enfance", "protection enfance", "parents", "familles", "mineurs", "violences", "victimes"] },
+    { "title": "Agriculture, eau et alimentation", "keywords": ["agriculteurs", "agriculture", "agricole", "eau", "alimentaire", "souveraineté alimentaire"] },
+    { "title": "Lutte contre la fraude", "keywords": ["fraude", "fraude fiscale", "lutte contre", "contre fraude", "fraudes"] },
+    { "title": "Communes, élus locaux et territoires", "keywords": ["communes", "élus locaux", "maires", "collectivités", "territoriales", "élus"] },
+    { "title": "Sécurité sociale, travail et retraites", "keywords": ["sécurité sociale", "cotisations", "retraite", "plfss", "financement sécurité", "travail"] },
+    { "title": "Outre-mer", "keywords": ["outre mer", "mayotte", "mahorais", "ultramarins", "hexagone", "territoires outre"] },
+    { "title": "Entreprises et fiscalité", "keywords": ["entreprises", "impôt", "taxe", "crédit impôt", "salariés", "fiscale", "taux"] },
+    { "title": "Immigration et asile", "keywords": ["immigration", "étrangers", "asile", "titre séjour", "frontières", "régularisation"] },
+    { "title": "Éducation et école", "keywords": ["école", "élèves", "enseignants", "éducation nationale", "scolaire"] },
+    { "title": "Sécurité et police", "keywords": ["police", "gendarmerie", "forces ordre", "délinquance", "sécurité intérieure"] },
+    { "title": "Environnement et climat", "keywords": ["climat", "climatique", "biodiversité", "écologique", "transition écologique"] }
+  ]
+}

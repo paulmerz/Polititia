@@ -680,7 +680,8 @@ def build_topics_bundle() -> dict[str, object] | None:
         topics.append(
             {
                 "id": topic_id,
-                "label": row.get("label") or ", ".join(terms[:4]),
+                "label": row.get("title") or row.get("label") or ", ".join(terms[:4]),
+                "keywords": terms[:3],
                 "terms": terms,
             }
         )
@@ -689,11 +690,15 @@ def build_topics_bundle() -> dict[str, object] | None:
     by_party: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in read_csv(PARTY_TOPICS_PATH):
         topic_id = int_value(row.get("topic_id"))
-        topic = topic_by_id.get(topic_id, {"id": topic_id, "label": f"Topic {topic_id}", "terms": []})
+        topic = topic_by_id.get(
+            topic_id,
+            {"id": topic_id, "label": f"Sujet {topic_id}", "keywords": [], "terms": []},
+        )
         by_party[row["party"]].append(
             {
                 "id": topic_id,
                 "label": topic["label"],
+                "keywords": topic["keywords"],
                 "terms": topic["terms"],
                 "speechCount": int_value(row.get("speech_count")),
                 "share": float_value(row.get("share")),
