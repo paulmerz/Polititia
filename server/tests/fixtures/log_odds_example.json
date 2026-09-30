@@ -1,0 +1,39 @@
+{
+  "target": {
+    "justice fiscale": 60,
+    "mot rare": 2,
+    "projet de loi": 100,
+    "vie chère": 5,
+    "ultra riches": 12
+  },
+  "targetTotal": 10000,
+  "everyone": {
+    "justice fiscale": 300,
+    "mot rare": 2,
+    "projet de loi": 5000,
+    "vie chère": 20,
+    "ultra riches": 150
+  },
+  "everyoneTotal": 500000,
+  "prior": {
+    "justice fiscale": 0.0006,
+    "mot rare": 4e-06,
+    "projet de loi": 0.01,
+    "vie chère": 4e-05,
+    "ultra riches": 0.0003
+  },
+  "expected": {
+    "justice fiscale": {
+      "z": 16.87027637875542,
+      "ratio": 12.325799614385186
+    },
+    "vie chère": {
+      "z": 5.256928156490151,
+      "ratio": 17.386245203868842
+    },
+    "ultra riches": {
+      "z": 4.6365158208649415,
+      "ratio": 4.422166075811732
+    }
+  }
+}
