@@ -43,6 +43,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
+const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
 
 function originAllowed(config: AppConfig, origin: string | undefined): boolean {
@@ -323,7 +324,7 @@ export async function createApp(config: AppConfig) {
       return applyDeviceCookie(config, c.json({ error: "rate_limited" }, 429), deviceId);
     }
 
-    let body: { email?: string; website?: string; turnstileToken?: string };
+    let body: { email?: string; website?: string; turnstileToken?: string; returnTo?: string };
     try {
       body = await c.req.json();
     } catch {
@@ -349,8 +350,12 @@ export async function createApp(config: AppConfig) {
       return applyDeviceCookie(config, c.json({ error: "resend_cooldown", retryAfter: wait }, 429), deviceId);
     }
 
+    // Only a query string of the dashboard is accepted, so the link can never
+    // send the visitor to another path or origin.
+    const returnTo = String(body.returnTo || "");
+    const query = RETURN_TO_PATTERN.test(returnTo) ? returnTo.slice(1) : "";
     await auth.api.signInMagicLink({
-      body: { email, name: email.split("@")[0], callbackURL: "/?verifie=1" },
+      body: { email, name: email.split("@")[0], callbackURL: `/?${query ? `${query}&` : ""}verifie=1` },
       headers: c.req.raw.headers,
     });
     recordEmailSend(db, config.secret, email);

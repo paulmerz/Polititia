@@ -138,6 +138,19 @@ test("registration requires opening the emailed link", async () => {
   assert.equal((await unlocked.json()).quota.unlimited, true);
 });
 
+test("the emailed link brings the visitor back to the view they were on", async () => {
+  const { register, verify } = await startTestApp();
+  const kept = await (await register("back@example.org", { returnTo: "?onglet=groupe&groupe=RN" })).json();
+  const location = (await verify(kept.devLink)).headers.get("location") || "";
+  assert.match(location, /\/\?onglet=groupe&groupe=RN&verifie=1$/);
+
+  for (const [index, returnTo] of ["//evil.example", "https://evil.example/?a=1", "?a=<script>"].entries()) {
+    const payload = await (await register(`elsewhere${index}@example.org`, { returnTo })).json();
+    const callback = new URL(payload.devLink).searchParams.get("callbackURL");
+    assert.equal(callback, "/?verifie=1", returnTo);
+  }
+});
+
 test("register rejects bad origins, invalid and disposable emails", async () => {
   const { request, register } = await startTestApp();
   const noOrigin = await request("/api/register", {
