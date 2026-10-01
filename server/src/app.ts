@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -22,8 +23,10 @@ import {
   unlimitedQuota,
 } from "./quota.ts";
 import { openStore, purgeStale } from "./store.ts";
+import { requestContext } from "./request-context.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
+type NodeBindings = { incoming?: IncomingMessage };
 
 const STATIC_FILES: Record<string, string> = {
   "/": "index.html",
@@ -129,8 +132,14 @@ export async function createApp(config: AppConfig) {
     setInterval(() => purgeStale(db), PURGE_INTERVAL_MS).unref();
   }
 
-  const app = new Hono();
+  const app = new Hono<{ Bindings: NodeBindings }>();
   const turnstile = config.turnstileSiteKey ? [TURNSTILE_ORIGIN] : [];
+
+  app.use("*", (c, next) => {
+    const socketIp = c.env?.incoming?.socket?.remoteAddress || "inconnue";
+    const ip = clientIp(c.req.raw.headers, config.trustProxy, socketIp);
+    return requestContext.run({ ip }, next);
+  });
 
   app.use(
     "*",

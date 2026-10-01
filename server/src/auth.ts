@@ -4,16 +4,14 @@ import { magicLink } from "better-auth/plugins";
 import type { Store } from "./store.ts";
 import type { AppConfig } from "./config.ts";
 import { isValidEmail, normalizeEmail } from "./emails.ts";
+import { escapeHtml, notifySignup, sendEmail } from "./mailer.ts";
+import { requestContext } from "./request-context.ts";
 
 export type PendingMagicLink = {
   email: string;
   token: string;
   url: string;
 };
-
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
 
 export function magicLinkEmail(url: string): string {
   const href = escapeHtml(url);
@@ -67,6 +65,23 @@ export async function createAuthInstance(
     emailAndPassword: {
       enabled: false,
     },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user: { email: string; createdAt: Date }) => {
+            const signup = {
+              email: normalizeEmail(user.email),
+              ip: requestContext.getStore()?.ip || "inconnue",
+              createdAt: new Date(user.createdAt),
+            };
+            // Detached so a mail provider outage never blocks account creation.
+            void notifySignup(config, signup).catch((error) => {
+              console.error("[signup] notification failed:", error);
+            });
+          },
+        },
+      },
+    },
     plugins: [
       magicLink({
         expiresIn: 60 * 15,
@@ -80,22 +95,11 @@ export async function createAuthInstance(
           // The address is only stored (as a Better Auth user) once this link is opened.
           pending.set(normalized, { email: normalized, token, url });
           if (config.hasMailer) {
-            const response = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${config.resendApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: config.emailFrom,
-                to: normalized,
-                subject: "Confirmez votre adresse pour La parole des députés",
-                html: magicLinkEmail(url),
-              }),
+            await sendEmail(config, {
+              to: normalized,
+              subject: "Confirmez votre adresse pour La parole des députés",
+              html: magicLinkEmail(url),
             });
-            if (!response.ok) {
-              throw new Error("Unable to send magic link email.");
-            }
           } else if (!config.isProduction) {
             console.info(`[auth] magic link for ${normalized}: ${url}`);
           }

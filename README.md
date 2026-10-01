@@ -81,6 +81,12 @@ Open http://127.0.0.1:8000.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
 
+Each new account triggers a notification to `SIGNUP_NOTIFY_EMAIL` (default
+`paul@maj.digital`, `off` to disable) with the user's email and IP address. It
+is sent through the same Resend mailer, so it requires `RESEND_API_KEY` and
+`EMAIL_FROM`. Behind a reverse proxy, set `TRUST_PROXY=1` so the IP comes from
+`X-Forwarded-For` instead of the proxy's own address.
+
 Do not serve `dashboard/` with a static server in production: the analyses
 would bypass the quota.
 
@@ -92,6 +98,7 @@ Environment (`server/.env`):
 | `HOST`, `PORT`, `TRUST_PROXY` | Bind address; set `TRUST_PROXY=1` behind a reverse proxy |
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
+| `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (default `paul@maj.digital`, `off` to disable) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional captcha on the email form (both or neither) |
 | `ANALYTICS_DB_PATH` | Defaults to `analysis_outputs/analytics.sqlite` |
 | `DASHBOARD_DATA_PATH`, `DATA_DIR` | First-load bundle and server data directory |
