@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
+import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -20,8 +21,10 @@ import {
   unlimitedQuota,
 } from "./quota.ts";
 import { openStore } from "./store.ts";
+import { requestContext } from "./request-context.ts";
 
 type SessionUser = { email?: string | null } | null;
+type NodeBindings = { incoming?: IncomingMessage };
 
 const STATIC_FILES: Record<string, string> = {
   "/": "index.html",
@@ -95,7 +98,13 @@ export async function createApp(config: AppConfig) {
   const pending = new Map<string, PendingMagicLink>();
   const auth = await createAuthInstance(config, db, pending);
 
-  const app = new Hono();
+  const app = new Hono<{ Bindings: NodeBindings }>();
+
+  app.use("*", (c, next) => {
+    const socketIp = c.env?.incoming?.socket?.remoteAddress || "inconnue";
+    const ip = clientIp(c.req.raw.headers, config.trustProxy, socketIp);
+    return requestContext.run({ ip }, next);
+  });
 
   app.use(
     "*",

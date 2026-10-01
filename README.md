@@ -60,6 +60,12 @@ configured, submitting the email creates the session immediately (the email is
 still stored). Set `RESEND_API_KEY` and `EMAIL_FROM` to send a Better Auth
 magic link instead.
 
+Each new account triggers a notification to `SIGNUP_NOTIFY_EMAIL` (default
+`paul@maj.digital`, `off` to disable) with the user's email and IP address. It
+is sent through the same Resend mailer, so it requires `RESEND_API_KEY` and
+`EMAIL_FROM`. Behind a reverse proxy, set `TRUST_PROXY=1` so the IP comes from
+`X-Forwarded-For` instead of the proxy's own address.
+
 Do not use `python -m http.server` for the dashboard in production: it would
 serve `dashboard/data/` in full and bypass the quota.
 

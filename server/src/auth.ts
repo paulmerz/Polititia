@@ -4,6 +4,8 @@ import { magicLink } from "better-auth/plugins";
 import type { Store } from "./store.ts";
 import type { AppConfig } from "./config.ts";
 import { captureEmail, isValidEmail, normalizeEmail } from "./emails.ts";
+import { escapeHtml, notifySignup, sendEmail } from "./mailer.ts";
+import { requestContext } from "./request-context.ts";
 
 export type PendingMagicLink = {
   email: string;
@@ -52,6 +54,23 @@ export async function createAuthInstance(
     emailAndPassword: {
       enabled: false,
     },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user: { email: string; createdAt: Date }) => {
+            const signup = {
+              email: normalizeEmail(user.email),
+              ip: requestContext.getStore()?.ip || "inconnue",
+              createdAt: new Date(user.createdAt),
+            };
+            // Detached so a mail provider outage never blocks account creation.
+            void notifySignup(config, signup).catch((error) => {
+              console.error("[signup] notification failed:", error);
+            });
+          },
+        },
+      },
+    },
     plugins: [
       magicLink({
         expiresIn: 60 * 15,
@@ -65,22 +84,11 @@ export async function createAuthInstance(
           pending.set(normalized, { email: normalized, token, url });
           captureEmail(config.emailsPath, { email: normalized, source: "magic-link" });
           if (config.hasMailer) {
-            const response = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${config.resendApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: config.emailFrom,
-                to: normalized,
-                subject: "Votre accès Polititia",
-                html: `<p>Cliquez sur ce lien pour continuer à explorer Polititia :</p><p><a href="${url}">Ouvrir Polititia</a></p>`,
-              }),
+            await sendEmail(config, {
+              to: normalized,
+              subject: "Votre accès Polititia",
+              html: `<p>Cliquez sur ce lien pour continuer à explorer Polititia :</p><p><a href="${escapeHtml(url)}">Ouvrir Polititia</a></p>`,
             });
-            if (!response.ok) {
-              throw new Error("Unable to send magic link email.");
-            }
           } else if (!config.isProduction) {
             console.info(`[auth] magic link for ${normalized}: ${url}`);
           }

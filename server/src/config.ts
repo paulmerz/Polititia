@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(SERVER_DIR, "..");
 export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
 export const DEVICE_COOKIE_NAME = "pt_did";
+export const SIGNUP_NOTIFY_EMAIL_DEFAULT = "paul@maj.digital";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
 
 export type AppConfig = {
@@ -30,6 +31,7 @@ export type AppConfig = {
   hasMailer: boolean;
   resendApiKey: string;
   emailFrom: string;
+  signupNotifyEmail: string;
   adminToken: string;
   freeRequestLimit: number;
   allowInsecureHttp: boolean;
@@ -40,6 +42,14 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
     return fallback;
   }
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function parseNotifyEmail(value: string | undefined): string {
+  const trimmed = (value || "").trim().toLowerCase();
+  if (!trimmed) {
+    return SIGNUP_NOTIFY_EMAIL_DEFAULT;
+  }
+  return ["0", "false", "no", "off"].includes(trimmed) ? "" : trimmed;
 }
 
 function parseOrigins(baseURL: string, extra: string | undefined): string[] {
@@ -116,6 +126,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     hasMailer,
     resendApiKey,
     emailFrom,
+    signupNotifyEmail: parseNotifyEmail(env.SIGNUP_NOTIFY_EMAIL),
     adminToken: (env.ADMIN_TOKEN || "").trim(),
     freeRequestLimit: Math.max(1, Number(env.FREE_REQUEST_LIMIT || FREE_REQUEST_LIMIT_DEFAULT) || FREE_REQUEST_LIMIT_DEFAULT),
     allowInsecureHttp,
