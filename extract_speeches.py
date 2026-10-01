@@ -109,6 +109,15 @@ DIDASCALIE_RE = re.compile(
     r"\(\s*(?:" + "|".join(DIDASCALIE_KEYWORDS) + r")[^()]*\)",
     re.IGNORECASE,
 )
+# Parenthesised stage directions that open with a subject rather than a
+# keyword ("(Les députés du groupe LFI-NFP se lèvent et applaudissent.)").
+STAGE_ACTION_RE = re.compile(
+    r"\([^()]*?\b(?:"
+    r"applaudi\w*|se l[èe]v\w*|protest\w*|exclam\w*|coupe le micro|"
+    r"quitt\w* l.hémicycle|brandi\w*|hu[ée]\w*|rires?|sourires?|murmures?"
+    r")\b[^()]*\)",
+    re.IGNORECASE,
+)
 STAGE_DIRECTION_LINE_RE = re.compile(
     r"^\s*(?:"
     r"applaudissements?|vifs applaudissements?|sourires?|rires?|"
@@ -169,6 +178,7 @@ def _flatten_texte(texte_elem: ET.Element) -> str:
 
 def _clean(text: str) -> str:
     text = DIDASCALIE_RE.sub("", text)
+    text = STAGE_ACTION_RE.sub("", text)
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
     lines = [line for line in lines if line and not STAGE_DIRECTION_LINE_RE.match(line)]
     return "\n\n".join(lines)
@@ -222,6 +232,8 @@ def normalize_for_ngrams(text: str) -> str:
     text = text.translate(APOSTROPHE_TRANSLATION).lower()
     text = text.replace("\u00a0", " ").replace("\u202f", " ")
     text = re.sub(r"\bn\s*[°º]\s*", " ", text)
+    # "n<exposant>o</exposant> 2233" flattens to "no 2233".
+    text = re.sub(r"\bn(?:o|os)\s+(?=\d)", " ", text)
     text = re.sub(r"\b\d+(?:[.,]\d+)*(?:er|re|e|ème|eme|es|s)?\b", " ", text)
     text = text.replace("'", " ")
     text = re.sub(r"[\d_]+", " ", text)
@@ -275,6 +287,100 @@ def _resolve_role(orateur: ET.Element) -> str:
     return (qual.text or "").strip()
 
 
+QUESTION_SECTION_PREFIXES = ("QG", "QOSD", "QUESTIONS")
+EMPTY_CONTEXT: dict[str, str] = {}
+
+
+def _point_text(point: ET.Element) -> str:
+    texte = point.find("an:texte", NS)
+    if texte is None:
+        return ""
+    return re.sub(r"\s+", " ", "".join(texte.itertext())).strip()
+
+
+def _clean_attr(value: str | None) -> str:
+    return re.sub(r"\s+", " ", (value or "").replace("_", " ")).strip()
+
+
+def _bill_numbers(value: str | None) -> str:
+    return ",".join(re.findall(r"\d+", value or ""))
+
+
+def _point_context(point: ET.Element, parent: dict[str, str]) -> dict[str, str]:
+    """Agenda context carried by a <point>: debate title, stage, article, amendment."""
+    level = point.attrib.get("nivpoint", "")
+    code = point.attrib.get("code_grammaire", "")
+    text = _point_text(point)
+    ctx = dict(parent)
+    if level == "1":
+        ctx = {"point_title": text, "point_id": point.attrib.get("id_syceron", "")}
+        # The title's own "valeur" names the bill; the "bibard" of the
+        # sub-points is sometimes left over from another debate.
+        if numbers := _bill_numbers(point.attrib.get("valeur")):
+            ctx["bill_number"] = numbers
+            ctx["title_bill"] = "1"
+    elif level == "2":
+        ctx = {key: value for key, value in ctx.items() if key in ("point_title", "point_id", "bill_number", "title_bill")}
+        ctx["point_subtitle"] = text
+    elif level not in ("3", "4", "5"):
+        return parent
+    ctx["section_code"] = code
+    if not ctx.get("title_bill") and (bibard := _bill_numbers(point.attrib.get("bibard"))):
+        ctx["bill_number"] = bibard
+    if level in ("3", "4", "5"):
+        if article := _clean_attr(point.attrib.get("art")):
+            ctx["article"] = article
+        if level != "3" and (amendment := _clean_attr(point.attrib.get("adt"))):
+            ctx["amendment"] = amendment
+        elif level == "3":
+            ctx.pop("amendment", None)
+    return ctx
+
+
+def iter_paragraphs_with_context(root: ET.Element):
+    """Yield (paragraphe, context) in document order.
+
+    Level-1 and level-2 points are flat siblings, so their context lasts until
+    the next sibling of the same level; deeper points (articles, amendments)
+    nest their paragraphs.
+    """
+
+    def walk(node: ET.Element, inherited: dict[str, str]):
+        ctx = inherited
+        for child in node:
+            local = _local(child.tag)
+            if local == "point":
+                point_ctx = _point_context(child, ctx)
+                if child.attrib.get("nivpoint") in ("1", "2"):
+                    ctx = point_ctx
+                    yield from walk(child, ctx)
+                else:
+                    yield from walk(child, point_ctx)
+            elif local == "paragraphe":
+                yield child, ctx
+            else:
+                yield from walk(child, ctx)
+
+    yield from walk(root, EMPTY_CONTEXT)
+
+
+def _context_key(context: dict[str, str]) -> tuple[str, ...]:
+    return tuple(context.get(key, "") for key in ("point_id", "point_subtitle", "article", "amendment"))
+
+
+def debate_topic(context: dict[str, str]) -> str:
+    """Title that best names what is being discussed.
+
+    During question sessions the level-1 title is only "Questions au
+    gouvernement" and the level-2 title carries the actual question topic.
+    """
+    code = context.get("section_code", "")
+    subtitle = context.get("point_subtitle", "")
+    if subtitle and code.startswith(QUESTION_SECTION_PREFIXES):
+        return subtitle
+    return context.get("point_title", "")
+
+
 def segment_speeches(root: ET.Element) -> list[dict]:
     """
     Walk paragraphs in document order and group them into speech segments.
@@ -283,6 +389,8 @@ def segment_speeches(root: ET.Element) -> list[dict]:
         {
             "speaker": str,
             "role": str,                 # qualite from the first paragraph that has one
+            "acteur_id": str,            # id_acteur (PA...) of the first paragraph
+            "context": dict,             # agenda context of the first paragraph
             "paragraphs": list[Element], # the <paragraphe> nodes (no interruptions)
             "n_interruptions_skipped": int,
         }
@@ -299,10 +407,7 @@ def segment_speeches(root: ET.Element) -> list[dict]:
         current = None
         skipped_in_current = 0
 
-    for para in root.iter():
-        if _local(para.tag) != "paragraphe":
-            continue
-
+    for para, context in iter_paragraphs_with_context(root):
         orateur = para.find("an:orateurs/an:orateur", NS)
         if orateur is None:
             continue
@@ -325,12 +430,20 @@ def segment_speeches(root: ET.Element) -> list[dict]:
             flush()
             continue
 
-        # Non-interruption paragraph by a "normal" speaker.
-        if current is None or current["speaker"] != speaker:
+        # Non-interruption paragraph by a "normal" speaker. A new agenda
+        # item (debate, stage, article, amendment) also starts a new speech
+        # even without a presidential hand-off.
+        if (
+            current is None
+            or current["speaker"] != speaker
+            or _context_key(current["context"]) != _context_key(context)
+        ):
             flush()
             current = {
                 "speaker": speaker,
                 "role": _resolve_role(orateur),
+                "acteur_id": para.attrib.get("id_acteur", ""),
+                "context": context,
                 "paragraphs": [para],
             }
             skipped_in_current = 0
@@ -369,12 +482,20 @@ def write_speech_files(
     session_meta = meta or {}
     session_date = normalize_session_date(session_meta)
     written: list[dict[str, str]] = []
+    # The general discussion of a bill carries no bibard; borrow the number
+    # announced later in the same debate (article discussion, final vote).
+    debate_bills: dict[str, str] = {}
+    for seg in segments:
+        ctx = seg.get("context") or EMPTY_CONTEXT
+        if ctx.get("point_id") and ctx.get("bill_number"):
+            debate_bills.setdefault(ctx["point_id"], ctx["bill_number"])
 
     for idx, seg in enumerate(segments, start=1):
         text = render_speech(seg)
         if not text:
             continue
 
+        context = seg.get("context") or EMPTY_CONTEXT
         speaker_slug = _safe_filename(seg["speaker"])
         speech_id = f"{src_stem}__{idx:0{pad}d}__{speaker_slug}"
         path = os.path.join(out_dir, f"{speech_id}.txt")
@@ -391,6 +512,15 @@ def write_speech_files(
             "speaker": seg["speaker"],
             "speaker_slug": speaker_slug,
             "role": seg.get("role") or "",
+            "acteur_id": seg.get("acteur_id") or "",
+            "point_id": context.get("point_id", ""),
+            "point_title": context.get("point_title", ""),
+            "point_subtitle": context.get("point_subtitle", ""),
+            "debate_topic": debate_topic(context),
+            "section_code": context.get("section_code", ""),
+            "bill_number": context.get("bill_number") or debate_bills.get(context.get("point_id", ""), ""),
+            "article": context.get("article", ""),
+            "amendment": context.get("amendment", ""),
             "text": text,
             "normalized_text": normalize_for_ngrams(text),
         })

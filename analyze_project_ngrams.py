@@ -214,6 +214,7 @@ LOW_INFORMATION_TERMS = {
     "là",
     "mêmes",
     "moi",
+    "no",
     "non",
     "notamment",
     "nouveau",
@@ -245,6 +246,12 @@ LOW_INFORMATION_TERMS = {
 }
 PROCEDURAL_CONTENT_TERMS = {
     "alinéa",
+    "applaudissements",
+    "applaudissent",
+    "applaudit",
+    "exclamations",
+    "lèvent",
+    "protestations",
     "amendement",
     "amendements",
     "article",

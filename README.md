@@ -1,17 +1,17 @@
 # Polititia NLP Project
 
-Static dashboard and data-analysis pipeline for French parliamentary speech
-transcripts from the Assemblee nationale open-data Syceron XML archive.
+"La parole des députés": what each deputy and group says, votes and announces
+in the Assemblée nationale, for any period of the 17th legislature. Built from
+the Assemblée nationale open data (Syceron debate XML, actors and organs,
+public votes, legislative files).
 
-## Data Source
+## Data Sources
 
-Raw XML is not committed. Download it from the official Assemblee nationale
-open-data endpoint:
-
-https://data.assemblee-nationale.fr/travaux-parlementaires/debats
-
-The downloader writes the archive and extracted XML under `data/raw/`, which is
+Raw data is not committed. Both downloaders write under `data/raw/`, which is
 ignored by git.
+
+- Debates (comptes rendus): https://data.assemblee-nationale.fr/travaux-parlementaires/debats
+- Actors, mandates and organs (AMO), public votes (scrutins) and legislative files (dossiers).
 
 ## Rebuild Pipeline
 
@@ -19,34 +19,40 @@ Run from the repository root.
 
 ```bash
 uv run python scripts/download_assemblee_data.py
+uv run python scripts/download_open_data.py
 uv run python extract_speeches.py "data/raw/xml/compteRendu/*.xml" "extracted_texts/project_full"
-uv run python analyze_project_ngrams.py \
-  --speaker-dir "extracted_texts/project_full/by_speaker" \
-  --out-dir "analysis_outputs/plain_project_content_stable" \
-  --token-mode surface_content \
-  --ngram-sizes 1 2 3 4 \
-  --top-k 25 \
-  --min-distinctive-count 50
-uv run python scripts/index_session_dates.py
-uv run --extra topics python analyze_topics.py
-uv run python analyze_themes.py \
-  --speeches extracted_texts/project_full/speeches.jsonl \
-  --speaker-dir extracted_texts/project_full/by_speaker \
-  --lexicon themes/lexicon.json \
-  --out-dir analysis_outputs/themes
+uv run --extra topics python analyze_themes.py
+uv run python analyze_stances.py
+uv run python build_analytics_db.py
 uv run python dashboard/build_dashboard_data.py
 ```
 
-`extract_speeches.py` now writes a dated speech index at
-`extracted_texts/project_full/speeches.jsonl`. `analyze_themes.py` attributes
-those speeches to lexical domains in `themes/lexicon.json` and to emerging
-bigram signals. Without the index, the dashboard keeps an empty theme lens.
+- `extract_speeches.py` writes the dated speech index
+  `extracted_texts/project_full/speeches.jsonl` (agenda item, bill number,
+  article, `acteur_id`) and one file per speaker.
+- `analyze_themes.py` attributes speeches to the curated themes of
+  `themes/lexicon.json`: first by the bill being debated and its committee,
+  then by keyword density (never a single keyword). Output:
+  `analysis_outputs/themes/`.
+- `analyze_stances.py` finds explicit vote announcements ("nous voterons ce
+  texte") with high-precision rules, evaluates them on
+  `stances/gold/stance_labels.jsonl` and only publishes methods whose measured
+  precision is at least 85 %. `--nli` adds a zero-shot NLI classifier (needs
+  `transformers`). Output: `analysis_outputs/stances/`.
+- `build_analytics_db.py` builds `analysis_outputs/analytics.sqlite`: monthly
+  aggregates, n-gram counts, theme attributions, votes and stances, so the
+  server can answer for any period. It also checks the stances against the
+  speakers' actual key votes.
+- `dashboard/build_dashboard_data.py` writes the small first-load bundle
+  `dashboard/data/dashboard-data.json` (people, groups, style markers).
+
+`uv run --extra topics --with pytest pytest -q` runs the Python tests.
 
 ## Serve Dashboard
 
-The dashboard is no longer a static dump of every phrase. A small Node server
-meters per-politician analysis, captures emails, and keeps sessions in a local
-SQLite file (`server/data/auth.sqlite`) plus an append-only `emails.jsonl`.
+A small Node server (Hono, Better Auth, SQLite) serves the dashboard and
+answers every analysis from `analytics.sqlite`. Sessions and the free-analysis
+counter live in `server/data/auth.sqlite`.
 
 Node.js 22.13 or newer is required (`node -v`). From `server/`, install dependencies once, then start. `npm start` runs the TypeScript entry with Node itself. Sessions are stored with Node's built-in SQLite, so the install does not compile a native module and does not need Visual Studio or `pnpm approve-builds`.
 
@@ -60,49 +66,57 @@ npm start
 
 On Windows Command Prompt the same two commands apply. `npm start` alone fails with « tsx n'est pas reconnu » when `npm install` has not been run in `server/`.
 
-Open http://127.0.0.1:8000. Anonymous visitors can open 10 deputy analyses
-(IP **and** device cookie). Further analyses require an email. With no mailer
-configured, submitting the email creates the session immediately (the email is
-still stored). Set `RESEND_API_KEY` and `EMAIL_FROM` to send a Better Auth
-magic link instead.
+Open http://127.0.0.1:8000.
 
-Do not use `python -m http.server` for the dashboard in production: it would
-serve `dashboard/data/` in full and bypass the quota.
+- The first screen is free. Each analysis a visitor asks for (a deputy, a
+  group, a theme or the Assembly, for a period) counts once, whatever the
+  number of requests behind it; seeing it again is free.
+- After 10 analyses (IP **and** device cookie), access stays free once the
+  visitor confirms an email: a magic link, valid 15 minutes. The address is
+  stored only after the link is opened, and only to tell people from robots.
+  A honeypot field, a disposable-domain list, a per-IP rate limit, a resend
+  cooldown and optional Cloudflare Turnstile protect the form.
+- With no mailer configured (development only), the link is logged and shown
+  in the browser.
+- `/conditions` states the terms and retention; `/methode` explains how themes,
+  distinctive phrases, votes and estimated stances are computed.
+
+Do not serve `dashboard/` with a static server in production: the analyses
+would bypass the quota.
+
+Environment (`server/.env`):
+
+| Variable | Purpose |
+| --- | --- |
+| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Session signing and public URL (https in production) |
+| `HOST`, `PORT`, `TRUST_PROXY` | Bind address; set `TRUST_PROXY=1` behind a reverse proxy |
+| `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional captcha on the email form (both or neither) |
+| `ANALYTICS_DB_PATH` | Defaults to `analysis_outputs/analytics.sqlite` |
+| `DASHBOARD_DATA_PATH`, `DATA_DIR` | First-load bundle and server data directory |
+| `AUTH_TRUSTED_ORIGINS`, `ALLOW_INSECURE_HTTP` | Extra allowed origins; plain HTTP outside production |
+| `STANCE_LLM_URL`, `STANCE_LLM_MODEL`, `STANCE_LLM_KEY` | Optional LLM classifier for `analyze_stances.py` |
 
 Production checklist:
 
 - `NODE_ENV=production`
 - `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
+- `RESEND_API_KEY` and `EMAIL_FROM`
 - `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY=1`
-- optional `ADMIN_TOKEN` for `GET /api/admin/emails`
 - `server/data/` is not published (gitignored)
+- add the publisher's contact address to `dashboard/conditions.html`
 
 ```bash
 cd server && npm test
 ```
 
-Optional per-speaker distribution export:
+## Dashboard
 
-```bash
-uv run python ngram_distribution.py "extracted_texts/project_full/by_speaker" \
-  --out "analysis_outputs/ngram_distribution_project_full_surface.csv" \
-  --ngram-sizes 1 2 3 4 \
-  --top-k 20 \
-  --token-mode surface
-```
-
-The documented pipeline has no required third-party dependencies. Optional extras:
-
-```bash
-uv run --extra lemma python analyze_project_ngrams.py --token-mode lemma_content
-uv run --extra topics python analyze_topics.py
-```
-
-The dashboard **Sujets** tab needs the topic extra and `analyze_topics.py`.
-The hemicycle **Enjeu** lens needs `analyze_themes.py` and the dated speech index.
-Seat size (interventions vs words) is a client-side toggle. Without `speeches.jsonl`, the theme lens stays empty.
-
-The dashboard defaults to **Citoyen** mode (French plain-language labels) with a **Scientifique** toggle.
+Four tabs: **Thèmes**, **Député**, **Groupe**, **Assemblée** (plus **Style**
+in the detailed mode). The period selector (whole legislature, last 12 or 3
+months, parliamentary sessions, custom months) applies everywhere, including
+seat sizes, and the state is kept in the URL so any view can be shared.
 
 ## Ignored Outputs
 

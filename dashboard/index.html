@@ -3,23 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>L'hémicycle des idées et des mots</title>
-    <link rel="stylesheet" href="styles.css?v=merged-2" />
+    <title>La parole des députés</title>
+    <link rel="stylesheet" href="styles.css?v=parole-4" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
       <div class="brand-block">
-        <p class="eyebrow" id="appEyebrow">La parole des députés</p>
-        <h1 id="appTitle">L'hémicycle des idées et des mots</h1>
+        <p class="eyebrow">L'hémicycle des idées et des mots</p>
+        <h1 id="appTitle">La parole des députés</h1>
         <div class="access-status">
-          <span class="quota-chip" id="quotaChip">10/10 analyses</span>
-          <span class="session-label" id="sessionLabel" hidden></span>
+          <span class="quota-chip" id="quotaChip" tabindex="0">10 analyses gratuites restantes</span>
+          <button class="account-chip" id="accountButton" type="button" hidden></button>
         </div>
       </div>
       <div class="topbar-side">
-        <div class="mode-toggle" role="group" aria-label="Mode d'affichage">
-          <button class="mode-button is-active" type="button" data-audience-mode="citizen">Citoyen</button>
-          <button class="mode-button" type="button" data-audience-mode="scientific">Scientifique</button>
+        <div class="topbar-controls">
+          <div class="period-control" id="periodControl">
+            <label class="field">
+              <span>Période</span>
+              <select id="periodSelect"></select>
+            </label>
+            <div class="period-custom" id="periodCustom" hidden>
+              <label class="field">
+                <span>Du</span>
+                <input id="periodFrom" type="month" />
+              </label>
+              <label class="field">
+                <span>Au</span>
+                <input id="periodTo" type="month" />
+              </label>
+            </div>
+          </div>
+          <div class="mode-toggle" role="group" aria-label="Niveau de détail">
+            <button class="mode-button is-active" type="button" data-audience-mode="citizen">Simple</button>
+            <button class="mode-button" type="button" data-audience-mode="scientific">Détaillé</button>
+          </div>
         </div>
         <div class="summary-strip" id="summaryStrip"></div>
       </div>
@@ -29,31 +47,31 @@
       <section class="chamber-panel" id="chamberPanel" aria-label="Carte de l'hémicycle">
         <div class="toolbar">
           <label class="field search-field">
-            <span id="searchLabel">Rechercher</span>
+            <span>Chercher un député</span>
             <input id="searchInput" type="search" autocomplete="off" placeholder="Nom" />
           </label>
           <label class="field">
-            <span id="partyFilterLabel">Groupe</span>
+            <span>Groupe</span>
             <select id="partyFilter"></select>
           </label>
           <label class="field theme-field">
-            <span id="themeFieldLabel">Enjeu</span>
+            <span>Thème</span>
             <div class="theme-combobox">
-              <input id="themeSearch" type="search" autocomplete="off" placeholder="Tous les enjeux" />
+              <input id="themeSearch" type="search" autocomplete="off" placeholder="Tous les thèmes" />
               <div class="theme-menu" id="themeMenu" hidden></div>
             </div>
           </label>
-          <label class="toggle-field">
-            <input id="showUnlabeled" type="checkbox" />
-            <span id="unlabeledLabel">Non rattachés</span>
-          </label>
           <div class="field">
-            <span id="seatSizeLabel">Taille des sièges</span>
+            <span>Taille des sièges</span>
             <div class="segmented" id="seatSizeGroup" role="group" aria-label="Taille des sièges">
               <button type="button" data-seat-metric="speeches" aria-pressed="false">Interventions</button>
-              <button type="button" data-seat-metric="tokens" class="is-active" aria-pressed="true">Mots</button>
+              <button type="button" data-seat-metric="words" class="is-active" aria-pressed="true">Mots</button>
             </div>
           </div>
+          <label class="toggle-field">
+            <input id="showOthers" type="checkbox" />
+            <span>Afficher le gouvernement et les autres intervenants</span>
+          </label>
         </div>
 
         <div class="search-results" id="searchResults"></div>
@@ -68,44 +86,94 @@
 
       <aside class="analysis-panel">
         <div class="tabs" id="analysisTabs" role="tablist" aria-label="Sections d'analyse">
-          <button class="tab" data-tab="theme" type="button" id="themeTab" hidden>Enjeu</button>
-          <button class="tab is-active" data-tab="politician" type="button">Député</button>
-          <button class="tab" data-tab="party" type="button">Groupe</button>
-          <button class="tab" data-tab="markers" type="button">Style</button>
-          <button class="tab" data-tab="corpus" type="button">Assemblée</button>
-          <button class="tab" data-tab="themes" type="button">Sujets</button>
+          <button class="tab is-active" data-tab="themes" type="button">Thèmes</button>
+          <button class="tab" data-tab="depute" type="button">Député</button>
+          <button class="tab" data-tab="groupe" type="button">Groupe</button>
+          <button class="tab" data-tab="assemblee" type="button">Assemblée</button>
+          <button class="tab scientific-only" data-tab="style" type="button">Style</button>
         </div>
         <div id="analysisContent"></div>
       </aside>
     </main>
 
+    <footer class="app-footer">
+      <span>Données : comptes rendus et scrutins publiés par l'Assemblée nationale (open data).</span>
+      <nav aria-label="Informations">
+        <a href="/methode">Méthode et limites</a>
+        <a href="/conditions">Conditions et données personnelles</a>
+      </nav>
+    </footer>
+
     <dialog id="politicianDialog" class="detail-dialog">
       <div class="dialog-bar">
         <div id="dialogTitle"></div>
-        <button class="close-button" id="closeDialog" type="button" aria-label="Fermer">x</button>
+        <button class="close-button" id="closeDialog" type="button" aria-label="Fermer">×</button>
       </div>
       <div id="dialogContent"></div>
     </dialog>
 
-    <dialog id="accessGate" class="detail-dialog gate-dialog">
+    <dialog id="accessGate" class="detail-dialog gate-dialog" aria-labelledby="gateTitle">
       <div class="dialog-bar">
-        <div>Continuer avec votre email</div>
-        <button class="close-button" id="closeGate" type="button" aria-label="Fermer">x</button>
+        <div id="gateTitle">Continuer gratuitement</div>
+        <button class="close-button" id="closeGate" type="button" aria-label="Fermer">×</button>
       </div>
-      <form id="gateForm" class="gate-body">
-        <p id="gateCopy">Vous avez utilisé vos analyses gratuites. L’accès illimité s’ouvre avec un email — c’est la seule contrepartie.</p>
+      <form id="gateForm" class="gate-body" novalidate>
+        <p id="gateLead">Vous avez utilisé vos analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.</p>
+        <p class="gate-why">
+          Pour éviter les usages abusifs (robots, aspiration massive des données), nous vérifions que chaque utilisateur est
+          une personne réelle. Votre email sert uniquement à cela : pas de newsletter, pas de revente, pas de prospection.
+        </p>
         <label class="field">
-          <span>Email</span>
-          <input id="gateEmail" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="vous@organisation.fr" />
+          <span>Adresse email</span>
+          <input id="gateEmail" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="vous@exemple.fr" />
         </label>
-        <p class="source-note">En indiquant votre email, vous acceptez d’être recontacté au sujet de Polititia.</p>
-        <p class="source-note" id="gateHint">L’email débloque l’accès. C’est l’unique contrepartie demandée.</p>
-        <p class="gate-error" id="gateError" hidden></p>
-        <button class="gate-submit" id="gateSubmit" type="submit">Continuer</button>
+        <label class="gate-honeypot" aria-hidden="true">
+          <span>Site web (laisser vide)</span>
+          <input id="gateWebsite" type="text" name="website" tabindex="-1" autocomplete="off" />
+        </label>
+        <div id="gateTurnstile" class="gate-turnstile" hidden></div>
+        <p class="gate-error" id="gateError" role="alert" hidden></p>
+        <button class="gate-submit" id="gateSubmit" type="submit">Recevoir le lien de confirmation</button>
+        <p class="source-note">
+          Nous vous envoyons un lien valable 15 minutes. Voir les <a href="/conditions" target="_blank" rel="noopener">conditions</a> :
+          adresse supprimée au plus tard 3 ans après votre dernière connexion, suppression possible à tout moment.
+        </p>
       </form>
+      <div id="gateCheck" class="gate-body" hidden>
+        <p class="gate-check-title">Vérifiez votre boîte de réception</p>
+        <p>Un lien de confirmation a été envoyé à <strong id="gateSentTo"></strong>. Ouvrez-le dans ce navigateur : l'accès se débloque automatiquement.</p>
+        <p class="source-note">Rien reçu ? Regardez dans les indésirables, ou demandez un nouveau lien.</p>
+        <p class="gate-dev" id="gateDevLink" hidden>
+          Mode développement (aucun envoi d'email configuré) : <a href="#">ouvrir le lien de confirmation</a>
+        </p>
+        <p class="gate-error" id="gateCheckMessage" role="status" hidden></p>
+        <div class="gate-actions">
+          <button class="gate-submit" id="gateDone" type="button">J'ai confirmé</button>
+          <button class="gate-secondary" id="gateResend" type="button">Renvoyer le lien</button>
+          <button class="gate-secondary" id="gateChangeEmail" type="button">Changer d'adresse</button>
+        </div>
+      </div>
     </dialog>
 
-    <script src="quota-gate.js?v=merged-2"></script>
-    <script src="app.js?v=merged-2"></script>
+    <dialog id="accountDialog" class="detail-dialog gate-dialog" aria-labelledby="accountTitle">
+      <div class="dialog-bar">
+        <div id="accountTitle">Votre compte</div>
+        <button class="close-button" id="closeAccount" type="button" aria-label="Fermer">×</button>
+      </div>
+      <div class="gate-body">
+        <p>Connecté avec <strong id="accountEmail"></strong>. Votre adresse sert uniquement à vérifier que vous êtes une personne réelle.</p>
+        <p class="source-note" id="accountMessage" role="status" hidden></p>
+        <div class="gate-actions">
+          <button class="gate-secondary" id="signOutButton" type="button">Se déconnecter</button>
+          <button class="gate-secondary is-danger" id="deleteAccountButton" type="button">Supprimer mon compte</button>
+        </div>
+        <p class="source-note"><a href="/conditions">Conditions et données personnelles</a></p>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="quota-gate.js?v=parole-4"></script>
+    <script src="app.js?v=parole-4"></script>
   </body>
 </html>
