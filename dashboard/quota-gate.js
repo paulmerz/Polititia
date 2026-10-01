@@ -239,7 +239,7 @@ window.PolititiaGate = (function createGate() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email, website, turnstileToken: turnstileToken() }),
+      body: JSON.stringify({ email, website, turnstileToken: turnstileToken(), returnTo: window.location.search }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {

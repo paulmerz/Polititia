@@ -2059,6 +2059,18 @@ button.party-pill {
   font-size: 0.82rem;
 }
 
+.gate-dev a {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--accent-dark);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
 .gate-actions {
   display: flex;
   flex-wrap: wrap;
