@@ -48,11 +48,17 @@ The dashboard is no longer a static dump of every phrase. A small Node server
 meters per-politician analysis, captures emails, and keeps sessions in a local
 SQLite file (`server/data/auth.sqlite`) plus an append-only `emails.jsonl`.
 
+Node.js 22.13 or newer is required (`node -v`). From `server/`, install dependencies once, then start. `npm start` runs the TypeScript entry with Node itself. Sessions are stored with Node's built-in SQLite, so the install does not compile a native module and does not need Visual Studio or `pnpm approve-builds`.
+
 ```bash
 cp server/.env.example server/.env
 # set BETTER_AUTH_SECRET to a 32+ character random string before production
-cd server && npm install && npm start
+cd server
+npm install
+npm start
 ```
+
+On Windows Command Prompt the same two commands apply. `npm start` alone fails with « tsx n'est pas reconnu » when `npm install` has not been run in `server/`.
 
 Open http://127.0.0.1:8000. Anonymous visitors can open 10 deputy analyses
 (IP **and** device cookie). Further analyses require an email. With no mailer
