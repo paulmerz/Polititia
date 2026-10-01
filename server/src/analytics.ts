@@ -1,5 +1,5 @@
-import Database from "better-sqlite3";
 import { existsSync, statSync } from "node:fs";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { dirichletLogOdds, MIN_COUNT, type LogOddsRow } from "./lexical.ts";
 
 // Everything a visitor can filter by period is computed here from the monthly
@@ -89,15 +89,17 @@ function stanceLevel(favorable: number, unfavorable: number, mixed: number): str
 }
 
 export class Analytics {
-  readonly db: Database.Database;
+  readonly path: string;
+  readonly db: DatabaseSync;
   readonly meta: AnalyticsMeta;
   readonly themeIds: Map<string, ThemeCatalogEntry>;
   private cache = new Map<string, unknown>();
   private voteGroups = new Map<number, { majority: Record<string, string>; counts: Record<string, GroupCounts> }>();
 
-  constructor(readonly path: string) {
-    this.db = new Database(path, { readonly: true, fileMustExist: true });
-    this.db.pragma("query_only = ON");
+  constructor(path: string) {
+    this.path = path;
+    this.db = new DatabaseSync(path, { readOnly: true });
+    this.db.exec("PRAGMA query_only = ON");
     const rows = this.db.prepare("SELECT key, value FROM meta").all() as Array<{ key: string; value: string }>;
     const meta = Object.fromEntries(rows.map((row) => [row.key, parseJson(row.value, null)])) as Partial<AnalyticsMeta>;
     this.meta = {
@@ -292,7 +294,7 @@ export class Analytics {
     });
   }
 
-  private excerpts(where: string, params: unknown[], themeIds: string[], limit = EXCERPT_LIMIT, diverseParties = false) {
+  private excerpts(where: string, params: SQLInputValue[], themeIds: string[], limit = EXCERPT_LIMIT, diverseParties = false) {
     const themeClause = themeIds.length
       ? `AND (ta.theme IN (${themeIds.map(() => "?").join(",")}) OR ta.domain IN (${themeIds.map(() => "?").join(",")}))`
       : "";
@@ -367,7 +369,7 @@ export class Analytics {
     });
   }
 
-  private stancesFor(where: string, params: unknown[]) {
+  private stancesFor(where: string, params: SQLInputValue[]) {
     const rows = this.db
       .prepare(
         `SELECT st.theme, st.stance, st.confidence, st.method, st.quote, s.date, s.debate_title AS debate,

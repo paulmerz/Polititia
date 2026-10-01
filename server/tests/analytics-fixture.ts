@@ -1,7 +1,7 @@
-import Database from "better-sqlite3";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const SCHEMA = readFileSync(
@@ -37,7 +37,7 @@ const EXCERPT =
 export function buildAnalyticsFixture(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "polititia-analytics-"));
   const file = path.join(dir, "analytics.sqlite");
-  const db = new Database(file);
+  const db = new DatabaseSync(file);
   db.exec(SCHEMA);
 
   const politicians = [
