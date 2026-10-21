@@ -25,7 +25,8 @@ test("device cookie is signed and rejected if tampered", () => {
   const deviceId = createDeviceId();
   const cookie = signDeviceId(secret, deviceId);
   assert.equal(parseDeviceCookie(secret, cookie), deviceId);
-  assert.equal(parseDeviceCookie(secret, cookie.replace(/[0-9a-f]$/i, "0")), null);
+  const tampered = `${cookie.slice(0, -1)}${cookie.endsWith("0") ? "1" : "0"}`;
+  assert.equal(parseDeviceCookie(secret, tampered), null);
   assert.equal(parseDeviceCookie(secret, deviceId), null);
 });
 
