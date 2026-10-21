@@ -45,7 +45,8 @@ select {
 
 .brand-block {
   display: flex;
-  align-items: center;
+  align-self: start;
+  align-items: start;
   gap: 22px;
   min-width: 0;
 }
