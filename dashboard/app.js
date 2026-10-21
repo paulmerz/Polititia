@@ -608,7 +608,7 @@ function renderSummary() {
           </div>`,
       )
       .join("")}
-    <p class="summary-period">Période : ${escapeHtml(periodLabel())}</p>`;
+    <p class="summary-period">Période : <span>${escapeHtml(periodLabel())}</span></p>`;
 }
 
 function renderSearchResults() {

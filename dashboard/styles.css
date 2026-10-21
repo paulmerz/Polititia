@@ -34,16 +34,20 @@ select {
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "brand access"
+    "summary controls";
   align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 20px 28px 16px;
+  gap: 14px 24px;
+  padding: 16px 28px 14px;
   border-bottom: 1px solid var(--line);
   background: #fbfaf7;
 }
 
 .brand-block {
+  grid-area: brand;
   align-self: start;
   min-width: 0;
 }
@@ -72,13 +76,6 @@ select {
 
 .page-logo img {
   height: 46px;
-}
-
-.topbar-side {
-  display: flex;
-  flex-direction: column;
-  align-items: end;
-  gap: 10px;
 }
 
 .mode-toggle {
@@ -134,15 +131,15 @@ h1 {
 }
 
 .summary-strip {
+  grid-area: summary;
   display: grid;
-  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  grid-template-columns: repeat(4, minmax(96px, auto)) minmax(120px, 190px);
   gap: 8px;
-  width: min(600px, 52vw);
 }
 
 .metric {
   min-width: 0;
-  padding: 10px 11px;
+  padding: 8px 11px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
@@ -1183,9 +1180,13 @@ h1 {
 }
 
 .access-status {
+  grid-area: access;
   display: flex;
+  align-self: center;
+  justify-self: end;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .quota-chip,
@@ -1257,26 +1258,15 @@ h1 {
 
 @media (max-width: 1080px) {
   .topbar {
-    position: relative;
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .access-status {
-    position: absolute;
-    top: 20px;
-    right: 28px;
-    height: 52px;
-  }
-
-  .topbar-side {
-    align-items: start;
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand access"
+      "controls controls"
+      "summary summary";
   }
 
   .summary-strip {
-    width: 100%;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .app-shell {
@@ -1296,11 +1286,6 @@ h1 {
   }
 
   .brand-logo img {
-    height: 44px;
-  }
-
-  .access-status {
-    right: 12px;
     height: 44px;
   }
 
@@ -1325,7 +1310,10 @@ h1 {
     min-height: 390px;
   }
 
-  .summary-strip,
+  .summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .stat-grid,
   .language-mini-grid,
   .two-column,
@@ -1543,6 +1531,7 @@ body:not([data-mode="scientific"]) .scientific-only {
 }
 
 .topbar-controls {
+  grid-area: controls;
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -1575,11 +1564,15 @@ body:not([data-mode="scientific"]) .scientific-only {
 }
 
 .summary-period {
-  grid-column: 1 / -1;
-  margin: 0;
+  align-self: center;
+  margin: 0 0 0 4px;
   color: var(--muted);
   font-size: 0.76rem;
-  text-align: right;
+  line-height: 1.35;
+}
+
+.summary-period span {
+  display: block;
 }
 
 .app-footer {
@@ -2206,7 +2199,12 @@ button.party-pill {
   }
 
   .summary-period {
-    text-align: left;
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+
+  .summary-period span {
+    display: inline;
   }
 }
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=parole-9" />
+    <link rel="stylesheet" href="styles.css?v=parole-10" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
@@ -14,34 +14,32 @@
         </a>
         <h1 id="appTitle" class="visually-hidden">La parole des députés</h1>
       </div>
-      <div class="topbar-side">
-        <div class="access-status">
-          <span class="quota-chip" id="quotaChip" tabindex="0">10 analyses gratuites restantes</span>
-          <button class="account-chip" id="accountButton" type="button" hidden></button>
-        </div>
-        <div class="topbar-controls">
-          <div class="period-control" id="periodControl">
+      <div class="access-status">
+        <span class="quota-chip" id="quotaChip" tabindex="0">10 analyses gratuites restantes</span>
+        <button class="account-chip" id="accountButton" type="button" hidden></button>
+      </div>
+      <div class="summary-strip" id="summaryStrip"></div>
+      <div class="topbar-controls">
+        <div class="period-control" id="periodControl">
+          <label class="field">
+            <span>Période</span>
+            <select id="periodSelect"></select>
+          </label>
+          <div class="period-custom" id="periodCustom" hidden>
             <label class="field">
-              <span>Période</span>
-              <select id="periodSelect"></select>
+              <span>Du</span>
+              <input id="periodFrom" type="month" />
             </label>
-            <div class="period-custom" id="periodCustom" hidden>
-              <label class="field">
-                <span>Du</span>
-                <input id="periodFrom" type="month" />
-              </label>
-              <label class="field">
-                <span>Au</span>
-                <input id="periodTo" type="month" />
-              </label>
-            </div>
-          </div>
-          <div class="mode-toggle" role="group" aria-label="Niveau de détail">
-            <button class="mode-button is-active" type="button" data-audience-mode="citizen">Simple</button>
-            <button class="mode-button" type="button" data-audience-mode="scientific">Détaillé</button>
+            <label class="field">
+              <span>Au</span>
+              <input id="periodTo" type="month" />
+            </label>
           </div>
         </div>
-        <div class="summary-strip" id="summaryStrip"></div>
+        <div class="mode-toggle" role="group" aria-label="Niveau de détail">
+          <button class="mode-button is-active" type="button" data-audience-mode="citizen">Simple</button>
+          <button class="mode-button" type="button" data-audience-mode="scientific">Détaillé</button>
+        </div>
       </div>
     </header>
 
@@ -176,6 +174,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
     <script src="quota-gate.js?v=parole-5"></script>
-    <script src="app.js?v=parole-6"></script>
+    <script src="app.js?v=parole-7"></script>
   </body>
 </html>
