@@ -117,7 +117,10 @@ npm run geoip               # city precision, about 130 MB on disk and in memory
 npm run geoip -- --country  # country only, about 8 MB
 ```
 
-The running server reloads the file within 10 minutes. Request counts and
+The running server reloads the file within 10 minutes. On hosts where the
+data disk is only mounted at runtime (Render), start with
+`npm run geoip -- --if-stale && npm start`: the file is only downloaded when
+missing or older than 30 days, and a failed download never blocks the start. Request counts and
 locations are kept 12 months and deleted with the account.
 
 Environment (`server/.env`):
