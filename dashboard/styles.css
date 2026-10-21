@@ -1486,6 +1486,10 @@ body:not([data-mode="scientific"]) .scientific-only {
   display: none;
 }
 
+.sign-in-chip::before {
+  content: none;
+}
+
 .topbar-controls {
   display: flex;
   flex-wrap: wrap;
@@ -2190,7 +2194,6 @@ button.party-pill {
 
 .admin-session[hidden],
 .admin-content[hidden],
-.admin-login[hidden],
 .admin-body [hidden] {
   display: none;
 }
@@ -2198,22 +2201,6 @@ button.party-pill {
 .admin-content {
   display: grid;
   gap: 14px;
-}
-
-.admin-login-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.admin-login-form .field {
-  flex: 1 1 260px;
-}
-
-.admin-login-form .page-button {
-  min-height: 39px;
 }
 
 .admin-stats {

@@ -74,23 +74,28 @@ test("the admin pages do not exist without ADMIN_EMAILS", async () => {
   assert.equal(write.status, 404);
 });
 
-test("only the listed accounts open the admin", async () => {
-  const { client, overview } = await startAdminApp();
+test("the admin pages only exist for a signed-in administrator", async () => {
+  const { admin, client, overview } = await startAdminApp();
   const visitor = client(anywhere());
 
-  const page = await visitor.request("/admin");
+  for (const path of ["/admin", "/admin.js", "/api/admin/overview"]) {
+    const anonymous = await visitor.request(path);
+    assert.equal(anonymous.status, 404, path);
+    assert.deepEqual(await anonymous.json(), { error: "not_found" }, path);
+  }
+  await visitor.signIn("reader@example.org");
+  for (const path of ["/admin", "/admin.js", "/api/admin/overview"]) {
+    const reader = await visitor.request(path);
+    assert.equal(reader.status, 404, path);
+    assert.deepEqual(await reader.json(), { error: "not_found" }, path);
+  }
+
+  const page = await admin.request("/admin");
   assert.equal(page.status, 200);
   assert.match(page.headers.get("content-type") || "", /text\/html/);
   assert.equal(page.headers.get("x-robots-tag"), "noindex, nofollow");
-
-  const anonymous = await visitor.request("/api/admin/overview");
-  assert.equal(anonymous.status, 401);
-  assert.equal((await anonymous.json()).auth.exposeMagicLink, true, "the login form knows how links are sent");
-
-  await visitor.signIn("reader@example.org");
-  const reader = await visitor.request("/api/admin/overview");
-  assert.equal(reader.status, 403);
-  assert.deepEqual(await reader.json(), { error: "not_admin", session: { email: "reader@example.org" } });
+  assert.doesNotMatch(await page.text(), /<form|type="email"/, "the page has no sign-in form");
+  assert.equal((await admin.request("/admin.js")).status, 200);
 
   const data = await overview();
   assert.equal(data.me.email, ADMIN, "ADMIN_EMAILS is trimmed and case-insensitive");
@@ -212,7 +217,7 @@ test("administrators cannot be blocked and admin writes check the origin", async
     method: "POST",
     headers: { origin: ORIGIN },
   });
-  assert.equal(byReader.status, 403);
+  assert.equal(byReader.status, 404);
   assert.equal((await overview()).stats.blocked, 0);
 });
 
@@ -252,15 +257,17 @@ test("activity older than 12 months is purged", async () => {
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM "user"`).get() as { n: number }).n, 2, "accounts are kept");
 });
 
-test("the admin login link brings the administrator back to /admin", async () => {
-  const { client, db } = await startAdminApp();
-  const visitor = client(anywhere());
+test("an administrator whose session ended signs in from the homepage and gets the admin back", async () => {
+  const { admin, client, db } = await startAdminApp();
+  assert.equal((await admin.request("/admin")).status, 200);
+  admin.jar.cookies.clear();
+  assert.equal((await admin.request("/admin")).status, 404, "without its session cookie the browser is a stranger");
+
+  const returning = client(anywhere());
   db.exec("DELETE FROM email_sends");
-  const payload = await (await visitor.register(ADMIN, { returnTo: "/admin" })).json();
-  assert.equal(new URL(payload.devLink).searchParams.get("callbackURL"), "/admin");
-  const landed = await visitor.verify(payload.devLink);
-  assert.match(landed.headers.get("location") || "", /\/admin$/);
-  assert.equal((await visitor.request("/api/admin/overview")).status, 200);
+  await returning.signIn(ADMIN);
+  assert.equal((await returning.request("/admin")).status, 200);
+  assert.equal((await returning.request("/api/admin/overview")).status, 200);
 });
 
 test("the admin page carries every element its script drives", async () => {
@@ -273,7 +280,7 @@ test("the admin page carries every element its script drives", async () => {
   for (const match of script.matchAll(/geoRows\("([A-Za-z]+)"/g)) {
     ids.add(match[1]);
   }
-  assert.ok(ids.size > 20);
+  assert.ok(ids.size > 15);
   for (const id of ids) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Administration · La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=admin-1" />
+    <link rel="stylesheet" href="styles.css?v=admin-2" />
   </head>
   <body class="page-body admin-body">
     <header class="page-header">
@@ -23,24 +23,11 @@
     </header>
 
     <main class="page-main">
-      <section class="page-card admin-login" id="adminLogin" hidden>
-        <h2>Connexion</h2>
-        <p>Réservé aux adresses déclarées dans <code>ADMIN_EMAILS</code>. Vous recevez un lien de connexion valable 15 minutes.</p>
-        <form id="adminLoginForm" class="admin-login-form" novalidate>
-          <label class="field">
-            <span>Adresse email</span>
-            <input id="adminLoginEmail" type="email" name="email" autocomplete="email" required maxlength="254" />
-          </label>
-          <label class="gate-honeypot" aria-hidden="true">
-            <span>Site web (laisser vide)</span>
-            <input id="adminLoginWebsite" type="text" name="website" tabindex="-1" autocomplete="off" />
-          </label>
-          <div id="adminTurnstile" class="gate-turnstile" hidden></div>
-          <button type="submit" class="page-button" id="adminLoginSubmit">Recevoir le lien</button>
-        </form>
-        <p class="source-note" id="adminLoginMessage" role="status" hidden></p>
-        <p class="gate-dev" id="adminDevLink" hidden>
-          Mode développement (aucun envoi d’email configuré) : <a href="#">ouvrir le lien de connexion</a>
+      <section class="page-card" id="adminSignedOut" hidden>
+        <h2>Session terminée</h2>
+        <p>
+          Reconnectez-vous depuis <a href="/">l’accueil</a> avec votre adresse administrateur (bouton « Se connecter »),
+          puis revenez sur cette page.
         </p>
       </section>
 
@@ -137,6 +124,6 @@
       <a href="/">Hémicycle</a> · <a href="/conditions">Conditions et confidentialité</a> ·
       <span id="geoCredit" hidden><a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a></span>
     </footer>
-    <script src="admin.js?v=admin-1"></script>
+    <script src="admin.js?v=admin-2"></script>
   </body>
 </html>

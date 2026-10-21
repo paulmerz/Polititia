@@ -144,7 +144,7 @@ test("the emailed link brings the visitor back to the view they were on", async 
   const location = (await verify(kept.devLink)).headers.get("location") || "";
   assert.match(location, /\/\?onglet=groupe&groupe=RN&verifie=1$/);
 
-  for (const [index, returnTo] of ["//evil.example", "https://evil.example/?a=1", "?a=<script>"].entries()) {
+  for (const [index, returnTo] of ["//evil.example", "https://evil.example/?a=1", "?a=<script>", "/admin"].entries()) {
     const payload = await (await register(`elsewhere${index}@example.org`, { returnTo })).json();
     const callback = new URL(payload.devLink).searchParams.get("callbackURL");
     assert.equal(callback, "/?verifie=1", returnTo);

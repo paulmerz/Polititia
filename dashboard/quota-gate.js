@@ -19,6 +19,8 @@ window.PolititiaGate = (function createGate() {
     disposable_email: "Les adresses jetables (boîtes temporaires) ne sont pas acceptées : elles ne permettent pas de vérifier qu’une personne réelle se connecte.",
     captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
     rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
+    address_limit: "Trop de liens ont été envoyés à cette adresse aujourd’hui. Utilisez le dernier reçu ou réessayez demain.",
+    daily_limit: "Le service a atteint sa limite d’envoi d’emails pour aujourd’hui. Réessayez plus tard.",
     account_blocked: "Ce compte a été bloqué. Écrivez à l’éditeur du service si vous pensez qu’il s’agit d’une erreur.",
     forbidden: "Requête refusée par le serveur.",
     invalid_json: "Requête invalide.",
@@ -44,16 +46,19 @@ window.PolititiaGate = (function createGate() {
   function renderChip() {
     const chip = $("quotaChip");
     const account = $("accountButton");
-    if (!chip || !account) {
+    const signIn = $("signInButton");
+    if (!chip || !account || !signIn) {
       return;
     }
     if (state.session?.email) {
       chip.hidden = true;
+      signIn.hidden = true;
       account.hidden = false;
       account.textContent = state.session.email;
       return;
     }
     account.hidden = true;
+    signIn.hidden = false;
     chip.hidden = false;
     const remaining = Math.max(0, Number(state.quota.remaining || 0));
     chip.textContent = remaining
@@ -123,10 +128,16 @@ window.PolititiaGate = (function createGate() {
     $("gateCheck").hidden = step !== "check";
   }
 
-  function show() {
+  // "signin" is a returning visitor who asked to sign in; otherwise the free
+  // analyses are used up.
+  function show(reason = "quota") {
     const dialog = $("accessGate");
     const limit = state.quota?.limit || 10;
-    $("gateLead").textContent = `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+    $("gateTitle").textContent = reason === "signin" ? "Se connecter" : "Continuer gratuitement";
+    $("gateLead").textContent =
+      reason === "signin"
+        ? "Indiquez votre adresse email : vous recevez un lien de connexion. Si vous vous êtes déjà inscrit, vous retrouvez votre compte ; sinon il est créé quand vous ouvrez le lien."
+        : `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
     showError("");
     setStep(state.email && Date.now() < state.resendAt + 15 * 60 * 1000 ? "check" : "form");
     if (!dialog.open) {
@@ -396,6 +407,7 @@ window.PolititiaGate = (function createGate() {
     $("closeGate")?.addEventListener("click", () => hide());
     $("accessGate")?.addEventListener("close", () => stopPolling());
     $("accountButton")?.addEventListener("click", () => openAccount());
+    $("signInButton")?.addEventListener("click", () => show("signin"));
     $("closeAccount")?.addEventListener("click", () => $("accountDialog").close());
     $("signOutButton")?.addEventListener("click", () => signOut());
     $("deleteAccountButton")?.addEventListener("click", () => deleteAccount());
