@@ -1718,6 +1718,26 @@ button.party-pill {
   font-weight: 700;
 }
 
+.deputy-search {
+  margin: 4px 0 12px;
+}
+
+.deputy-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.deputy-group-title small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
 .group-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

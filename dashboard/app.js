@@ -62,6 +62,7 @@ const state = {
   themeQuery: "",
   themeMenuOpen: false,
   search: "",
+  deputyQuery: "",
   showOthers: false,
   seatMetric: "words",
   ngram: "auto",
@@ -642,13 +643,17 @@ const SEAT_RADIUS_MAX = 14.5;
 const SEAT_SCALE_PERCENTILE = 0.9;
 const honorifics = new Set(["m", "mme", "mlle", "mr", "dr"]);
 
-function shortPoliticianName(name) {
+function nameParts(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   let index = 0;
   while (index < parts.length && honorifics.has(normalize(parts[index]).replace(/\./g, ""))) {
     index += 1;
   }
-  const rest = parts.slice(index);
+  return parts.slice(index);
+}
+
+function shortPoliticianName(name) {
+  const rest = nameParts(name);
   if (!rest.length) {
     return String(name || "").trim();
   }
@@ -1394,18 +1399,72 @@ function markersBlock(markers) {
     ${note("Calculé sur toute la législature.")}`;
 }
 
+function deputyPickerList() {
+  const term = normalize(state.deputyQuery.trim());
+  const byParty = new Map();
+  data.politicians.forEach((person) => {
+    if (state.partyFilter !== "ALL" && person.party !== state.partyFilter) {
+      return;
+    }
+    if (!partyVisible(person.party) || (term && !normalize(person.name).includes(term))) {
+      return;
+    }
+    if (!byParty.has(person.party)) {
+      byParty.set(person.party, []);
+    }
+    byParty.get(person.party).push(person);
+  });
+  const parties = [...data.partyOrder.filter((party) => byParty.has(party)), ...[...byParty.keys()].filter((party) => !data.partyOrder.includes(party))];
+  if (!parties.length) {
+    return note("Aucun député ne correspond.");
+  }
+  // Sorted on what follows the first name, so "Le Pen" files under L.
+  const sortKey = (person) => normalize(nameParts(person.name).slice(1).join(" ") || person.name);
+  return parties
+    .map((party) => {
+      const people = byParty.get(party).sort((a, b) => sortKey(a).localeCompare(sortKey(b), "fr"));
+      return `
+        <section class="domain-card">
+          <h3 class="deputy-group-title">
+            <span class="swatch" data-style="background:${partyColor(party)}"></span>
+            ${escapeHtml(partyLabel(party))}
+            <small>${fmtInt(people.length)}</small>
+          </h3>
+          <div class="theme-pills">
+            ${people
+              .map(
+                (person) =>
+                  `<button class="theme-pill" type="button" data-pick-politician="${escapeHtml(person.id)}">${escapeHtml(nameParts(person.name).join(" ") || person.name)}</button>`,
+              )
+              .join("")}
+          </div>
+        </section>`;
+    })
+    .join("");
+}
+
+function renderDeputyPicker() {
+  return `
+    <div class="detail-body">
+      <h2>Fiche député</h2>
+      ${note("Choisissez une personne ci-dessous, ou cliquez sur un siège de l'hémicycle, pour ouvrir sa fiche : ce qu'il ou elle dit, vote et annonce.")}
+      <label class="field deputy-search">
+        <span>Chercher un nom</span>
+        <input type="search" autocomplete="off" placeholder="Nom" value="${escapeHtml(state.deputyQuery)}" data-deputy-search />
+      </label>
+      <div class="domain-list" data-deputy-list>${deputyPickerList()}</div>
+    </div>`;
+}
+
 function renderPoliticianDetail(personId) {
   const person = politiciansById.get(personId);
   if (!person) {
-    return `
-      <div class="detail-body">
-        <h2>Fiche député</h2>
-        ${note("Cliquez sur un siège de l'hémicycle ou cherchez un nom pour ouvrir la fiche : ce qu'il ou elle dit, vote et annonce.")}
-      </div>`;
+    return renderDeputyPicker();
   }
   const path = politicianPath(person.id);
   const view = views.get(path);
   const header = `
+    <button class="back-link" type="button" data-clear-politician>← Tous les députés</button>
     <div class="detail-header">
       <div class="person-title-row">
         <h2>${escapeHtml(person.name)}</h2>
@@ -1935,7 +1994,13 @@ function renderAnalysis() {
     assemblee: renderAssemblyPanel,
     style: renderStylePanel,
   };
+  const searchFocused = document.activeElement?.matches("[data-deputy-search]") && analysisContent.contains(document.activeElement);
   analysisContent.innerHTML = (renderers[state.tab] || renderThemePanel)();
+  if (searchFocused) {
+    const input = analysisContent.querySelector("[data-deputy-search]");
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }
 }
 
 function renderDialog() {
@@ -1978,6 +2043,25 @@ function selectPolitician(personId, openDialog = true) {
     dialog.showModal();
   }
   commit();
+}
+
+function clearPolitician() {
+  state.selectedId = null;
+  state.deputyQuery = "";
+  state.tab = "depute";
+  if (dialog.open) {
+    dialog.close();
+  }
+  commit();
+}
+
+function pickPolitician(personId) {
+  selectPolitician(personId, false);
+  const panel = analysisContent.closest(".analysis-panel");
+  panel.scrollTop = 0;
+  if (panel.getBoundingClientRect().top < 0) {
+    panel.scrollIntoView({ block: "start" });
+  }
 }
 
 function selectParty(partyId) {
@@ -2079,6 +2163,15 @@ document.body.addEventListener("click", (event) => {
   if (personButton) {
     state.search = "";
     selectPolitician(personButton.dataset.selectPolitician);
+    return;
+  }
+  const pickButton = target.closest("[data-pick-politician]");
+  if (pickButton) {
+    pickPolitician(pickButton.dataset.pickPolitician);
+    return;
+  }
+  if (target.closest("[data-clear-politician]")) {
+    clearPolitician();
     return;
   }
   const partyButton = target.closest("[data-select-party]");
@@ -2185,6 +2278,17 @@ function handlePanelChange(event) {
 
 analysisContent.addEventListener("change", handlePanelChange);
 dialogContent.addEventListener("change", handlePanelChange);
+
+analysisContent.addEventListener("input", (event) => {
+  if (!event.target.matches("[data-deputy-search]")) {
+    return;
+  }
+  state.deputyQuery = event.target.value;
+  const list = analysisContent.querySelector("[data-deputy-list]");
+  if (list) {
+    list.innerHTML = deputyPickerList();
+  }
+});
 
 dialog.addEventListener("click", (event) => {
   if (event.target === dialog) {
