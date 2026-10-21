@@ -72,31 +72,56 @@ export class CookieJar {
 export async function startTestApp(overrides: Partial<AppConfig> = {}, env: Record<string, string> = {}) {
   const config = testConfig(overrides, env);
   const started = await createApp(config);
-  const jar = new CookieJar();
 
-  async function request(path: string, init: RequestInit = {}) {
-    const headers = new Headers(init.headers);
-    if (!headers.has("cookie") && jar.header()) {
-      headers.set("cookie", jar.header());
+  // One browser: its own cookies, and headers sent with every request
+  // (for instance the address a trusted proxy forwards).
+  function client(defaultHeaders: Record<string, string> = {}) {
+    const jar = new CookieJar();
+
+    async function request(path: string, init: RequestInit = {}) {
+      const headers = new Headers(init.headers);
+      for (const [name, value] of Object.entries(defaultHeaders)) {
+        if (!headers.has(name)) {
+          headers.set(name, value);
+        }
+      }
+      if (!headers.has("cookie") && jar.header()) {
+        headers.set("cookie", jar.header());
+      }
+      const response = await started.app.request(new Request(`${ORIGIN}${path}`, { ...init, headers }));
+      jar.store(response);
+      return response;
     }
-    const response = await started.app.request(new Request(`${ORIGIN}${path}`, { ...init, headers }));
-    jar.store(response);
-    return response;
+
+    async function register(email: string, extra: Record<string, unknown> = {}) {
+      return request("/api/register", {
+        method: "POST",
+        headers: { origin: ORIGIN, "content-type": "application/json" },
+        body: JSON.stringify({ email, ...extra }),
+      });
+    }
+
+    // Follows the emailed link the way a browser would.
+    async function verify(link: string) {
+      const url = new URL(link);
+      return request(`${url.pathname}${url.search}`, { redirect: "manual" });
+    }
+
+    async function signIn(email: string) {
+      const payload = await (await register(email)).json();
+      if (!payload.devLink) {
+        throw new Error(`No magic link for ${email}: ${JSON.stringify(payload)}`);
+      }
+      const response = await verify(payload.devLink);
+      const location = response.headers.get("location") || "";
+      if (response.status !== 302 || location.includes("error=")) {
+        throw new Error(`Sign-in failed for ${email}: ${response.status} ${location}`);
+      }
+      return response;
+    }
+
+    return { jar, request, register, verify, signIn };
   }
 
-  async function register(email: string, extra: Record<string, unknown> = {}) {
-    return request("/api/register", {
-      method: "POST",
-      headers: { origin: ORIGIN, "content-type": "application/json" },
-      body: JSON.stringify({ email, ...extra }),
-    });
-  }
-
-  // Follows the emailed link the way a browser would.
-  async function verify(link: string) {
-    const url = new URL(link);
-    return request(`${url.pathname}${url.search}`, { redirect: "manual" });
-  }
-
-  return { ...started, config, jar, request, register, verify };
+  return { ...started, config, ...client(), client };
 }

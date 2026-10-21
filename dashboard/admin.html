@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Administration · La parole des députés</title>
+    <link rel="stylesheet" href="styles.css?v=admin-1" />
+  </head>
+  <body class="page-body admin-body">
+    <header class="page-header">
+      <a class="page-back" href="/">← Retour à l’hémicycle</a>
+      <p class="eyebrow">La parole des députés</p>
+      <div class="admin-title-row">
+        <h1>Administration</h1>
+        <div class="admin-session" id="adminSession" hidden>
+          <span class="source-note" id="adminEmail"></span>
+          <button type="button" class="page-button" id="adminRefresh">Actualiser</button>
+          <button type="button" class="page-button" id="adminSignOut">Se déconnecter</button>
+        </div>
+      </div>
+      <p class="page-lead" id="adminStatus" role="status">Chargement…</p>
+    </header>
+
+    <main class="page-main">
+      <section class="page-card admin-login" id="adminLogin" hidden>
+        <h2>Connexion</h2>
+        <p>Réservé aux adresses déclarées dans <code>ADMIN_EMAILS</code>. Vous recevez un lien de connexion valable 15 minutes.</p>
+        <form id="adminLoginForm" class="admin-login-form" novalidate>
+          <label class="field">
+            <span>Adresse email</span>
+            <input id="adminLoginEmail" type="email" name="email" autocomplete="email" required maxlength="254" />
+          </label>
+          <label class="gate-honeypot" aria-hidden="true">
+            <span>Site web (laisser vide)</span>
+            <input id="adminLoginWebsite" type="text" name="website" tabindex="-1" autocomplete="off" />
+          </label>
+          <div id="adminTurnstile" class="gate-turnstile" hidden></div>
+          <button type="submit" class="page-button" id="adminLoginSubmit">Recevoir le lien</button>
+        </form>
+        <p class="source-note" id="adminLoginMessage" role="status" hidden></p>
+        <p class="gate-dev" id="adminDevLink" hidden>
+          Mode développement (aucun envoi d’email configuré) : <a href="#">ouvrir le lien de connexion</a>
+        </p>
+      </section>
+
+      <div class="admin-content" id="adminContent" hidden>
+        <section class="admin-stats" id="adminStats" aria-label="Chiffres clés"></section>
+
+        <section class="page-card">
+          <div class="admin-card-head">
+            <h2>Utilisateurs</h2>
+            <div class="admin-filters">
+              <label class="field">
+                <span>Chercher</span>
+                <input id="userSearch" type="search" autocomplete="off" placeholder="Email" />
+              </label>
+              <label class="field">
+                <span>Statut</span>
+                <select id="userStatus">
+                  <option value="">Tous</option>
+                  <option value="active">Actifs</option>
+                  <option value="blocked">Bloqués</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Trier par</span>
+                <select id="userSort">
+                  <option value="createdAt">Inscription récente</option>
+                  <option value="lastSeen">Dernière activité</option>
+                  <option value="last30">Requêtes sur 30 jours</option>
+                  <option value="total">Requêtes au total</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="terms-table admin-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Inscription</th>
+                  <th>Dernière activité</th>
+                  <th class="is-number">Auj.</th>
+                  <th class="is-number">7 j</th>
+                  <th class="is-number">30 j</th>
+                  <th class="is-number">Total</th>
+                  <th>Lieux de connexion</th>
+                  <th>Statut</th>
+                  <th><span class="visually-hidden">Action</span></th>
+                </tr>
+              </thead>
+              <tbody id="userRows"></tbody>
+            </table>
+          </div>
+          <p class="source-note" id="userEmpty" hidden>Aucun utilisateur ne correspond.</p>
+          <p class="source-note">
+            Une requête correspond à un appel d’analyse (député, groupe, thème, Assemblée) fait par un compte connecté.
+            Les visiteurs anonymes ne sont pas rattachés à un compte : seul leur total apparaît dans les chiffres clés.
+          </p>
+        </section>
+
+        <section class="page-card">
+          <h2>Requêtes par jour</h2>
+          <p class="source-note">30 derniers jours, comptes connectés (heure de Paris).</p>
+          <div class="admin-daily" id="dailyChart" role="img"></div>
+        </section>
+
+        <section class="page-card">
+          <h2>Géographie des connexions</h2>
+          <p class="source-note" id="geoNote"></p>
+          <div class="admin-geo">
+            <div>
+              <h3>Pays</h3>
+              <table class="terms-table admin-table">
+                <thead>
+                  <tr><th>Pays</th><th class="is-number">Utilisateurs</th><th class="is-number">Requêtes</th><th></th></tr>
+                </thead>
+                <tbody id="countryRows"></tbody>
+              </table>
+            </div>
+            <div>
+              <h3>Villes</h3>
+              <table class="terms-table admin-table">
+                <thead>
+                  <tr><th>Ville</th><th class="is-number">Utilisateurs</th><th class="is-number">Requêtes</th><th></th></tr>
+                </thead>
+                <tbody id="cityRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="page-footer">
+      <a href="/">Hémicycle</a> · <a href="/conditions">Conditions et confidentialité</a> ·
+      <span id="geoCredit" hidden><a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a></span>
+    </footer>
+    <script src="admin.js?v=admin-1"></script>
+  </body>
+</html>

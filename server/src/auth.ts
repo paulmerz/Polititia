@@ -6,6 +6,8 @@ import type { AppConfig } from "./config.ts";
 import { isValidEmail, normalizeEmail } from "./emails.ts";
 import { escapeHtml, notifySignup, sendEmail } from "./mailer.ts";
 import { requestContext } from "./request-context.ts";
+import { isBlocked, recordActivity } from "./admin.ts";
+import type { GeoLocator } from "./geo.ts";
 
 export type PendingMagicLink = {
   email: string;
@@ -28,6 +30,7 @@ export async function createAuthInstance(
   config: AppConfig,
   db: Store,
   pending: Map<string, PendingMagicLink>,
+  geo: GeoLocator,
 ) {
   const secureCookies = config.baseURL.startsWith("https://");
 
@@ -78,6 +81,21 @@ export async function createAuthInstance(
             void notifySignup(config, signup).catch((error) => {
               console.error("[signup] notification failed:", error);
             });
+          },
+        },
+      },
+      session: {
+        create: {
+          // Returning false makes Better Auth refuse the sign-in.
+          before: async (session: { userId: string }) => (isBlocked(db, session.userId) ? false : undefined),
+          after: async (session: { userId: string }) => {
+            const context = requestContext.getStore();
+            const location = geo.locate(context?.ip || "", context?.headers);
+            try {
+              recordActivity(db, session.userId, location, "sign_in");
+            } catch (error) {
+              console.error("[admin] cannot record the sign-in:", error);
+            }
           },
         },
       },

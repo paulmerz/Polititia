@@ -24,6 +24,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const QUOTA_RETENTION_DAYS = 365;
 export const SEEN_RETENTION_DAYS = 90;
 export const ACCOUNT_RETENTION_DAYS = 3 * 365;
+export const ACTIVITY_RETENTION_DAYS = 365;
 
 export function openStore(sqlitePath: string): Store {
   mkdirSync(path.dirname(sqlitePath), { recursive: true, mode: 0o700 });
@@ -56,6 +57,28 @@ export function openStore(sqlitePath: string): Store {
       key_hash TEXT PRIMARY KEY,
       last_sent INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS user_blocks (
+      user_id TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+      blocked_at TEXT NOT NULL,
+      blocked_by TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS user_usage (
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      requests INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day)
+    );
+    CREATE INDEX IF NOT EXISTS user_usage_day ON user_usage (day);
+    CREATE TABLE IF NOT EXISTS user_locations (
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      country TEXT NOT NULL,
+      city TEXT NOT NULL,
+      sign_ins INTEGER NOT NULL DEFAULT 0,
+      requests INTEGER NOT NULL DEFAULT 0,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL,
+      PRIMARY KEY (user_id, country, city)
+    );
   `);
   return db;
 }
@@ -84,5 +107,11 @@ export function purgeStale(db: Store, now = Date.now()): void {
       `DELETE FROM "user" WHERE "updatedAt" < ?
        AND id NOT IN (SELECT "userId" FROM "session" WHERE "updatedAt" >= ?)`,
     ).run(accountCutoff, accountCutoff);
+  }
+  // SQLite rejects writes to these tables until Better Auth has created "user".
+  if (tables.has("user")) {
+    const activityCutoff = new Date(now - ACTIVITY_RETENTION_DAYS * DAY_MS).toISOString();
+    db.prepare("DELETE FROM user_usage WHERE day < ?").run(activityCutoff.slice(0, 10));
+    db.prepare("DELETE FROM user_locations WHERE last_seen < ?").run(activityCutoff);
   }
 }

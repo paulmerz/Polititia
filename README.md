@@ -90,6 +90,36 @@ is sent through the same Resend mailer, so it requires `RESEND_API_KEY` and
 Do not serve `dashboard/` with a static server in production: the analyses
 would bypass the quota.
 
+### Administration
+
+`/admin` lists the accounts and lets an administrator block or unblock them.
+It also shows each account's requests (today, 7 days, 30 days, total), the
+daily requests over 30 days, and where accounts connect from (countries and
+cities). Only signed-in accounts whose email is listed in `ADMIN_EMAILS`
+(comma-separated) can open it; without `ADMIN_EMAILS`, `/admin` and
+`/api/admin/*` answer 404. The page has its own magic-link form.
+
+- A request is one analysis call (deputy, group, theme, Assembly) made by a
+  signed-in account. Anonymous visitors are not tied to an account: only
+  their 30-day total appears.
+- Blocking closes the account's sessions at once, refuses new sessions and
+  refuses to send it a new link. The person falls back to the anonymous free
+  quota. Administrators cannot be blocked.
+- The location is the country and city deduced from the IP address at sign-in
+  and at each request. The IP address itself is not stored for this. Behind
+  Cloudflare with `TRUST_PROXY=1`, the `CF-IPCountry` and `CF-IPCity` headers
+  are used. Otherwise, download the free DB-IP Lite database (CC BY 4.0) once
+  a month:
+
+```bash
+cd server
+npm run geoip               # city precision, about 130 MB on disk and in memory
+npm run geoip -- --country  # country only, about 8 MB
+```
+
+The running server reloads the file within 10 minutes. Request counts and
+locations are kept 12 months and deleted with the account.
+
 Environment (`server/.env`):
 
 | Variable | Purpose |
@@ -99,6 +129,8 @@ Environment (`server/.env`):
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
 | `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (default `paul@maj.digital`, `off` to disable) |
+| `ADMIN_EMAILS` | Comma-separated accounts allowed on `/admin` (empty disables it) |
+| `GEOIP_DB_PATH` | MMDB file for the admin geography (default `server/data/geoip.mmdb`, see `npm run geoip`) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional captcha on the email form (both or neither) |
 | `ANALYTICS_DB_PATH` | Defaults to `analysis_outputs/analytics.sqlite` |
 | `DASHBOARD_DATA_PATH`, `DATA_DIR` | First-load bundle and server data directory |

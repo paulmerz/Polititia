@@ -37,6 +37,9 @@ export type AppConfig = {
   turnstileSiteKey: string;
   turnstileSecretKey: string;
   signupNotifyEmail: string;
+  // Signed-in accounts allowed on /admin. Empty disables the admin pages.
+  adminEmails: string[];
+  geoipPath: string;
   freeRequestLimit: number;
   allowInsecureHttp: boolean;
 };
@@ -54,6 +57,17 @@ function parseNotifyEmail(value: string | undefined): string {
     return SIGNUP_NOTIFY_EMAIL_DEFAULT;
   }
   return ["0", "false", "no", "off"].includes(trimmed) ? "" : trimmed;
+}
+
+function parseEmailList(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      (value || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function parseOrigins(baseURL: string, extra: string | undefined): string[] {
@@ -139,6 +153,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     turnstileSiteKey,
     turnstileSecretKey,
     signupNotifyEmail: parseNotifyEmail(env.SIGNUP_NOTIFY_EMAIL),
+    adminEmails: parseEmailList(env.ADMIN_EMAILS),
+    geoipPath: path.resolve(env.GEOIP_DB_PATH || path.join(dataDir, "geoip.mmdb")),
     freeRequestLimit: Math.max(1, Number(env.FREE_REQUEST_LIMIT || FREE_REQUEST_LIMIT_DEFAULT) || FREE_REQUEST_LIMIT_DEFAULT),
     allowInsecureHttp,
   };

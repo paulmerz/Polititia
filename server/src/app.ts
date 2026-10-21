@@ -22,8 +22,18 @@ import {
   registerRateLimited,
   unlimitedQuota,
 } from "./quota.ts";
-import { openStore, purgeStale } from "./store.ts";
+import { openStore, purgeStale, type Store } from "./store.ts";
 import { requestContext } from "./request-context.ts";
+import {
+  adminOverview,
+  blockUser,
+  findUser,
+  isBlocked,
+  isBlockedEmail,
+  recordActivity,
+  unblockUser,
+} from "./admin.ts";
+import { createGeoLocator } from "./geo.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
 type NodeBindings = { incoming?: IncomingMessage };
@@ -37,6 +47,8 @@ const STATIC_FILES: Record<string, string> = {
   "/pages.js": "pages.js",
   "/styles.css": "styles.css",
   "/quota-gate.js": "quota-gate.js",
+  "/admin": "admin.html",
+  "/admin.js": "admin.js",
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -47,6 +59,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
+const ADMIN_RETURN_TO = "/admin";
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
 
 function originAllowed(config: AppConfig, origin: string | undefined): boolean {
@@ -89,13 +102,19 @@ function setCookiesOf(response: Response): string[] {
   return single ? [single] : [];
 }
 
+// A blocked account is treated as signed out, even while its session cookie
+// cache is still valid.
 async function currentSession(
   auth: AuthInstance,
+  db: Store,
   request: Request,
 ): Promise<{ user: SessionUser } | null> {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
-    return session ? { user: session.user } : null;
+    if (!session || isBlocked(db, session.user?.id)) {
+      return null;
+    }
+    return { user: session.user };
   } catch {
     return null;
   }
@@ -126,7 +145,8 @@ type MeteredView = (analytics: Analytics, period: Period, c: Context) => Record<
 export async function createApp(config: AppConfig) {
   const db = openStore(config.sqlitePath);
   const pending = new Map<string, PendingMagicLink>();
-  const auth = await createAuthInstance(config, db, pending);
+  const geo = createGeoLocator(config);
+  const auth = await createAuthInstance(config, db, pending, geo);
   purgeStale(db);
   if (!config.isTest) {
     setInterval(() => purgeStale(db), PURGE_INTERVAL_MS).unref();
@@ -138,7 +158,7 @@ export async function createApp(config: AppConfig) {
   app.use("*", (c, next) => {
     const socketIp = c.env?.incoming?.socket?.remoteAddress || "inconnue";
     const ip = clientIp(c.req.raw.headers, config.trustProxy, socketIp);
-    return requestContext.run({ ip }, next);
+    return requestContext.run({ ip, headers: c.req.raw.headers }, next);
   });
 
   app.use(
@@ -214,7 +234,7 @@ export async function createApp(config: AppConfig) {
     }
     const { deviceId } = deviceFromRequest(config, c.req.raw);
     const ip = clientIp(c.req.raw.headers, config.trustProxy);
-    const session = await currentSession(auth, c.req.raw);
+    const session = await currentSession(auth, db, c.req.raw);
     const data = loadDashboardData(config.dashboardDataPath);
     const analytics = openAnalytics(config.analyticsPath);
     const quota = session?.user
@@ -241,7 +261,7 @@ export async function createApp(config: AppConfig) {
   app.get("/api/quota", async (c) => {
     const { deviceId } = deviceFromRequest(config, c.req.raw);
     const ip = clientIp(c.req.raw.headers, config.trustProxy);
-    const session = await currentSession(auth, c.req.raw);
+    const session = await currentSession(auth, db, c.req.raw);
     const quota = session?.user
       ? unlimitedQuota
       : readQuota(db, config.secret, ip, deviceId, config.freeRequestLimit);
@@ -278,9 +298,12 @@ export async function createApp(config: AppConfig) {
       }
       throw error;
     }
-    const session = await currentSession(auth, c.req.raw);
+    const session = await currentSession(auth, db, c.req.raw);
     let quota: unknown = unlimitedQuota;
-    if (!session?.user) {
+    if (session?.user?.id) {
+      const ip = requestContext.getStore()?.ip || "";
+      recordActivity(db, session.user.id, geo.locate(ip, c.req.raw.headers), "request");
+    } else {
       const ip = clientIp(c.req.raw.headers, config.trustProxy);
       const theme = c.req.query("theme") || "";
       const result = consumeInteraction(db, config.secret, ip, deviceId, config.freeRequestLimit, {
@@ -351,6 +374,9 @@ export async function createApp(config: AppConfig) {
     if (isDisposableEmail(email)) {
       return c.json({ error: "disposable_email" }, 400);
     }
+    if (isBlockedEmail(db, email)) {
+      return applyDeviceCookie(config, c.json({ error: "account_blocked" }, 403), deviceId);
+    }
     if (!(await verifyTurnstile(config, String(body.turnstileToken || ""), ip))) {
       return c.json({ error: "captcha_failed" }, 400);
     }
@@ -363,8 +389,9 @@ export async function createApp(config: AppConfig) {
     // send the visitor to another path or origin.
     const returnTo = String(body.returnTo || "");
     const query = RETURN_TO_PATTERN.test(returnTo) ? returnTo.slice(1) : "";
+    const callbackURL = returnTo === ADMIN_RETURN_TO ? ADMIN_RETURN_TO : `/?${query ? `${query}&` : ""}verifie=1`;
     await auth.api.signInMagicLink({
-      body: { email, name: email.split("@")[0], callbackURL: `/?${query ? `${query}&` : ""}verifie=1` },
+      body: { email, name: email.split("@")[0], callbackURL },
       headers: c.req.raw.headers,
     });
     recordEmailSend(db, config.secret, email);
@@ -381,7 +408,7 @@ export async function createApp(config: AppConfig) {
     if (!originAllowed(config, c.req.header("origin"))) {
       return c.json({ error: "forbidden" }, 403);
     }
-    const session = await currentSession(auth, c.req.raw);
+    const session = await currentSession(auth, db, c.req.raw);
     const user = session?.user;
     if (!user?.id) {
       return c.json({ error: "not_signed_in" }, 401);
@@ -396,6 +423,71 @@ export async function createApp(config: AppConfig) {
       response.headers.append("Set-Cookie", cookie);
     }
     return response;
+  });
+
+  const adminEmails = new Set(config.adminEmails);
+  type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
+
+  // Without ADMIN_EMAILS the admin pages do not exist.
+  async function requireAdmin(c: Context, write: boolean): Promise<AdminCheck> {
+    if (!adminEmails.size) {
+      return { response: c.json({ error: "not_found" }, 404) };
+    }
+    const sameOrigin = write ? originAllowed(config, c.req.header("origin")) : sameOriginOrSafeGet(config, c.req.raw);
+    if (!sameOrigin) {
+      return { response: c.json({ error: "forbidden" }, 403) };
+    }
+    const user = (await currentSession(auth, db, c.req.raw))?.user;
+    if (!user?.id || !user.email) {
+      return { response: c.json({ error: "not_signed_in", auth: authInfo() }, 401) };
+    }
+    const email = normalizeEmail(user.email);
+    if (!adminEmails.has(email)) {
+      return { response: c.json({ error: "not_admin", session: { email } }, 403) };
+    }
+    return { admin: { id: user.id, email } };
+  }
+
+  for (const adminPath of ["/admin", "/admin.js"]) {
+    app.use(adminPath, async (c, next) => {
+      if (!adminEmails.size) {
+        return c.json({ error: "not_found" }, 404);
+      }
+      await next();
+      c.res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    });
+  }
+
+  app.get("/api/admin/overview", async (c) => {
+    const check = await requireAdmin(c, false);
+    if ("response" in check) {
+      return check.response;
+    }
+    return c.json({
+      ...adminOverview(db, config.adminEmails),
+      me: { email: check.admin.email },
+      geoSource: geo.source(),
+    });
+  });
+
+  app.post("/api/admin/users/:id/:action{block|unblock}", async (c) => {
+    const check = await requireAdmin(c, true);
+    if ("response" in check) {
+      return check.response;
+    }
+    const target = findUser(db, c.req.param("id"));
+    if (!target) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    if (c.req.param("action") === "unblock") {
+      unblockUser(db, target.id);
+      return c.json({ ok: true, id: target.id, blocked: false });
+    }
+    if (adminEmails.has(normalizeEmail(target.email))) {
+      return c.json({ error: "cannot_block_admin" }, 400);
+    }
+    blockUser(db, target.id, check.admin.email);
+    return c.json({ ok: true, id: target.id, blocked: true });
   });
 
   for (const [urlPath, relative] of Object.entries(STATIC_FILES)) {

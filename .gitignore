@@ -22,3 +22,5 @@ server/.env
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
+*.mmdb
+*.mmdb.tmp
