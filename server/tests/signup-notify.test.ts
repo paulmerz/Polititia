@@ -68,7 +68,8 @@ async function startNotifyingApp(t: TestContext, overrides: Partial<AppConfig> =
 test("a new user triggers one notification with their email and IP", async (t) => {
   const { signUp, toPaul, db } = await startNotifyingApp(t);
 
-  const first = await signUp("New.User@Example.org", { "x-forwarded-for": "203.0.113.7, 10.0.0.1" });
+  // The client forged 6.6.6.6; the trusted proxy appended the address it saw.
+  const first = await signUp("New.User@Example.org", { "x-forwarded-for": "6.6.6.6, 203.0.113.7" });
   assert.equal(first.status, 302);
 
   await waitFor(() => toPaul().length === 1);
@@ -77,6 +78,7 @@ test("a new user triggers one notification with their email and IP", async (t) =
   assert.equal(notification.subject, "Nouvel utilisateur Polititia : new.user@example.org");
   assert.match(notification.html, /Email : new\.user@example\.org/);
   assert.match(notification.html, /Adresse IP : 203\.0\.113\.7</);
+  assert.doesNotMatch(notification.html, /6\.6\.6\.6/);
 
   db.exec("DELETE FROM email_sends");
   const again = await signUp("new.user@example.org", { "x-forwarded-for": "198.51.100.2" });
@@ -97,7 +99,7 @@ test("a failing notification does not block account creation", async (t) => {
 });
 
 test("the notification uses the socket address when the proxy is not trusted", async (t) => {
-  const { signUp, toPaul } = await startNotifyingApp(t, { trustProxy: false });
+  const { signUp, toPaul } = await startNotifyingApp(t, { trustProxy: false, proxyHops: 0 });
 
   const response = await signUp(
     "direct@example.org",

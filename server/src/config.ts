@@ -20,6 +20,8 @@ export type AppConfig = {
   host: string;
   dataDir: string;
   sqlitePath: string;
+  // HOST and BETTER_AUTH_URL both point at this machine.
+  localOnly: boolean;
   dashboardDataPath: string;
   analyticsPath: string;
   dashboardDir: string;
@@ -27,10 +29,15 @@ export type AppConfig = {
   secret: string;
   baseURL: string;
   trustedOrigins: string[];
+  // True when the client address comes from a proxy header (proxyHops or Cloudflare).
   trustProxy: boolean;
+  // Number of reverse proxies that append to X-Forwarded-For in front of the server.
+  proxyHops: number;
+  // Cloudflare is the only way in: CF-Connecting-IP, CF-IPCountry and CF-IPCity are trusted.
+  trustCloudflare: boolean;
   hasMailer: boolean;
-  // Without a mailer (development and tests only) the magic link is returned
-  // to the browser instead of being emailed.
+  // Without a mailer (development on this machine and tests only) the magic
+  // link is returned to the browser instead of being emailed.
   exposeMagicLink: boolean;
   resendApiKey: string;
   emailFrom: string;
@@ -50,6 +57,20 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
   }
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
+
+// TRUST_PROXY: 0/off (default), 1/on (one proxy), a number of proxies, or "cloudflare".
+function parseTrustProxy(value: string | undefined): { proxyHops: number; trustCloudflare: boolean } {
+  const trimmed = (value || "").trim().toLowerCase();
+  if (trimmed === "cloudflare") {
+    return { proxyHops: 0, trustCloudflare: true };
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return { proxyHops: Math.min(Number(trimmed), 10), trustCloudflare: false };
+  }
+  return { proxyHops: readBoolean(trimmed, false) ? 1 : 0, trustCloudflare: false };
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 function parseNotifyEmail(value: string | undefined): string {
   const trimmed = (value || "").trim().toLowerCase();
@@ -109,7 +130,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     env.ANALYTICS_DB_PATH || path.join(REPO_ROOT, "analysis_outputs", "analytics.sqlite"),
   );
   const allowInsecureHttp = readBoolean(env.ALLOW_INSECURE_HTTP, !isProduction);
+  const host = env.HOST || "127.0.0.1";
+  const localOnly = LOOPBACK_HOSTS.has(host) && LOOPBACK_HOSTS.has(new URL(baseURL).hostname);
+  const { proxyHops, trustCloudflare } = parseTrustProxy(env.TRUST_PROXY);
 
+  if (!isProduction && !isTest && !localOnly && !secret) {
+    throw new Error(
+      "Outside this machine, set NODE_ENV=production and BETTER_AUTH_SECRET: the development secret is public.",
+    );
+  }
   if (isProduction) {
     if (secret.length < 32) {
       throw new Error("BETTER_AUTH_SECRET must be set to at least 32 characters in production.");
@@ -135,9 +164,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     isProduction,
     isTest,
     port: Number(env.PORT || 8000),
-    host: env.HOST || "127.0.0.1",
+    host,
     dataDir,
     sqlitePath: path.join(dataDir, "auth.sqlite"),
+    localOnly,
     dashboardDataPath,
     analyticsPath,
     dashboardDir,
@@ -145,9 +175,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     secret: secret || DEV_SECRET,
     baseURL,
     trustedOrigins: parseOrigins(baseURL, env.AUTH_TRUSTED_ORIGINS),
-    trustProxy: readBoolean(env.TRUST_PROXY, false),
+    trustProxy: proxyHops > 0 || trustCloudflare,
+    proxyHops,
+    trustCloudflare,
     hasMailer,
-    exposeMagicLink: !isProduction && !hasMailer,
+    // Anyone who can reach the server could sign in as anyone, admins included.
+    exposeMagicLink: !isProduction && !hasMailer && localOnly,
     resendApiKey,
     emailFrom,
     turnstileSiteKey,
@@ -162,6 +195,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
 export function assertSafeHostBinding(config: AppConfig): void {
   if (config.isProduction && config.host === "0.0.0.0" && !config.trustProxy) {
-    console.warn("HOST=0.0.0.0 without TRUST_PROXY=1: client IPs will not be taken from X-Forwarded-For.");
+    console.warn("HOST=0.0.0.0 without TRUST_PROXY: client IPs are the socket addresses, not X-Forwarded-For.");
   }
 }

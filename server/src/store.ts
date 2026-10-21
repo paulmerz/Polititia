@@ -48,6 +48,13 @@ export function openStore(sqlitePath: string): Store {
       created_at TEXT NOT NULL,
       PRIMARY KEY (device_hash, key)
     );
+    CREATE TABLE IF NOT EXISTS quota_interactions (
+      device_hash TEXT NOT NULL,
+      interaction_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      views INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (device_hash, interaction_id)
+    );
     CREATE TABLE IF NOT EXISTS auth_attempts (
       key_hash TEXT PRIMARY KEY,
       window_start INTEGER NOT NULL,
@@ -90,6 +97,7 @@ export function purgeStale(db: Store, now = Date.now()): void {
   const nowSeconds = Math.floor(now / 1000);
   db.prepare("DELETE FROM quota_counters WHERE last_seen < ?").run(quotaCutoff);
   db.prepare("DELETE FROM quota_seen WHERE created_at < ?").run(seenCutoff);
+  db.prepare("DELETE FROM quota_interactions WHERE created_at < ?").run(new Date(now - DAY_MS).toISOString());
   db.prepare("DELETE FROM auth_attempts WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
   db.prepare("DELETE FROM email_sends WHERE last_sent < ?").run(nowSeconds - 24 * 60 * 60);
   const tables = new Set(

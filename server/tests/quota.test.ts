@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { openStore, purgeStale } from "../src/store.ts";
 import {
+  clientIp,
   consumeInteraction,
+  INTERACTION_MAX_VIEWS,
+  INTERACTION_WINDOW_MS,
   consumeQuota,
   createDeviceId,
   emailCooldownSeconds,
@@ -84,6 +87,53 @@ test("malformed interaction ids are ignored", () => {
   consumeInteraction(db, secret, "4.4.4.4", device, 10, { interactionId: "x", view: "a" });
   const second = consumeInteraction(db, secret, "4.4.4.4", device, 10, { interactionId: "x", view: "b" });
   assert.equal(second.counted, true);
+});
+
+test("an interaction id covers a few views only, and replaying it never reopens it", () => {
+  const db = freshStore();
+  const device = "1".repeat(32);
+  const interactionId = "replayed-0000001";
+  const counted = (index: number) =>
+    consumeInteraction(db, secret, "6.6.6.6", device, 100, { interactionId, view: `politician:${index}` }).counted;
+  assert.equal(counted(0), true);
+  for (let index = 1; index < INTERACTION_MAX_VIEWS; index += 1) {
+    assert.equal(counted(index), false, `view ${index} belongs to the same action`);
+  }
+  for (let index = INTERACTION_MAX_VIEWS; index < INTERACTION_MAX_VIEWS + 5; index += 1) {
+    assert.equal(counted(index), true, `view ${index} is past the action`);
+  }
+  assert.equal(readQuota(db, secret, "6.6.6.6", device, 100).used, 6);
+});
+
+test("an interaction id expires after a few seconds", () => {
+  const db = freshStore();
+  const device = "2".repeat(32);
+  const start = Date.now();
+  const consume = (view: string, at: number) =>
+    consumeInteraction(db, secret, "7.7.7.7", device, 100, { interactionId: "late-action-0001", view }, at).counted;
+  assert.equal(consume("a", start), true);
+  assert.equal(consume("b", start + 1000), false);
+  assert.equal(consume("c", start + INTERACTION_WINDOW_MS + 1000), true);
+  assert.equal(consume("d", start + INTERACTION_WINDOW_MS + 2000), true, "a late request does not open a new window");
+});
+
+test("reopening a counted view does not lend its interaction id to new views", () => {
+  const db = freshStore();
+  const device = "3".repeat(32);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "first-action-01", view: "a" }).counted, true);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "reopen-action-1", view: "a" }).counted, false);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "reopen-action-1", view: "b" }).counted, true);
+});
+
+test("the client address comes from the trusted end of X-Forwarded-For", () => {
+  const headers = new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.5, 10.0.0.2", "cf-connecting-ip": "198.51.100.9" });
+  assert.equal(clientIp(headers, { proxyHops: 0, trustCloudflare: false }, "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientIp(headers, { proxyHops: 1, trustCloudflare: false }, "192.0.2.1"), "10.0.0.2");
+  assert.equal(clientIp(headers, { proxyHops: 2, trustCloudflare: false }, "192.0.2.1"), "203.0.113.5");
+  assert.equal(clientIp(headers, { proxyHops: 5, trustCloudflare: false }, "192.0.2.1"), "6.6.6.6");
+  assert.equal(clientIp(new Headers(), { proxyHops: 1, trustCloudflare: false }, "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientIp(headers, { proxyHops: 0, trustCloudflare: true }, "192.0.2.1"), "198.51.100.9");
+  assert.equal(clientIp(new Headers(), { proxyHops: 0, trustCloudflare: true }, "192.0.2.1"), "192.0.2.1");
 });
 
 test("email sends are throttled per address", () => {

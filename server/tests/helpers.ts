@@ -73,9 +73,10 @@ export async function startTestApp(overrides: Partial<AppConfig> = {}, env: Reco
   const config = testConfig(overrides, env);
   const started = await createApp(config);
 
-  // One browser: its own cookies, and headers sent with every request
-  // (for instance the address a trusted proxy forwards).
-  function client(defaultHeaders: Record<string, string> = {}) {
+  // One browser: its own cookies, headers sent with every request (for
+  // instance the address a trusted proxy forwards) and its socket address.
+  function client(defaultHeaders: Record<string, string> = {}, socketIp?: string) {
+    const env = socketIp ? { incoming: { socket: { remoteAddress: socketIp } } } : undefined;
     const jar = new CookieJar();
 
     async function request(path: string, init: RequestInit = {}) {
@@ -88,7 +89,7 @@ export async function startTestApp(overrides: Partial<AppConfig> = {}, env: Reco
       if (!headers.has("cookie") && jar.header()) {
         headers.set("cookie", jar.header());
       }
-      const response = await started.app.request(new Request(`${ORIGIN}${path}`, { ...init, headers }));
+      const response = await started.app.request(new Request(`${ORIGIN}${path}`, { ...init, headers }), undefined, env);
       jar.store(response);
       return response;
     }

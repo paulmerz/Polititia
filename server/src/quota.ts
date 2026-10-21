@@ -52,21 +52,26 @@ export function parseDeviceCookie(secret: string, raw: string | undefined): stri
   return deviceId;
 }
 
-export function clientIp(headers: Headers, trustProxy: boolean, fallback = "127.0.0.1"): string {
-  if (trustProxy) {
-    const forwarded = headers.get("x-forwarded-for");
-    if (forwarded) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) {
-        return first.slice(0, 64);
-      }
+export type ProxyTrust = { proxyHops: number; trustCloudflare: boolean };
+
+// Proxies append the address they see to X-Forwarded-For, so only the last
+// `proxyHops` entries are trustworthy: anything to their left was sent by the client.
+export function clientIp(headers: Headers, trust: ProxyTrust, socketIp: string): string {
+  if (trust.trustCloudflare) {
+    const connecting = headers.get("cf-connecting-ip")?.trim();
+    if (connecting) {
+      return connecting.slice(0, 64);
     }
-    const realIp = headers.get("x-real-ip")?.trim();
-    if (realIp) {
-      return realIp.slice(0, 64);
+  } else if (trust.proxyHops > 0) {
+    const forwarded = (headers.get("x-forwarded-for") || "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (forwarded.length) {
+      return forwarded[Math.max(0, forwarded.length - trust.proxyHops)].slice(0, 64);
     }
   }
-  return fallback;
+  return socketIp;
 }
 
 function bumpCounter(db: Store, kind: string, keyHash: string): number {
@@ -130,14 +135,19 @@ export function consumeQuota(
 }
 
 const INTERACTION_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+// One action loads at most the Assembly, a theme, a person and a group, in parallel.
+export const INTERACTION_MAX_VIEWS = 4;
+export const INTERACTION_WINDOW_MS = 30 * 1000;
 
 export function isInteractionId(value: string | null | undefined): value is string {
   return Boolean(value && INTERACTION_ID_RE.test(value));
 }
 
-// One analysis = one user action. Several requests sent for the same action
-// share an interaction id, and reopening a view already counted on this device
-// (same person or theme, same period) is free: neither reveals new data.
+// One analysis = one user action. The requests an action sends at once share
+// an interaction id: the first new view is counted, the next ones are free for
+// a few seconds and a few views only, so an id cannot be replayed to read
+// everything. Reopening a view already counted on this device (same person or
+// theme, same period) is free too: it reveals no new data.
 export function consumeInteraction(
   db: Store,
   secret: string,
@@ -145,33 +155,46 @@ export function consumeInteraction(
   deviceId: string,
   limit: number,
   keys: { interactionId?: string | null; view: string },
+  nowMs = Date.now(),
 ): QuotaView & { allowed: boolean; counted: boolean } {
   const deviceHash = hashIdentity(secret, "device", deviceId);
-  const seenKeys = [`v:${keys.view}`];
-  if (isInteractionId(keys.interactionId)) {
-    seenKeys.push(`i:${keys.interactionId}`);
-  }
-  const now = new Date().toISOString();
-  const remember = db.prepare("INSERT OR IGNORE INTO quota_seen (device_hash, key, created_at) VALUES (?, ?, ?)");
+  const viewKey = `v:${keys.view}`;
+  const interactionId = isInteractionId(keys.interactionId) ? keys.interactionId : null;
+  const now = new Date(nowMs).toISOString();
+  const rememberView = db.prepare("INSERT OR IGNORE INTO quota_seen (device_hash, key, created_at) VALUES (?, ?, ?)");
+  const free = () => {
+    rememberView.run(deviceHash, viewKey, now);
+    db.exec("COMMIT");
+    return { ...readQuota(db, secret, ip, deviceId, limit), allowed: true, counted: false };
+  };
   db.exec("BEGIN IMMEDIATE");
   try {
-    const seen = db
-      .prepare(`SELECT 1 FROM quota_seen WHERE device_hash = ? AND key IN (${seenKeys.map(() => "?").join(",")}) LIMIT 1`)
-      .get(deviceHash, ...seenKeys);
-    if (seen) {
-      for (const key of seenKeys) {
-        remember.run(deviceHash, key, now);
+    if (db.prepare("SELECT 1 FROM quota_seen WHERE device_hash = ? AND key = ?").get(deviceHash, viewKey)) {
+      return free();
+    }
+    if (interactionId) {
+      const joined = db
+        .prepare(
+          `UPDATE quota_interactions SET views = views + 1
+           WHERE device_hash = ? AND interaction_id = ? AND created_at >= ? AND views < ?`,
+        )
+        .run(deviceHash, interactionId, new Date(nowMs - INTERACTION_WINDOW_MS).toISOString(), INTERACTION_MAX_VIEWS);
+      if (Number(joined.changes) > 0) {
+        return free();
       }
-      db.exec("COMMIT");
-      return { ...readQuota(db, secret, ip, deviceId, limit), allowed: true, counted: false };
     }
     const ipCount = bumpCounter(db, "ip", hashIdentity(secret, "ip", ip));
     const deviceCount = bumpCounter(db, "device", deviceHash);
     const used = Math.max(ipCount, deviceCount);
     const allowed = used <= limit;
     if (allowed) {
-      for (const key of seenKeys) {
-        remember.run(deviceHash, key, now);
+      rememberView.run(deviceHash, viewKey, now);
+      if (interactionId) {
+        // An expired or full id keeps its row, so replaying it never opens a new window.
+        db.prepare(
+          `INSERT OR IGNORE INTO quota_interactions (device_hash, interaction_id, created_at, views)
+           VALUES (?, ?, ?, 1)`,
+        ).run(deviceHash, interactionId, now);
       }
     }
     db.exec("COMMIT");

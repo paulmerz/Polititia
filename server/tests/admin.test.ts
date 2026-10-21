@@ -18,12 +18,12 @@ function nextIp(): string {
   return `203.0.113.${lastOctet}`;
 }
 function lyon() {
-  return { "x-forwarded-for": nextIp(), "cf-ipcountry": "FR", "cf-ipcity": "Lyon" };
+  return { "cf-connecting-ip": nextIp(), "cf-ipcountry": "FR", "cf-ipcity": "Lyon" };
 }
 function anywhere() {
-  return { "x-forwarded-for": nextIp() };
+  return { "cf-connecting-ip": nextIp() };
 }
-const BRUSSELS = { "x-forwarded-for": "198.51.100.4", "cf-ipcountry": "BE", "cf-ipcity": "Bruxelles" };
+const BRUSSELS = { "cf-connecting-ip": "198.51.100.4", "cf-ipcountry": "BE", "cf-ipcity": "Bruxelles" };
 const DASHBOARD_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "dashboard");
 
 type Overview = {
@@ -45,7 +45,7 @@ type Overview = {
 };
 
 async function startAdminApp() {
-  const started = await startTestApp({}, { ADMIN_EMAILS: ` ${ADMIN.toUpperCase()} , ops@example.org` });
+  const started = await startTestApp({}, { ADMIN_EMAILS: ` ${ADMIN.toUpperCase()} , ops@example.org`, TRUST_PROXY: "cloudflare" });
   const admin = started.client(anywhere());
   await admin.signIn(ADMIN);
 
@@ -281,14 +281,14 @@ test("the admin page carries every element its script drives", async () => {
   assert.doesNotMatch(html, /style=/, "the CSP forbids inline styles");
 });
 
-test("proxy location headers are only trusted behind a trusted proxy", () => {
+test("Cloudflare location headers are only trusted with TRUST_PROXY=cloudflare", () => {
   const headers = new Headers({ "cf-ipcountry": "fr", "cf-ipcity": Buffer.from("Besançon").toString("latin1") });
-  const trusted = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustProxy: true });
+  const trusted = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustCloudflare: true });
   assert.deepEqual(trusted.locate("203.0.113.1", headers), { country: "FR", city: "Besançon" });
   assert.deepEqual(trusted.locate("203.0.113.1", new Headers({ "cf-ipcountry": "XX" })), { country: "", city: "" });
   assert.deepEqual(trusted.locate("203.0.113.1", new Headers({ "cf-ipcountry": "T1" })), { country: "", city: "" });
 
-  const direct = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustProxy: false });
+  const direct = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustCloudflare: false });
   assert.deepEqual(direct.locate("203.0.113.1", headers), { country: "", city: "" });
   assert.equal(direct.source(), null);
 });

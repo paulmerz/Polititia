@@ -23,7 +23,7 @@ import {
   unlimitedQuota,
 } from "./quota.ts";
 import { openStore, purgeStale, type Store } from "./store.ts";
-import { requestContext } from "./request-context.ts";
+import { requestContext, withClientIp } from "./request-context.ts";
 import {
   adminOverview,
   blockUser,
@@ -57,6 +57,10 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
 };
 
+// The only Better Auth endpoints the dashboard needs. Everything else (the
+// magic-link sender above all) would skip the checks of /api/register.
+const AUTH_ROUTES = new Set(["GET /api/auth/magic-link/verify", "POST /api/auth/sign-out"]);
+
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
 const ADMIN_RETURN_TO = "/admin";
@@ -72,6 +76,10 @@ function sameOriginOrSafeGet(config: AppConfig, request: Request): boolean {
     return originAllowed(config, origin);
   }
   return request.method === "GET" || request.method === "HEAD";
+}
+
+function requestIp(): string {
+  return requestContext.getStore()?.ip || "inconnue";
 }
 
 function deviceFromRequest(config: AppConfig, request: Request): { deviceId: string; isNew: boolean } {
@@ -157,7 +165,7 @@ export async function createApp(config: AppConfig) {
 
   app.use("*", (c, next) => {
     const socketIp = c.env?.incoming?.socket?.remoteAddress || "inconnue";
-    const ip = clientIp(c.req.raw.headers, config.trustProxy, socketIp);
+    const ip = clientIp(c.req.raw.headers, config, socketIp);
     return requestContext.run({ ip, headers: c.req.raw.headers }, next);
   });
 
@@ -210,10 +218,13 @@ export async function createApp(config: AppConfig) {
   });
 
   app.all("/api/auth/*", (c) => {
-    if (!sameOriginOrSafeGet(config, c.req.raw) && c.req.method !== "OPTIONS") {
+    if (!AUTH_ROUTES.has(`${c.req.method} ${c.req.path}`)) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    if (!sameOriginOrSafeGet(config, c.req.raw)) {
       return c.json({ error: "forbidden" }, 403);
     }
-    return auth.handler(c.req.raw);
+    return auth.handler(new Request(c.req.raw, { headers: withClientIp(c.req.raw.headers, requestIp()) }));
   });
 
   app.get("/api/health", (c) => c.json({ ok: true }));
@@ -233,7 +244,7 @@ export async function createApp(config: AppConfig) {
       return c.json({ error: "dashboard_data_missing" }, 503);
     }
     const { deviceId } = deviceFromRequest(config, c.req.raw);
-    const ip = clientIp(c.req.raw.headers, config.trustProxy);
+    const ip = requestIp();
     const session = await currentSession(auth, db, c.req.raw);
     const data = loadDashboardData(config.dashboardDataPath);
     const analytics = openAnalytics(config.analyticsPath);
@@ -260,7 +271,7 @@ export async function createApp(config: AppConfig) {
 
   app.get("/api/quota", async (c) => {
     const { deviceId } = deviceFromRequest(config, c.req.raw);
-    const ip = clientIp(c.req.raw.headers, config.trustProxy);
+    const ip = requestIp();
     const session = await currentSession(auth, db, c.req.raw);
     const quota = session?.user
       ? unlimitedQuota
@@ -300,11 +311,10 @@ export async function createApp(config: AppConfig) {
     }
     const session = await currentSession(auth, db, c.req.raw);
     let quota: unknown = unlimitedQuota;
+    const ip = requestIp();
     if (session?.user?.id) {
-      const ip = requestContext.getStore()?.ip || "";
       recordActivity(db, session.user.id, geo.locate(ip, c.req.raw.headers), "request");
     } else {
-      const ip = clientIp(c.req.raw.headers, config.trustProxy);
       const theme = c.req.query("theme") || "";
       const result = consumeInteraction(db, config.secret, ip, deviceId, config.freeRequestLimit, {
         interactionId: c.req.header("x-interaction-id"),
@@ -351,7 +361,7 @@ export async function createApp(config: AppConfig) {
       return c.json({ error: "forbidden" }, 403);
     }
     const { deviceId } = deviceFromRequest(config, c.req.raw);
-    const ip = clientIp(c.req.raw.headers, config.trustProxy);
+    const ip = requestIp();
     if (registerRateLimited(db, config.secret, ip)) {
       return applyDeviceCookie(config, c.json({ error: "rate_limited" }, 429), deviceId);
     }
@@ -392,7 +402,7 @@ export async function createApp(config: AppConfig) {
     const callbackURL = returnTo === ADMIN_RETURN_TO ? ADMIN_RETURN_TO : `/?${query ? `${query}&` : ""}verifie=1`;
     await auth.api.signInMagicLink({
       body: { email, name: email.split("@")[0], callbackURL },
-      headers: c.req.raw.headers,
+      headers: withClientIp(c.req.raw.headers, ip),
     });
     recordEmailSend(db, config.secret, email);
     const magic = pending.get(email);

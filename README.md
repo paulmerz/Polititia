@@ -76,16 +76,32 @@ Open http://127.0.0.1:8000.
   stored only after the link is opened, and only to tell people from robots.
   A honeypot field, a disposable-domain list, a per-IP rate limit, a resend
   cooldown and optional Cloudflare Turnstile protect the form.
-- With no mailer configured (development only), the link is logged and shown
-  in the browser.
+- With no mailer configured (development on this machine only: `HOST` and
+  `BETTER_AUTH_URL` on localhost), the link is logged and shown in the
+  browser. Outside localhost, development mode refuses to start without
+  `BETTER_AUTH_SECRET` and never shows the link.
+- Only two Better Auth routes are reachable: `GET /api/auth/magic-link/verify`
+  and `POST /api/auth/sign-out`. Links are always requested through
+  `/api/register`, so its checks cannot be skipped.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
 
 Each new account triggers a notification to `SIGNUP_NOTIFY_EMAIL` (default
 `paul@maj.digital`, `off` to disable) with the user's email and IP address. It
 is sent through the same Resend mailer, so it requires `RESEND_API_KEY` and
-`EMAIL_FROM`. Behind a reverse proxy, set `TRUST_PROXY=1` so the IP comes from
-`X-Forwarded-For` instead of the proxy's own address.
+`EMAIL_FROM`.
+
+The client IP (quota, sign-up limit, Better Auth rate limit, notification) is
+the socket address unless `TRUST_PROXY` says otherwise:
+
+- `TRUST_PROXY=1` (or `2`, `3`…): that many reverse proxies append to
+  `X-Forwarded-For`. The address is read from the right, so entries a client
+  adds on the left are ignored. A count larger than the real chain lets
+  clients choose their address again; a smaller one gives everyone the
+  proxy's address.
+- `TRUST_PROXY=cloudflare`: the server is only reachable through Cloudflare.
+  The IP comes from `CF-Connecting-IP`, the location from `CF-IPCountry` and
+  `CF-IPCity`.
 
 Do not serve `dashboard/` with a static server in production: the analyses
 would bypass the quota.
@@ -106,9 +122,9 @@ cities). Only signed-in accounts whose email is listed in `ADMIN_EMAILS`
   refuses to send it a new link. The person falls back to the anonymous free
   quota. Administrators cannot be blocked.
 - The location is the country and city deduced from the IP address at sign-in
-  and at each request. The IP address itself is not stored for this. Behind
-  Cloudflare with `TRUST_PROXY=1`, the `CF-IPCountry` and `CF-IPCity` headers
-  are used. Otherwise, download the free DB-IP Lite database (CC BY 4.0) once
+  and at each request. The IP address itself is not stored for this. With
+  `TRUST_PROXY=cloudflare`, the `CF-IPCountry` and `CF-IPCity` headers are
+  used. Otherwise, download the free DB-IP Lite database (CC BY 4.0) once
   a month:
 
 ```bash
@@ -128,7 +144,7 @@ Environment (`server/.env`):
 | Variable | Purpose |
 | --- | --- |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Session signing and public URL (https in production) |
-| `HOST`, `PORT`, `TRUST_PROXY` | Bind address; set `TRUST_PROXY=1` behind a reverse proxy |
+| `HOST`, `PORT`, `TRUST_PROXY` | Bind address; `TRUST_PROXY` = number of reverse proxies, or `cloudflare` (see above) |
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
 | `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (default `paul@maj.digital`, `off` to disable) |
@@ -145,7 +161,8 @@ Production checklist:
 - `NODE_ENV=production`
 - `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
 - `RESEND_API_KEY` and `EMAIL_FROM`
-- `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY=1`
+- `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY` set to the
+  number of proxies (or `cloudflare`)
 - `server/data/` is not published (gitignored)
 - add the publisher's contact address to `dashboard/conditions.html`
 
