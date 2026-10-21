@@ -44,11 +44,7 @@ select {
 }
 
 .brand-block {
-  display: flex;
-  flex-direction: column;
   align-self: start;
-  align-items: start;
-  gap: 14px;
   min-width: 0;
 }
 
@@ -61,16 +57,12 @@ select {
 .brand-logo img {
   display: block;
   width: auto;
-  height: 64px;
+  height: 52px;
 }
 
 .brand-logo:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
-}
-
-.brand-text {
-  min-width: 0;
 }
 
 .page-logo {
@@ -1194,7 +1186,6 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
 }
 
 .quota-chip,
@@ -1266,8 +1257,16 @@ h1 {
 
 @media (max-width: 1080px) {
   .topbar {
+    position: relative;
     align-items: start;
     flex-direction: column;
+  }
+
+  .access-status {
+    position: absolute;
+    top: 20px;
+    right: 28px;
+    height: 52px;
   }
 
   .topbar-side {
@@ -1296,12 +1295,26 @@ h1 {
     padding-right: 12px;
   }
 
-  .brand-block {
-    gap: 12px;
-  }
-
   .brand-logo img {
     height: 44px;
+  }
+
+  .access-status {
+    right: 12px;
+    height: 44px;
+  }
+
+  .access-status .account-chip {
+    display: block;
+    max-width: calc(100vw - 236px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .access-status .account-chip::before {
+    display: inline-block;
+    margin-right: 6px;
   }
 
   .chamber-wrap {
