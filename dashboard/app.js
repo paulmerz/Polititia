@@ -334,8 +334,9 @@ async function load() {
         viewStatus.delete(path);
       } catch (error) {
         const code = error?.code;
-        viewStatus.set(path, code === "quota_exceeded" ? "locked" : code === "not_found" ? "missing" : "error");
-        if (!["quota_exceeded", "not_found"].includes(code)) {
+        const statusByCode = { quota_exceeded: "locked", not_found: "missing", account_rate_limited: "throttled" };
+        viewStatus.set(path, statusByCode[code] || "error");
+        if (!statusByCode[code]) {
           console.error(error);
         }
       }
@@ -356,6 +357,9 @@ function statusBlock(path) {
   }
   if (status === "missing") {
     return note("Aucune donnée pour cette sélection.");
+  }
+  if (status === "throttled") {
+    return `${note("Trop d'analyses demandées en peu de temps depuis ce compte. Patientez une minute, ou revenez demain si vous avez dépassé la limite quotidienne.")}<button class="gate-secondary" type="button" data-retry="true">Réessayer</button>`;
   }
   if (status === "error") {
     return `${note("Cette analyse n'a pas pu être chargée.")}<button class="gate-secondary" type="button" data-retry="true">Réessayer</button>`;
@@ -2061,7 +2065,7 @@ document.body.addEventListener("click", (event) => {
     return;
   }
   if (target.closest("[data-retry]")) {
-    [...viewStatus.entries()].forEach(([path, status]) => status === "error" && viewStatus.delete(path));
+    [...viewStatus.entries()].forEach(([path, status]) => ["error", "throttled"].includes(status) && viewStatus.delete(path));
     load();
     return;
   }

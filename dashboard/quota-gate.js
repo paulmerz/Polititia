@@ -19,6 +19,7 @@ window.PolititiaGate = (function createGate() {
     disposable_email: "Les adresses jetables (boîtes temporaires) ne sont pas acceptées : elles ne permettent pas de vérifier qu’une personne réelle se connecte.",
     captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
     rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
+    email_daily_limit: "Plusieurs liens ont déjà été envoyés à cette adresse aujourd’hui. Vérifiez vos courriers indésirables, ou réessayez demain.",
     account_blocked: "Ce compte a été bloqué. Écrivez à l’éditeur du service si vous pensez qu’il s’agit d’une erreur.",
     forbidden: "Requête refusée par le serveur.",
     invalid_json: "Requête invalide.",

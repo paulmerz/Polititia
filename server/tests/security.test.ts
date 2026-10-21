@@ -175,6 +175,28 @@ test("fake links from one visitor do not block another visitor's sign-in", async
   assert.doesNotMatch(verified.headers.get("location") || "", /error=/);
 });
 
+test("Better Auth never sees a client-chosen address, even outside its own routes", async (t) => {
+  const { auth, client } = await startTestApp();
+  const visitor = client({ "x-forwarded-for": "203.0.113.50", "x-polititia-client-ip": "6.6.6.6" });
+  await visitor.signIn("seen@example.org");
+  const seen: Array<string | null> = [];
+  const getSession = auth.api.getSession.bind(auth.api);
+  t.mock.method(auth.api, "getSession", (context: { headers: Headers }) => {
+    seen.push(new Headers(context.headers).get("x-polititia-client-ip"));
+    return getSession(context as Parameters<typeof getSession>[0]);
+  });
+  const signOut = auth.api.signOut.bind(auth.api);
+  t.mock.method(auth.api, "signOut", (context: { headers: Headers }) => {
+    seen.push(new Headers(context.headers).get("x-polititia-client-ip"));
+    return signOut(context as Parameters<typeof signOut>[0]);
+  });
+
+  assert.equal((await (await visitor.request("/api/quota")).json()).session.email, "seen@example.org");
+  assert.equal((await visitor.request("/api/account/delete", { method: "POST", headers: { origin: ORIGIN } })).status, 200);
+  assert.ok(seen.length >= 2);
+  assert.deepEqual([...new Set(seen)], ["203.0.113.50"]);
+});
+
 test("Turnstile needs both keys", () => {
   assert.throws(
     () => loadConfig({ NODE_ENV: "development", DATA_DIR: "/tmp/polititia-dev-config", TURNSTILE_SITE_KEY: "site" }),

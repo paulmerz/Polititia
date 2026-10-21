@@ -185,6 +185,22 @@ test("a second link for the same address waits for the cooldown", async () => {
   assert.ok(payload.retryAfter > 0 && payload.retryAfter <= 60);
 });
 
+test("one address receives at most 5 links a day, whatever the number of senders", async () => {
+  const { client, db } = await startTestApp();
+  const statuses: number[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    // Each sender has its own address, and the 60 s cooldown has passed.
+    db.exec("DELETE FROM email_sends");
+    statuses.push((await client({ "x-forwarded-for": `198.51.100.${index + 1}` }).register("victim@example.org")).status);
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
+  const refused = await client({ "x-forwarded-for": "198.51.100.99" }).register("victim@example.org");
+  const payload = await refused.json();
+  assert.equal(payload.error, "email_daily_limit");
+  assert.ok(payload.retryAfter > 23 * 60 * 60);
+  assert.equal((await client({ "x-forwarded-for": "198.51.100.99" }).register("other@example.org")).status, 200);
+});
+
 test("a verified user can delete their account", async () => {
   const { request, register, verify, db } = await startTestApp();
   const { devLink } = await (await register("leaving@example.org")).json();
@@ -198,6 +214,24 @@ test("a verified user can delete their account", async () => {
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM "user"`).get() as { n: number }).n, 0);
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM "session"`).get() as { n: number }).n, 0);
   assert.equal((await (await request("/api/quota")).json()).session, null);
+});
+
+test("deleting an account only removes its own pending links, even with _ in the address", async () => {
+  const { request, signIn, db } = await startTestApp();
+  await signIn("a_b@example.org");
+  const expires = new Date(Date.now() + 60_000).toISOString();
+  const now = new Date().toISOString();
+  const addPending = db.prepare(
+    `INSERT INTO verification (id, identifier, value, "expiresAt", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  addPending.run("v1", "t1", JSON.stringify({ email: "a_b@example.org", name: "a" }), expires, now, now);
+  addPending.run("v2", "t2", JSON.stringify({ email: "axb@example.org", name: "x" }), expires, now, now);
+  addPending.run("v3", "t3", "not json", expires, now, now);
+  const pending = () => (db.prepare("SELECT id FROM verification ORDER BY id").all() as Array<{ id: string }>).map((row) => row.id);
+
+  const deleted = await request("/api/account/delete", { method: "POST", headers: { origin: ORIGIN } });
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(pending(), ["v2", "v3"]);
 });
 
 test("the email export is gone and data files are not served", async () => {

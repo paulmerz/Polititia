@@ -75,7 +75,11 @@ Open http://127.0.0.1:8000.
   visitor confirms an email: a magic link, valid 15 minutes. The address is
   stored only after the link is opened, and only to tell people from robots.
   A honeypot field, a disposable-domain list, a per-IP rate limit, a resend
-  cooldown and optional Cloudflare Turnstile protect the form.
+  cooldown, at most 5 links per address and per day, and optional Cloudflare
+  Turnstile protect the form.
+- Signed-in accounts have no analysis quota, only a ceiling against scraping
+  (`ACCOUNT_REQUESTS_PER_MINUTE`, `ACCOUNT_REQUESTS_PER_DAY`); administrators
+  are not limited.
 - With no mailer configured (development on this machine only: `HOST` and
   `BETTER_AUTH_URL` on localhost), the link is logged and shown in the
   browser. Outside localhost, development mode refuses to start without
@@ -86,10 +90,11 @@ Open http://127.0.0.1:8000.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
 
-Each new account triggers a notification to `SIGNUP_NOTIFY_EMAIL` (default
-`paul@maj.digital`, `off` to disable) with the user's email and IP address. It
-is sent through the same Resend mailer, so it requires `RESEND_API_KEY` and
-`EMAIL_FROM`.
+When `SIGNUP_NOTIFY_EMAIL` is set, each new account triggers a notification to
+that address with the user's email and IP address. There is no default
+recipient: without the variable (or with `off`), nobody is notified and the
+server warns at start in production. It is sent through the same Resend
+mailer, so it requires `RESEND_API_KEY` and `EMAIL_FROM`.
 
 The client IP (quota, sign-up limit, Better Auth rate limit, notification) is
 the socket address unless `TRUST_PROXY` says otherwise:
@@ -102,6 +107,29 @@ the socket address unless `TRUST_PROXY` says otherwise:
 - `TRUST_PROXY=cloudflare`: the server is only reachable through Cloudflare.
   The IP comes from `CF-Connecting-IP`, the location from `CF-IPCountry` and
   `CF-IPCity`.
+
+In production, the server logs a warning once if a request carries
+`X-Forwarded-For` while `TRUST_PROXY=0`.
+
+#### Setting TRUST_PROXY on Render
+
+Render runs the service behind its own proxies (Cloudflare, then Render's load
+balancer), even without a Cloudflare account of yours; a custom domain proxied
+by your own Cloudflare zone adds more. The service must listen on `0.0.0.0`,
+so with `TRUST_PROXY=0` every visitor gets the proxy's address and shares one
+quota. The admin page measures the chain instead of guessing it:
+
+1. Set `ADMIN_EMAILS` on Render and deploy.
+2. Open `/admin`, section « Adresse IP vue par le serveur ». Compare « votre
+   adresse probable » with the address https://ifconfig.me shows in the same
+   browser.
+3. If they match, set the suggested value (`TRUST_PROXY=2`, for instance) in
+   the service's Environment and redeploy.
+4. Back on `/admin`, the address kept by the server must be yours, and
+   « Tester l'usurpation » must succeed (a forged `X-Forwarded-For` and
+   `CF-Connecting-IP` do not change it). If it fails, the value is too high.
+5. Sign up with a test address and check that the IP in the signup
+   notification is yours.
 
 Do not serve `dashboard/` with a static server in production: the analyses
 would bypass the quota.
@@ -146,8 +174,9 @@ Environment (`server/.env`):
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Session signing and public URL (https in production) |
 | `HOST`, `PORT`, `TRUST_PROXY` | Bind address; `TRUST_PROXY` = number of reverse proxies, or `cloudflare` (see above) |
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
+| `ACCOUNT_REQUESTS_PER_MINUTE`, `ACCOUNT_REQUESTS_PER_DAY` | Ceilings for signed-in accounts, administrators excepted (default 120 and 2000 analysis requests) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
-| `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (default `paul@maj.digital`, `off` to disable) |
+| `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (no default: empty or `off` disables it) |
 | `ADMIN_EMAILS` | Comma-separated accounts allowed on `/admin` (empty disables it) |
 | `GEOIP_DB_PATH` | MMDB file for the admin geography (default `server/data/geoip.mmdb`, see `npm run geoip`) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional captcha on the email form (both or neither) |
@@ -161,8 +190,10 @@ Production checklist:
 - `NODE_ENV=production`
 - `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
 - `RESEND_API_KEY` and `EMAIL_FROM`
-- `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY` set to the
-  number of proxies (or `cloudflare`)
+- `HOST=127.0.0.1` behind a reverse proxy (`0.0.0.0` on Render), with
+  `TRUST_PROXY` set to the number of proxies (or `cloudflare`), checked on
+  `/admin` (see « Setting TRUST_PROXY on Render »)
+- `SIGNUP_NOTIFY_EMAIL` if new accounts should be notified
 - `server/data/` is not published (gitignored)
 - add the publisher's contact address to `dashboard/conditions.html`
 

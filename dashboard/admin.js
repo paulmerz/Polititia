@@ -7,6 +7,7 @@
     disposable_email: "Les adresses jetables ne sont pas acceptées.",
     captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
     rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
+    email_daily_limit: "Plusieurs liens ont déjà été envoyés à cette adresse aujourd’hui. Réessayez demain.",
     account_blocked: "Ce compte est bloqué.",
     forbidden: "Requête refusée par le serveur.",
   };
@@ -252,10 +253,64 @@
     };
     $("geoNote").textContent =
       notes[data.geoSource] ||
-      "Aucune source de géolocalisation : lancez « npm run geoip » dans server/ (base DB-IP Lite gratuite) ou placez le serveur derrière Cloudflare avec TRUST_PROXY=1. En attendant, les lieux restent inconnus.";
+      "Aucune source de géolocalisation : lancez « npm run geoip » dans server/ (base DB-IP Lite gratuite) ou, si le serveur n’est joignable que par Cloudflare, réglez TRUST_PROXY=cloudflare. En attendant, les lieux restent inconnus.";
     $("geoCredit").hidden = data.geoSource !== "mmdb";
     geoRows("countryRows", data.countries, (item) => countryName(item.country));
     geoRows("cityRows", data.cities, (item) => placeLabel(item));
+  }
+
+  const SPOOFED_IP = "203.0.113.7";
+
+  async function fetchIpCheck(headers = {}) {
+    const response = await fetch("/api/admin/ip-check", {
+      credentials: "include",
+      headers: { Accept: "application/json", ...headers },
+    }).catch(() => null);
+    return response?.ok ? response.json() : null;
+  }
+
+  async function loadIpCheck() {
+    const report = await fetchIpCheck();
+    if (!report) {
+      $("ipSuggestion").textContent = "Diagnostic indisponible.";
+      return;
+    }
+    const modes = {
+      off: "TRUST_PROXY=0 : l’adresse de la connexion est utilisée telle quelle",
+      proxies: `TRUST_PROXY=${report.proxyHops} : ${report.proxyHops} proxy(s) de confiance dans X-Forwarded-For`,
+      cloudflare: "TRUST_PROXY=cloudflare : l’adresse vient de CF-Connecting-IP",
+    };
+    $("ipMode").textContent = modes[report.mode] || report.mode;
+    $("ipUsed").textContent = report.usedIp;
+    $("ipSocket").textContent = report.socketIp;
+    $("ipForwarded").textContent = report.forwardedFor.length
+      ? report.forwardedFor.map((ip, index) => `${ip} (n°${report.forwardedFor.length - index} depuis la droite)`).join(", ")
+      : "absent";
+    $("ipCloudflare").textContent = report.cfConnectingIp
+      ? `${report.cfConnectingIp}${report.cfCountry ? ` (pays : ${report.cfCountry})` : ""}`
+      : "absent";
+    const current = report.mode === "proxies" ? String(report.proxyHops) : report.mode === "cloudflare" ? "cloudflare" : "0";
+    const settled = current === report.suggestion.trustProxy && report.usedIp === report.suggestion.visitorIp;
+    $("ipSuggestion").textContent = settled
+      ? `Votre adresse probable : ${report.usedIp}. Le réglage actuel (TRUST_PROXY=${current}) retient bien cette adresse.`
+      : `Votre adresse probable : ${report.suggestion.visitorIp}. Valeur suggérée : TRUST_PROXY=${report.suggestion.trustProxy}.`;
+    $("ipSuggestionReason").textContent = report.suggestion.reason;
+  }
+
+  async function spoofTest() {
+    const result = $("ipSpoofResult");
+    result.hidden = false;
+    result.textContent = "Test en cours…";
+    const honest = await fetchIpCheck();
+    const forged = await fetchIpCheck({ "X-Forwarded-For": SPOOFED_IP, "CF-Connecting-IP": SPOOFED_IP });
+    if (!honest || !forged) {
+      result.textContent = "Test impossible : le serveur n’a pas répondu.";
+      return;
+    }
+    result.textContent =
+      forged.usedIp === honest.usedIp && forged.usedIp !== SPOOFED_IP
+        ? `Réussi : en envoyant une fausse adresse (${SPOOFED_IP}), le serveur garde ${honest.usedIp}.`
+        : `Échec : le serveur a retenu ${forged.usedIp} au lieu de ${honest.usedIp}. Un visiteur peut choisir son adresse : TRUST_PROXY est trop élevé.`;
   }
 
   function render() {
@@ -269,6 +324,7 @@
     renderUsers();
     renderDaily(data.daily);
     renderGeo(data);
+    loadIpCheck();
   }
 
   function mountTurnstile() {
@@ -422,6 +478,7 @@
   $("adminLoginForm").addEventListener("submit", sendLink);
   $("adminRefresh").addEventListener("click", () => load());
   $("adminSignOut").addEventListener("click", () => signOut());
+  $("ipSpoofTest").addEventListener("click", () => spoofTest());
   for (const id of ["userSearch", "userStatus", "userSort"]) {
     $(id).addEventListener("input", () => state.data && renderUsers());
   }

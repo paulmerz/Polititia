@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isValidEmail } from "./emails.ts";
 
 const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(SERVER_DIR, "..");
@@ -8,8 +9,11 @@ const REPO_ROOT = path.resolve(SERVER_DIR, "..");
 export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
 export const EMAIL_RESEND_COOLDOWN_SECONDS = 60;
+export const EMAIL_MAX_PER_DAY = 5;
+// One action sends up to 4 requests (Assembly, theme, person, group).
+export const ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT = 120;
+export const ACCOUNT_REQUESTS_PER_DAY_DEFAULT = 2000;
 export const DEVICE_COOKIE_NAME = "pt_did";
-export const SIGNUP_NOTIFY_EMAIL_DEFAULT = "paul@maj.digital";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
 
 export type AppConfig = {
@@ -48,8 +52,16 @@ export type AppConfig = {
   adminEmails: string[];
   geoipPath: string;
   freeRequestLimit: number;
+  // Ceilings for signed-in accounts (administrators excepted).
+  accountRequestsPerMinute: number;
+  accountRequestsPerDay: number;
   allowInsecureHttp: boolean;
 };
+
+function readPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function readBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value === "") {
@@ -72,12 +84,16 @@ function parseTrustProxy(value: string | undefined): { proxyHops: number; trustC
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
+// No default recipient: every deployment chooses who receives the users' emails and IPs.
 function parseNotifyEmail(value: string | undefined): string {
   const trimmed = (value || "").trim().toLowerCase();
-  if (!trimmed) {
-    return SIGNUP_NOTIFY_EMAIL_DEFAULT;
+  if (!trimmed || ["0", "false", "no", "off"].includes(trimmed)) {
+    return "";
   }
-  return ["0", "false", "no", "off"].includes(trimmed) ? "" : trimmed;
+  if (!isValidEmail(trimmed)) {
+    throw new Error("SIGNUP_NOTIFY_EMAIL must be an email address, or empty/off to disable the notification.");
+  }
+  return trimmed;
 }
 
 function parseEmailList(value: string | undefined): string[] {
@@ -189,6 +205,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     adminEmails: parseEmailList(env.ADMIN_EMAILS),
     geoipPath: path.resolve(env.GEOIP_DB_PATH || path.join(dataDir, "geoip.mmdb")),
     freeRequestLimit: Math.max(1, Number(env.FREE_REQUEST_LIMIT || FREE_REQUEST_LIMIT_DEFAULT) || FREE_REQUEST_LIMIT_DEFAULT),
+    accountRequestsPerMinute: readPositiveInt(env.ACCOUNT_REQUESTS_PER_MINUTE, ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT),
+    accountRequestsPerDay: readPositiveInt(env.ACCOUNT_REQUESTS_PER_DAY, ACCOUNT_REQUESTS_PER_DAY_DEFAULT),
     allowInsecureHttp,
   };
 }

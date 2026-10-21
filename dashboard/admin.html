@@ -107,6 +107,32 @@
         </section>
 
         <section class="page-card">
+          <h2>Adresse IP vue par le serveur</h2>
+          <p class="source-note">
+            Sert à régler <code>TRUST_PROXY</code>. Sans le bon réglage, tous les visiteurs peuvent partager l’adresse
+            du proxy, donc un seul quota gratuit et une seule limite d’inscriptions.
+          </p>
+          <table class="terms-table admin-table">
+            <tbody>
+              <tr><th>Réglage actuel</th><td id="ipMode"></td></tr>
+              <tr><th>Adresse retenue par le serveur</th><td id="ipUsed"></td></tr>
+              <tr><th>Adresse de la connexion (socket)</th><td id="ipSocket"></td></tr>
+              <tr><th>X-Forwarded-For (de gauche à droite)</th><td id="ipForwarded"></td></tr>
+              <tr><th>CF-Connecting-IP</th><td id="ipCloudflare"></td></tr>
+            </tbody>
+          </table>
+          <p id="ipSuggestion"></p>
+          <p class="source-note" id="ipSuggestionReason"></p>
+          <ol>
+            <li>Comparez « votre adresse probable » avec celle qu’affiche <a href="https://ifconfig.me" rel="noopener" target="_blank">ifconfig.me</a> dans ce même navigateur.</li>
+            <li>Si elles sont identiques, mettez la valeur suggérée dans <code>TRUST_PROXY</code> (Render : Environment), puis redéployez.</li>
+            <li>Revenez ici : l’adresse retenue doit être la vôtre, et le test ci-dessous doit réussir.</li>
+          </ol>
+          <button type="button" class="page-button" id="ipSpoofTest">Tester l’usurpation</button>
+          <p class="source-note" id="ipSpoofResult" role="status" hidden></p>
+        </section>
+
+        <section class="page-card">
           <h2>Géographie des connexions</h2>
           <p class="source-note" id="geoNote"></p>
           <div class="admin-geo">
@@ -137,6 +163,6 @@
       <a href="/">Hémicycle</a> · <a href="/conditions">Conditions et confidentialité</a> ·
       <span id="geoCredit" hidden><a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a></span>
     </footer>
-    <script src="admin.js?v=admin-1"></script>
+    <script src="admin.js?v=admin-2"></script>
   </body>
 </html>

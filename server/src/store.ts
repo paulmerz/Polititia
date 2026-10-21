@@ -64,6 +64,11 @@ export function openStore(sqlitePath: string): Store {
       key_hash TEXT PRIMARY KEY,
       last_sent INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS rate_windows (
+      key_hash TEXT PRIMARY KEY,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS user_blocks (
       user_id TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
       blocked_at TEXT NOT NULL,
@@ -100,6 +105,7 @@ export function purgeStale(db: Store, now = Date.now()): void {
   db.prepare("DELETE FROM quota_interactions WHERE created_at < ?").run(new Date(now - DAY_MS).toISOString());
   db.prepare("DELETE FROM auth_attempts WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
   db.prepare("DELETE FROM email_sends WHERE last_sent < ?").run(nowSeconds - 24 * 60 * 60);
+  db.prepare("DELETE FROM rate_windows WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
   const tables = new Set(
     (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(
       (row) => row.name,

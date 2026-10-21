@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Store } from "./store.ts";
 import { DEVICE_COOKIE_NAME, REGISTER_MAX_PER_HOUR } from "./config.ts";
+import { dayKey } from "./admin.ts";
 
 export type QuotaView = {
   limit: number;
@@ -72,6 +73,60 @@ export function clientIp(headers: Headers, trust: ProxyTrust, socketIp: string):
     }
   }
   return socketIp;
+}
+
+export type ClientIpReport = {
+  mode: "off" | "proxies" | "cloudflare";
+  proxyHops: number;
+  socketIp: string;
+  // Left to right, as received: proxies append, so the rightmost entry is the closest proxy's view.
+  forwardedFor: string[];
+  cfConnectingIp: string | null;
+  cfCountry: string | null;
+  usedIp: string;
+  // What TRUST_PROXY should be, assuming the request comes from a browser that adds no header itself.
+  suggestion: { trustProxy: string; visitorIp: string; reason: string };
+};
+
+// Admin diagnostic: the headers a request arrived with and the address the server keeps.
+export function describeClientIp(headers: Headers, trust: ProxyTrust, socketIp: string): ClientIpReport {
+  const forwardedFor = (headers.get("x-forwarded-for") || "")
+    .split(",")
+    .map((part) => part.trim().slice(0, 64))
+    .filter(Boolean)
+    .slice(-20);
+  const cfConnectingIp = headers.get("cf-connecting-ip")?.trim().slice(0, 64) || null;
+  const cfCountry = headers.get("cf-ipcountry")?.trim().slice(0, 8) || null;
+  let suggestion: ClientIpReport["suggestion"];
+  if (!forwardedFor.length) {
+    suggestion = {
+      trustProxy: cfConnectingIp ? "cloudflare" : "0",
+      visitorIp: cfConnectingIp || socketIp,
+      reason: cfConnectingIp
+        ? "Aucun X-Forwarded-For, mais un CF-Connecting-IP : seul Cloudflare se trouve devant le serveur."
+        : "Aucun en-tête de proxy : le navigateur se connecte directement au serveur.",
+    };
+  } else {
+    // A browser sends no X-Forwarded-For: every entry was added by a proxy, the first one is the visitor.
+    const consistent = !cfConnectingIp || cfConnectingIp === forwardedFor[0];
+    suggestion = {
+      trustProxy: String(forwardedFor.length),
+      visitorIp: forwardedFor[0],
+      reason: consistent
+        ? `${forwardedFor.length} proxy(s) ont ajouté une adresse à X-Forwarded-For ; la première est la vôtre.`
+        : `${forwardedFor.length} proxy(s) dans X-Forwarded-For, mais CF-Connecting-IP (${cfConnectingIp}) ne correspond pas à la première entrée : vérifiez votre adresse avant de choisir.`,
+    };
+  }
+  return {
+    mode: trust.trustCloudflare ? "cloudflare" : trust.proxyHops > 0 ? "proxies" : "off",
+    proxyHops: trust.proxyHops,
+    socketIp,
+    forwardedFor,
+    cfConnectingIp,
+    cfCountry,
+    usedIp: clientIp(headers, trust, socketIp),
+    suggestion,
+  };
 }
 
 function bumpCounter(db: Store, kind: string, keyHash: string): number {
@@ -212,6 +267,61 @@ export function consumeInteraction(
   }
 }
 
+const DAY_SECONDS = 24 * 60 * 60;
+
+// Fixed windows: a key counts its hits until `windowSeconds` after the first one.
+function windowCount(db: Store, keyHash: string, windowSeconds: number, now: number): { count: number; resetIn: number } {
+  const row = db.prepare("SELECT window_start, count FROM rate_windows WHERE key_hash = ?").get(keyHash) as
+    | { window_start: number; count: number }
+    | undefined;
+  if (!row || now - Number(row.window_start) >= windowSeconds) {
+    return { count: 0, resetIn: 0 };
+  }
+  return { count: Number(row.count), resetIn: windowSeconds - (now - Number(row.window_start)) };
+}
+
+function windowBump(db: Store, keyHash: string, windowSeconds: number, now: number): number {
+  db.prepare(
+    `INSERT INTO rate_windows (key_hash, window_start, count) VALUES (?, ?, 1)
+     ON CONFLICT(key_hash) DO UPDATE SET
+       count = CASE WHEN ? - window_start >= ? THEN 1 ELSE count + 1 END,
+       window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
+  ).run(keyHash, now, now, windowSeconds, now, windowSeconds, now);
+  return windowCount(db, keyHash, windowSeconds, now).count;
+}
+
+// Seconds until this address may receive another link today (0 when it may).
+export function emailDailyLimitSeconds(
+  db: Store,
+  secret: string,
+  email: string,
+  max: number,
+  now = Math.floor(Date.now() / 1000),
+): number {
+  const { count, resetIn } = windowCount(db, hashIdentity(secret, "email-day", email), DAY_SECONDS, now);
+  return count >= max ? resetIn : 0;
+}
+
+export type AccountLimits = { perMinute: number; perDay: number };
+
+// Signed-in accounts have no analysis quota, only a ceiling against scraping.
+export function accountRateLimited(
+  db: Store,
+  secret: string,
+  userId: string,
+  limits: AccountLimits,
+  nowMs = Date.now(),
+): boolean {
+  const today = db.prepare("SELECT requests FROM user_usage WHERE user_id = ? AND day = ?").get(userId, dayKey(nowMs)) as
+    | { requests: number }
+    | undefined;
+  if (Number(today?.requests || 0) >= limits.perDay) {
+    return true;
+  }
+  const keyHash = hashIdentity(secret, "account-minute", userId);
+  return windowBump(db, keyHash, 60, Math.floor(nowMs / 1000)) > limits.perMinute;
+}
+
 export function emailCooldownSeconds(db: Store, secret: string, email: string, cooldown: number): number {
   const keyHash = hashIdentity(secret, "email-send", email);
   const row = db.prepare("SELECT last_sent FROM email_sends WHERE key_hash = ?").get(keyHash) as
@@ -224,12 +334,10 @@ export function emailCooldownSeconds(db: Store, secret: string, email: string, c
   return 0;
 }
 
-export function recordEmailSend(db: Store, secret: string, email: string): void {
+export function recordEmailSend(db: Store, secret: string, email: string, now = Math.floor(Date.now() / 1000)): void {
   const keyHash = hashIdentity(secret, "email-send", email);
-  db.prepare("INSERT OR REPLACE INTO email_sends (key_hash, last_sent) VALUES (?, ?)").run(
-    keyHash,
-    Math.floor(Date.now() / 1000),
-  );
+  db.prepare("INSERT OR REPLACE INTO email_sends (key_hash, last_sent) VALUES (?, ?)").run(keyHash, now);
+  windowBump(db, hashIdentity(secret, "email-day", email), DAY_SECONDS, now);
 }
 
 export function registerRateLimited(db: Store, secret: string, ip: string): boolean {

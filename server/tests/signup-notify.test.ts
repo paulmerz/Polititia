@@ -10,6 +10,7 @@ const MAILER = {
   hasMailer: true,
   resendApiKey: "re_test_key",
   emailFrom: "Polititia <no-reply@polititia.test>",
+  signupNotifyEmail: "ops@polititia.test",
 };
 
 type SentEmail = { from: string; to: string; subject: string; html: string };
@@ -61,19 +62,19 @@ async function startNotifyingApp(t: TestContext, overrides: Partial<AppConfig> =
     );
   }
 
-  const toPaul = () => sent.filter((message) => message.to === "paul@maj.digital");
-  return { ...started, sent, signUp, toPaul };
+  const toOps = () => sent.filter((message) => message.to === MAILER.signupNotifyEmail);
+  return { ...started, sent, signUp, toOps };
 }
 
 test("a new user triggers one notification with their email and IP", async (t) => {
-  const { signUp, toPaul, db } = await startNotifyingApp(t);
+  const { signUp, toOps, db } = await startNotifyingApp(t);
 
   // The client forged 6.6.6.6; the trusted proxy appended the address it saw.
   const first = await signUp("New.User@Example.org", { "x-forwarded-for": "6.6.6.6, 203.0.113.7" });
   assert.equal(first.status, 302);
 
-  await waitFor(() => toPaul().length === 1);
-  const [notification] = toPaul();
+  await waitFor(() => toOps().length === 1);
+  const [notification] = toOps();
   assert.equal(notification.from, MAILER.emailFrom);
   assert.equal(notification.subject, "Nouvel utilisateur Polititia : new.user@example.org");
   assert.match(notification.html, /Email : new\.user@example\.org/);
@@ -84,22 +85,22 @@ test("a new user triggers one notification with their email and IP", async (t) =
   const again = await signUp("new.user@example.org", { "x-forwarded-for": "198.51.100.2" });
   assert.equal(again.status, 302);
   await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(toPaul().length, 1, "an existing user signing in again is not a new user");
+  assert.equal(toOps().length, 1, "an existing user signing in again is not a new user");
 });
 
 test("a failing notification does not block account creation", async (t) => {
   t.mock.method(console, "error", () => {});
-  const { signUp, toPaul, db } = await startNotifyingApp(t, {}, (email) => (email.to === "paul@maj.digital" ? 500 : 200));
+  const { signUp, toOps, db } = await startNotifyingApp(t, {}, (email) => (email.to === MAILER.signupNotifyEmail ? 500 : 200));
 
   const response = await signUp("resilient@example.org");
   assert.equal(response.status, 302);
   assert.match(response.headers.get("location") || "", /verifie=1/);
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM "user"`).get() as { n: number }).n, 1);
-  await waitFor(() => toPaul().length === 1);
+  await waitFor(() => toOps().length === 1);
 });
 
 test("the notification uses the socket address when the proxy is not trusted", async (t) => {
-  const { signUp, toPaul } = await startNotifyingApp(t, { trustProxy: false, proxyHops: 0 });
+  const { signUp, toOps } = await startNotifyingApp(t, { trustProxy: false, proxyHops: 0 });
 
   const response = await signUp(
     "direct@example.org",
@@ -108,18 +109,18 @@ test("the notification uses the socket address when the proxy is not trusted", a
   );
   assert.equal(response.status, 302);
 
-  await waitFor(() => toPaul().length === 1);
-  const [notification] = toPaul();
+  await waitFor(() => toOps().length === 1);
+  const [notification] = toOps();
   assert.match(notification.html, /Adresse IP : 192\.0\.2\.44</);
   assert.doesNotMatch(notification.html, /6\.6\.6\.6/);
 });
 
 test("the notification escapes HTML from forwarded headers", async (t) => {
-  const { signUp, toPaul } = await startNotifyingApp(t);
+  const { signUp, toOps } = await startNotifyingApp(t);
 
   await signUp("xss@example.org", { "x-forwarded-for": "<b>evil</b>" });
-  await waitFor(() => toPaul().length === 1);
-  const [notification] = toPaul();
+  await waitFor(() => toOps().length === 1);
+  const [notification] = toOps();
   assert.match(notification.html, /Adresse IP : &lt;b&gt;evil&lt;\/b&gt;/);
 });
 
@@ -136,10 +137,23 @@ test("SIGNUP_NOTIFY_EMAIL=off disables the notification", async (t) => {
   );
 });
 
-test("SIGNUP_NOTIFY_EMAIL defaults to paul@maj.digital and can be overridden or disabled", () => {
+test("SIGNUP_NOTIFY_EMAIL has no default recipient and must be an address when set", () => {
   const base = { NODE_ENV: "test", DATA_DIR: mkdtempSync(path.join(os.tmpdir(), "polititia-config-")) };
-  assert.equal(loadConfig(base).signupNotifyEmail, "paul@maj.digital");
-  assert.equal(loadConfig({ ...base, SIGNUP_NOTIFY_EMAIL: "" }).signupNotifyEmail, "paul@maj.digital");
+  assert.equal(loadConfig(base).signupNotifyEmail, "");
+  assert.equal(loadConfig({ ...base, SIGNUP_NOTIFY_EMAIL: "" }).signupNotifyEmail, "");
   assert.equal(loadConfig({ ...base, SIGNUP_NOTIFY_EMAIL: " Ops@Maj.Digital " }).signupNotifyEmail, "ops@maj.digital");
   assert.equal(loadConfig({ ...base, SIGNUP_NOTIFY_EMAIL: "off" }).signupNotifyEmail, "");
+  assert.throws(() => loadConfig({ ...base, SIGNUP_NOTIFY_EMAIL: "paul" }), /SIGNUP_NOTIFY_EMAIL/);
+});
+
+test("without SIGNUP_NOTIFY_EMAIL, a new account sends no notification", async (t) => {
+  const defaults = loadConfig({ NODE_ENV: "test", DATA_DIR: mkdtempSync(path.join(os.tmpdir(), "polititia-config-")) });
+  const { signUp, sent } = await startNotifyingApp(t, { signupNotifyEmail: defaults.signupNotifyEmail });
+
+  assert.equal((await signUp("unnoticed@example.org")).status, 302);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(
+    sent.map((email) => email.to),
+    ["unnoticed@example.org"],
+  );
 });

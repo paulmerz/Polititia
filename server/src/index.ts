@@ -12,6 +12,9 @@ assertSafeHostBinding(config);
 if (config.usingDevSecret) {
   console.warn("Auth secret is a development default. Set BETTER_AUTH_SECRET before production.");
 }
+if (config.isProduction && !config.signupNotifyEmail) {
+  console.warn("SIGNUP_NOTIFY_EMAIL is not set: nobody is notified of new accounts.");
+}
 if (config.exposeMagicLink) {
   console.warn("No Resend mailer configured: magic links are logged and shown in the browser (development only).");
 }

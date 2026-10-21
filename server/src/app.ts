@@ -5,17 +5,20 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import type { AppConfig } from "./config.ts";
-import { DEVICE_COOKIE_NAME, EMAIL_RESEND_COOLDOWN_SECONDS } from "./config.ts";
+import { DEVICE_COOKIE_NAME, EMAIL_MAX_PER_DAY, EMAIL_RESEND_COOLDOWN_SECONDS } from "./config.ts";
 import { Analytics, openAnalytics, PeriodError, type Period } from "./analytics.ts";
 import { createAuthInstance, type AuthInstance, type PendingMagicLink } from "./auth.ts";
 import { bootstrapPayload, loadDashboardData, politicianMarkers } from "./data.ts";
 import { isDisposableEmail, isValidEmail, normalizeEmail } from "./emails.ts";
 import {
+  accountRateLimited,
   clientIp,
   consumeInteraction,
   createDeviceId,
+  describeClientIp,
   deviceCookieHeader,
   emailCooldownSeconds,
+  emailDailyLimitSeconds,
   parseDeviceCookie,
   readQuota,
   recordEmailSend,
@@ -118,7 +121,7 @@ async function currentSession(
   request: Request,
 ): Promise<{ user: SessionUser } | null> {
   try {
-    const session = await auth.api.getSession({ headers: request.headers });
+    const session = await auth.api.getSession({ headers: withClientIp(request.headers, requestIp()) });
     if (!session || isBlocked(db, session.user?.id)) {
       return null;
     }
@@ -160,13 +163,23 @@ export async function createApp(config: AppConfig) {
     setInterval(() => purgeStale(db), PURGE_INTERVAL_MS).unref();
   }
 
+  const adminEmails = new Set(config.adminEmails);
+  const accountLimits = { perMinute: config.accountRequestsPerMinute, perDay: config.accountRequestsPerDay };
   const app = new Hono<{ Bindings: NodeBindings }>();
   const turnstile = config.turnstileSiteKey ? [TURNSTILE_ORIGIN] : [];
 
+  let warnedUntrustedProxy = false;
   app.use("*", (c, next) => {
     const socketIp = c.env?.incoming?.socket?.remoteAddress || "inconnue";
     const ip = clientIp(c.req.raw.headers, config, socketIp);
-    return requestContext.run({ ip, headers: c.req.raw.headers }, next);
+    if (config.isProduction && !config.trustProxy && !warnedUntrustedProxy && c.req.header("x-forwarded-for")) {
+      warnedUntrustedProxy = true;
+      console.warn(
+        "TRUST_PROXY is probably wrong: a request carries X-Forwarded-For while TRUST_PROXY=0." +
+          " Every visitor may share the proxy's address, hence one quota. See /admin, « Adresse IP vue par le serveur ».",
+      );
+    }
+    return requestContext.run({ ip, socketIp, headers: c.req.raw.headers }, next);
   });
 
   app.use(
@@ -313,6 +326,10 @@ export async function createApp(config: AppConfig) {
     let quota: unknown = unlimitedQuota;
     const ip = requestIp();
     if (session?.user?.id) {
+      const isAdmin = adminEmails.has(normalizeEmail(session.user.email || ""));
+      if (!isAdmin && accountRateLimited(db, config.secret, session.user.id, accountLimits)) {
+        return applyDeviceCookie(config, c.json({ error: "account_rate_limited" }, 429), deviceId);
+      }
       recordActivity(db, session.user.id, geo.locate(ip, c.req.raw.headers), "request");
     } else {
       const theme = c.req.query("theme") || "";
@@ -394,6 +411,10 @@ export async function createApp(config: AppConfig) {
     if (wait > 0) {
       return applyDeviceCookie(config, c.json({ error: "resend_cooldown", retryAfter: wait }, 429), deviceId);
     }
+    const dailyWait = emailDailyLimitSeconds(db, config.secret, email, EMAIL_MAX_PER_DAY);
+    if (dailyWait > 0) {
+      return applyDeviceCookie(config, c.json({ error: "email_daily_limit", retryAfter: dailyWait }, 429), deviceId);
+    }
 
     // Only a query string of the dashboard is accepted, so the link can never
     // send the visitor to another path or origin.
@@ -423,10 +444,14 @@ export async function createApp(config: AppConfig) {
     if (!user?.id) {
       return c.json({ error: "not_signed_in" }, 401);
     }
-    const signedOut = await auth.api.signOut({ headers: c.req.raw.headers, asResponse: true });
+    const signedOut = await auth.api.signOut({ headers: withClientIp(c.req.raw.headers, requestIp()), asResponse: true });
     db.prepare(`DELETE FROM "user" WHERE id = ?`).run(user.id);
     if (user.email) {
-      db.prepare(`DELETE FROM verification WHERE value LIKE ?`).run(`%${JSON.stringify(user.email).slice(1, -1)}%`);
+      // Magic-link rows hold {"email","name"} as JSON; other verification rows may not be JSON.
+      db.prepare(
+        `DELETE FROM verification
+         WHERE CASE WHEN json_valid(value) THEN lower(json_extract(value, '$.email')) END = ?`,
+      ).run(normalizeEmail(user.email));
     }
     const response = c.json({ ok: true, deleted: true });
     for (const cookie of setCookiesOf(signedOut)) {
@@ -435,7 +460,6 @@ export async function createApp(config: AppConfig) {
     return response;
   });
 
-  const adminEmails = new Set(config.adminEmails);
   type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
 
   // Without ADMIN_EMAILS the admin pages do not exist.
@@ -478,6 +502,15 @@ export async function createApp(config: AppConfig) {
       me: { email: check.admin.email },
       geoSource: geo.source(),
     });
+  });
+
+  app.get("/api/admin/ip-check", async (c) => {
+    const check = await requireAdmin(c, false);
+    if ("response" in check) {
+      return check.response;
+    }
+    const socketIp = requestContext.getStore()?.socketIp || "inconnue";
+    return c.json(describeClientIp(c.req.raw.headers, config, socketIp));
   });
 
   app.post("/api/admin/users/:id/:action{block|unblock}", async (c) => {
