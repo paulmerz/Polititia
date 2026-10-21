@@ -8,6 +8,8 @@ const REPO_ROOT = path.resolve(SERVER_DIR, "..");
 export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
 export const EMAIL_RESEND_COOLDOWN_SECONDS = 60;
+export const EMAIL_MAX_PER_ADDRESS_PER_DAY = 5;
+export const EMAIL_DAILY_LIMIT_DEFAULT = 200;
 export const DEVICE_COOKIE_NAME = "pt_did";
 export const SIGNUP_NOTIFY_EMAIL_DEFAULT = "paul@maj.digital";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
@@ -34,6 +36,9 @@ export type AppConfig = {
   exposeMagicLink: boolean;
   resendApiKey: string;
   emailFrom: string;
+  // Sign-in links sent per 24 hours, all addresses together: a ceiling on
+  // what a robot can make the Resend account send.
+  emailDailyLimit: number;
   turnstileSiteKey: string;
   turnstileSecretKey: string;
   signupNotifyEmail: string;
@@ -150,6 +155,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     exposeMagicLink: !isProduction && !hasMailer,
     resendApiKey,
     emailFrom,
+    emailDailyLimit: Math.max(1, Number(env.EMAIL_DAILY_LIMIT || EMAIL_DAILY_LIMIT_DEFAULT) || EMAIL_DAILY_LIMIT_DEFAULT),
     turnstileSiteKey,
     turnstileSecretKey,
     signupNotifyEmail: parseNotifyEmail(env.SIGNUP_NOTIFY_EMAIL),

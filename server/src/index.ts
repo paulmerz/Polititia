@@ -15,6 +15,9 @@ if (config.usingDevSecret) {
 if (config.exposeMagicLink) {
   console.warn("No Resend mailer configured: magic links are logged and shown in the browser (development only).");
 }
+if (config.isProduction && !config.turnstileSiteKey) {
+  console.warn("No Turnstile keys: robots can request sign-in links until EMAIL_DAILY_LIMIT is reached.");
+}
 if (!existsSync(config.analyticsPath)) {
   console.warn("Analytics database missing:", config.analyticsPath, "- run build_analytics_db.py.");
 }

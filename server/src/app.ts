@@ -20,6 +20,7 @@ import {
   readQuota,
   recordEmailSend,
   registerRateLimited,
+  reserveEmail,
   unlimitedQuota,
 } from "./quota.ts";
 import { openStore, purgeStale, type Store } from "./store.ts";
@@ -59,8 +60,12 @@ const CONTENT_TYPES: Record<string, string> = {
 
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
-const ADMIN_RETURN_TO = "/admin";
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+
+// Only what the pages use. Links are requested through /api/register, which
+// applies the captcha, the disposable-domain list and the sending limits that
+// Better Auth's own /sign-in/magic-link endpoint would skip.
+const PUBLIC_AUTH_ROUTES = new Set(["GET /api/auth/magic-link/verify", "POST /api/auth/sign-out"]);
 
 function originAllowed(config: AppConfig, origin: string | undefined): boolean {
   return Boolean(origin && config.trustedOrigins.includes(origin));
@@ -210,7 +215,10 @@ export async function createApp(config: AppConfig) {
   });
 
   app.all("/api/auth/*", (c) => {
-    if (!sameOriginOrSafeGet(config, c.req.raw) && c.req.method !== "OPTIONS") {
+    if (!PUBLIC_AUTH_ROUTES.has(`${c.req.method} ${c.req.path}`)) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    if (!sameOriginOrSafeGet(config, c.req.raw)) {
       return c.json({ error: "forbidden" }, 403);
     }
     return auth.handler(c.req.raw);
@@ -346,6 +354,7 @@ export async function createApp(config: AppConfig) {
 
   app.get("/api/assembly", (c) => metered(c, "assembly", "", (analytics, period) => analytics.assembly(period)));
 
+  let budgetWarnedAt = 0;
   app.post("/api/register", async (c) => {
     if (!originAllowed(config, c.req.header("origin"))) {
       return c.json({ error: "forbidden" }, 403);
@@ -385,11 +394,23 @@ export async function createApp(config: AppConfig) {
       return applyDeviceCookie(config, c.json({ error: "resend_cooldown", retryAfter: wait }, 429), deviceId);
     }
 
+    const budget = reserveEmail(db, config.secret, email, config.emailDailyLimit);
+    if (budget === "address_limit") {
+      return applyDeviceCookie(config, c.json({ error: "address_limit" }, 429), deviceId);
+    }
+    if (budget === "daily_limit") {
+      if (Date.now() - budgetWarnedAt > PURGE_INTERVAL_MS) {
+        budgetWarnedAt = Date.now();
+        console.warn(`[register] EMAIL_DAILY_LIMIT (${config.emailDailyLimit}) reached: no link is sent until it frees up.`);
+      }
+      return applyDeviceCookie(config, c.json({ error: "daily_limit" }, 503), deviceId);
+    }
+
     // Only a query string of the dashboard is accepted, so the link can never
     // send the visitor to another path or origin.
     const returnTo = String(body.returnTo || "");
     const query = RETURN_TO_PATTERN.test(returnTo) ? returnTo.slice(1) : "";
-    const callbackURL = returnTo === ADMIN_RETURN_TO ? ADMIN_RETURN_TO : `/?${query ? `${query}&` : ""}verifie=1`;
+    const callbackURL = `/?${query ? `${query}&` : ""}verifie=1`;
     await auth.api.signInMagicLink({
       body: { email, name: email.split("@")[0], callbackURL },
       headers: c.req.raw.headers,
@@ -428,29 +449,32 @@ export async function createApp(config: AppConfig) {
   const adminEmails = new Set(config.adminEmails);
   type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
 
-  // Without ADMIN_EMAILS the admin pages do not exist.
-  async function requireAdmin(c: Context, write: boolean): Promise<AdminCheck> {
+  async function signedInAdmin(request: Request): Promise<{ id: string; email: string } | null> {
     if (!adminEmails.size) {
+      return null;
+    }
+    const user = (await currentSession(auth, db, request))?.user;
+    const email = normalizeEmail(user?.email || "");
+    return user?.id && adminEmails.has(email) ? { id: user.id, email } : null;
+  }
+
+  // The admin pages only exist for a signed-in administrator: anyone else,
+  // signed in or not, gets the same 404 as an unknown path.
+  async function requireAdmin(c: Context, write: boolean): Promise<AdminCheck> {
+    const admin = await signedInAdmin(c.req.raw);
+    if (!admin) {
       return { response: c.json({ error: "not_found" }, 404) };
     }
     const sameOrigin = write ? originAllowed(config, c.req.header("origin")) : sameOriginOrSafeGet(config, c.req.raw);
     if (!sameOrigin) {
       return { response: c.json({ error: "forbidden" }, 403) };
     }
-    const user = (await currentSession(auth, db, c.req.raw))?.user;
-    if (!user?.id || !user.email) {
-      return { response: c.json({ error: "not_signed_in", auth: authInfo() }, 401) };
-    }
-    const email = normalizeEmail(user.email);
-    if (!adminEmails.has(email)) {
-      return { response: c.json({ error: "not_admin", session: { email } }, 403) };
-    }
-    return { admin: { id: user.id, email } };
+    return { admin };
   }
 
   for (const adminPath of ["/admin", "/admin.js"]) {
     app.use(adminPath, async (c, next) => {
-      if (!adminEmails.size) {
+      if (!(await signedInAdmin(c.req.raw))) {
         return c.json({ error: "not_found" }, 404);
       }
       await next();

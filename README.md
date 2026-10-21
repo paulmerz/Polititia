@@ -74,8 +74,16 @@ Open http://127.0.0.1:8000.
 - After 10 analyses (IP **and** device cookie), access stays free once the
   visitor confirms an email: a magic link, valid 15 minutes. The address is
   stored only after the link is opened, and only to tell people from robots.
-  A honeypot field, a disposable-domain list, a per-IP rate limit, a resend
-  cooldown and optional Cloudflare Turnstile protect the form.
+  A honeypot field, a disposable-domain list, a per-IP rate limit (5 per hour,
+  IPv6 counted per /64), a resend cooldown, 5 links per address per day,
+  a service-wide `EMAIL_DAILY_LIMIT` and optional Cloudflare Turnstile protect
+  the form. Better Auth's own `/api/auth/*` endpoints are closed except link
+  verification and sign-out, so links can only be requested through
+  `/api/register`.
+- « Se connecter » in the header sends the same link at any time. A known
+  address gets its existing account back; nothing is created twice. Sessions
+  last 30 days and are extended at most once a day while the account is used,
+  so only 30 days without a visit sign a person out.
 - With no mailer configured (development only), the link is logged and shown
   in the browser.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
@@ -96,8 +104,11 @@ would bypass the quota.
 It also shows each account's requests (today, 7 days, 30 days, total), the
 daily requests over 30 days, and where accounts connect from (countries and
 cities). Only signed-in accounts whose email is listed in `ADMIN_EMAILS`
-(comma-separated) can open it; without `ADMIN_EMAILS`, `/admin` and
-`/api/admin/*` answer 404. The page has its own magic-link form.
+(comma-separated) can open it: for everyone else, signed in or not, `/admin`,
+`/admin.js` and `/api/admin/*` answer 404, as they do without `ADMIN_EMAILS`.
+The page has no sign-in form: an administrator signs in from the homepage
+(« Se connecter ») and then opens `/admin`. Adding an administrator means
+editing `ADMIN_EMAILS` and restarting the server.
 
 - A request is one analysis call (deputy, group, theme, Assembly) made by a
   signed-in account. Anonymous visitors are not tied to an account: only
@@ -131,6 +142,7 @@ Environment (`server/.env`):
 | `HOST`, `PORT`, `TRUST_PROXY` | Bind address; set `TRUST_PROXY=1` behind a reverse proxy |
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
+| `EMAIL_DAILY_LIMIT` | Sign-in links sent per 24 hours, all addresses together (default 200) |
 | `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (default `paul@maj.digital`, `off` to disable) |
 | `ADMIN_EMAILS` | Comma-separated accounts allowed on `/admin` (empty disables it) |
 | `GEOIP_DB_PATH` | MMDB file for the admin geography (default `server/data/geoip.mmdb`, see `npm run geoip`) |
@@ -145,6 +157,8 @@ Production checklist:
 - `NODE_ENV=production`
 - `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
 - `RESEND_API_KEY` and `EMAIL_FROM`
+- `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`: without them, robots can
+  spend the whole `EMAIL_DAILY_LIMIT` (the server warns at start)
 - `HOST=127.0.0.1` behind a reverse proxy, with `TRUST_PROXY=1`
 - `server/data/` is not published (gitignored)
 - add the publisher's contact address to `dashboard/conditions.html`

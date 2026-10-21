@@ -1,15 +1,6 @@
 (function adminPage() {
   const $ = (id) => document.getElementById(id);
-  const state = { data: null, auth: null, pollTimer: null, turnstileWidget: null };
-
-  const ERROR_MESSAGES = {
-    invalid_email: "Cette adresse email n’est pas valide.",
-    disposable_email: "Les adresses jetables ne sont pas acceptées.",
-    captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
-    rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
-    account_blocked: "Ce compte est bloqué.",
-    forbidden: "Requête refusée par le serveur.",
-  };
+  const state = { data: null };
 
   const numberFormat = new Intl.NumberFormat("fr-FR");
   const dateFormat = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" });
@@ -260,7 +251,7 @@
 
   function render() {
     const data = state.data;
-    $("adminLogin").hidden = true;
+    $("adminSignedOut").hidden = true;
     $("adminContent").hidden = false;
     $("adminSession").hidden = false;
     $("adminEmail").textContent = data.me.email;
@@ -271,42 +262,14 @@
     renderGeo(data);
   }
 
-  function mountTurnstile() {
-    const siteKey = state.auth?.turnstileSiteKey;
-    const slot = $("adminTurnstile");
-    if (!siteKey || state.turnstileWidget !== null) {
-      return;
-    }
-    slot.hidden = false;
-    const renderWidget = () => {
-      if (state.turnstileWidget === null && window.turnstile) {
-        state.turnstileWidget = window.turnstile.render(slot, { sitekey: siteKey, language: "fr" });
-      }
-    };
-    if (window.turnstile) {
-      renderWidget();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-    script.async = true;
-    script.addEventListener("load", renderWidget);
-    document.head.append(script);
-  }
-
-  function showLogin(auth, text) {
-    state.auth = auth || state.auth;
+  // The page answers 404 to anyone but a signed-in administrator, so the
+  // overview only fails this way once the session has expired or been closed.
+  function showSignedOut() {
     state.data = null;
     $("adminContent").hidden = true;
-    $("adminLogin").hidden = false;
-    say(text || "Connectez-vous avec une adresse administrateur.");
-    mountTurnstile();
-  }
-
-  function loginMessage(text) {
-    const message = $("adminLoginMessage");
-    message.textContent = text;
-    message.hidden = !text;
+    $("adminSession").hidden = true;
+    $("adminSignedOut").hidden = false;
+    say("Vous n’êtes plus connecté.");
   }
 
   async function load() {
@@ -318,70 +281,17 @@
       return false;
     }
     const payload = await response.json().catch(() => ({}));
-    if (response.status === 401) {
-      $("adminSession").hidden = true;
-      showLogin(payload.auth);
-      return false;
-    }
-    if (response.status === 403 && payload.error === "not_admin") {
-      $("adminSession").hidden = false;
-      $("adminEmail").textContent = payload.session?.email || "";
-      showLogin(null, `${payload.session?.email || "Ce compte"} n’est pas une adresse administrateur. Connectez-vous avec une autre adresse.`);
+    if (response.status === 404) {
+      showSignedOut();
       return false;
     }
     if (!response.ok) {
       say("Impossible de charger les données d’administration.");
       return false;
     }
-    stopPolling();
     state.data = payload;
     render();
     return true;
-  }
-
-  function stopPolling() {
-    clearInterval(state.pollTimer);
-    state.pollTimer = null;
-  }
-
-  async function sendLink(event) {
-    event.preventDefault();
-    const email = $("adminLoginEmail").value.trim();
-    const button = $("adminLoginSubmit");
-    button.disabled = true;
-    loginMessage("");
-    try {
-      const token =
-        window.turnstile && state.turnstileWidget !== null ? window.turnstile.getResponse(state.turnstileWidget) || "" : "";
-      const response = await fetch("/api/register", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email, website: $("adminLoginWebsite").value, turnstileToken: token, returnTo: "/admin" }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        loginMessage(
-          payload.error === "resend_cooldown"
-            ? `Un lien vient d’être envoyé. Nouvel essai possible dans ${payload.retryAfter || 60} secondes.`
-            : ERROR_MESSAGES[payload.error] || "L’envoi du lien a échoué.",
-        );
-        return;
-      }
-      loginMessage(`Lien envoyé à ${email}. Ouvrez-le dans ce navigateur : la page se met à jour toute seule.`);
-      const dev = $("adminDevLink");
-      dev.hidden = !payload.devLink;
-      if (payload.devLink) {
-        dev.querySelector("a").href = payload.devLink;
-      }
-      stopPolling();
-      state.pollTimer = setInterval(load, 4000);
-    } finally {
-      button.disabled = false;
-      if (window.turnstile && state.turnstileWidget !== null) {
-        window.turnstile.reset(state.turnstileWidget);
-      }
-    }
   }
 
   async function toggleBlock(user, button) {
@@ -415,11 +325,9 @@
       headers: { "Content-Type": "application/json" },
       body: "{}",
     }).catch(() => null);
-    $("adminSession").hidden = true;
     load();
   }
 
-  $("adminLoginForm").addEventListener("submit", sendLink);
   $("adminRefresh").addEventListener("click", () => load());
   $("adminSignOut").addEventListener("click", () => signOut());
   for (const id of ["userSearch", "userStatus", "userSort"]) {
