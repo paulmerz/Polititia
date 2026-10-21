@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Store } from "./store.ts";
-import { DEVICE_COOKIE_NAME, REGISTER_MAX_PER_HOUR } from "./config.ts";
+import { DEVICE_COOKIE_NAME, EMAIL_MAX_PER_ADDRESS_PER_DAY, REGISTER_MAX_PER_HOUR } from "./config.ts";
 
 export type QuotaView = {
   limit: number;
@@ -209,25 +209,86 @@ export function recordEmailSend(db: Store, secret: string, email: string): void 
   );
 }
 
-export function registerRateLimited(db: Store, secret: string, ip: string): boolean {
-  const keyHash = hashIdentity(secret, "register-ip", ip);
-  const now = Math.floor(Date.now() / 1000);
-  const window = 60 * 60;
+// One IPv6 subscriber usually holds a whole /64, so its addresses share a limit.
+export function ipRateKey(ip: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) {
+    return mapped[1];
+  }
+  if (!ip.includes(":")) {
+    return ip;
+  }
+  const address = ip.split("%")[0].toLowerCase();
+  const [head, tail] = address.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups =
+    tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
+
+const DAY_SECONDS = 24 * 60 * 60;
+
+function windowCount(db: Store, keyHash: string, window: number, now: number): number {
   const row = db.prepare("SELECT window_start, count FROM auth_attempts WHERE key_hash = ?").get(keyHash) as
     | { window_start: number; count: number }
     | undefined;
-  if (!row || now - Number(row.window_start) >= window) {
+  return row && now - Number(row.window_start) < window ? Number(row.count) : 0;
+}
+
+function bumpWindow(db: Store, keyHash: string, window: number, now: number): void {
+  if (windowCount(db, keyHash, window, now) === 0) {
     db.prepare("INSERT OR REPLACE INTO auth_attempts (key_hash, window_start, count) VALUES (?, ?, 1)").run(
       keyHash,
       now,
     );
-    return false;
-  }
-  if (Number(row.count) >= REGISTER_MAX_PER_HOUR) {
-    return true;
+    return;
   }
   db.prepare("UPDATE auth_attempts SET count = count + 1 WHERE key_hash = ?").run(keyHash);
+}
+
+export function registerRateLimited(db: Store, secret: string, ip: string): boolean {
+  const keyHash = hashIdentity(secret, "register-ip", ipRateKey(ip));
+  const now = Math.floor(Date.now() / 1000);
+  const window = 60 * 60;
+  if (windowCount(db, keyHash, window, now) >= REGISTER_MAX_PER_HOUR) {
+    return true;
+  }
+  bumpWindow(db, keyHash, window, now);
   return false;
+}
+
+// Takes one email from both 24-hour budgets, or none when either is spent.
+export function reserveEmail(
+  db: Store,
+  secret: string,
+  email: string,
+  dailyLimit: number,
+  now = Date.now(),
+): "ok" | "address_limit" | "daily_limit" {
+  const seconds = Math.floor(now / 1000);
+  const addressKey = hashIdentity(secret, "email-day", email);
+  const globalKey = hashIdentity(secret, "email-day", "*");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    let outcome: "ok" | "address_limit" | "daily_limit" = "ok";
+    if (windowCount(db, addressKey, DAY_SECONDS, seconds) >= EMAIL_MAX_PER_ADDRESS_PER_DAY) {
+      outcome = "address_limit";
+    } else if (windowCount(db, globalKey, DAY_SECONDS, seconds) >= dailyLimit) {
+      outcome = "daily_limit";
+    } else {
+      bumpWindow(db, addressKey, DAY_SECONDS, seconds);
+      bumpWindow(db, globalKey, DAY_SECONDS, seconds);
+    }
+    db.exec("COMMIT");
+    return outcome;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function deviceCookieHeader(secret: string, deviceId: string, secure: boolean): string {

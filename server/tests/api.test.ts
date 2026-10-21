@@ -185,6 +185,80 @@ test("a second link for the same address waits for the cooldown", async () => {
   assert.ok(payload.retryAfter > 0 && payload.retryAfter <= 60);
 });
 
+test("Better Auth cannot be asked for a link directly, bypassing /api/register", async () => {
+  const { request, db } = await startTestApp();
+  const links = () => (db.prepare("SELECT COUNT(*) AS n FROM verification").get() as { n: number }).n;
+  for (const path of [
+    "/api/auth/sign-in/magic-link",
+    "/api/auth/sign-in/magic-link/",
+    "/api/auth/Sign-In/Magic-Link",
+    "/api/auth/sign-up/email",
+    "/api/auth/get-session",
+  ]) {
+    const response = await request(path, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json" },
+      body: JSON.stringify({ email: "victim@example.org", callbackURL: "/" }),
+    });
+    assert.equal(response.status, 404, path);
+  }
+  assert.equal(links(), 0);
+});
+
+test("signing out still goes through Better Auth", async () => {
+  const { request, signIn } = await startTestApp();
+  await signIn("leaving@example.org");
+  const refused = await request("/api/auth/sign-out", {
+    method: "POST",
+    headers: { origin: "https://evil.example", "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(refused.status, 403);
+  const signedOut = await request("/api/auth/sign-out", {
+    method: "POST",
+    headers: { origin: ORIGIN, "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(signedOut.status, 200);
+  assert.equal((await (await request("/api/quota")).json()).session, null);
+});
+
+test("an address receives at most 5 links a day, whatever the connection", async () => {
+  const { client, db } = await startTestApp();
+  for (let index = 1; index <= 5; index += 1) {
+    db.exec("DELETE FROM email_sends");
+    const sent = await client({ "x-forwarded-for": `198.51.100.${index}` }).register("target@example.org");
+    assert.equal(sent.status, 200, `link ${index}`);
+  }
+  db.exec("DELETE FROM email_sends");
+  const refused = await client({ "x-forwarded-for": "198.51.100.99" }).register("target@example.org");
+  assert.equal(refused.status, 429);
+  assert.equal((await refused.json()).error, "address_limit");
+});
+
+test("EMAIL_DAILY_LIMIT stops every link once the day's budget is spent", async () => {
+  const { client, db } = await startTestApp({}, { EMAIL_DAILY_LIMIT: "2" });
+  const browser = (index: number) => client({ "x-forwarded-for": `198.51.100.${index}` });
+  assert.equal((await browser(1).register("one@example.org")).status, 200);
+  assert.equal((await browser(2).register("two@example.org")).status, 200);
+  const refused = await browser(3).register("three@example.org");
+  assert.equal(refused.status, 503);
+  assert.equal((await refused.json()).error, "daily_limit");
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM verification").get() as { n: number }).n, 2);
+});
+
+test("a returning user signs back in to the same account", async () => {
+  const { client, db } = await startTestApp();
+  const first = client({ "x-forwarded-for": "198.51.100.1" });
+  await first.signIn("back@example.org");
+  db.exec(`DELETE FROM "session"`);
+  db.exec("DELETE FROM email_sends");
+  const later = client({ "x-forwarded-for": "198.51.100.2" });
+  await later.signIn("back@example.org");
+  assert.equal((await (await later.request("/api/quota")).json()).session.email, "back@example.org");
+  assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM "user"`).get() as { n: number }).n, 1);
+});
+
 test("a verified user can delete their account", async () => {
   const { request, register, verify, db } = await startTestApp();
   const { devLink } = await (await register("leaving@example.org")).json();
