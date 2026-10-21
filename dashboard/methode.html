@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Méthode · La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=pages-2" />
+    <link rel="stylesheet" href="styles.css?v=pages-3" />
   </head>
   <body class="page-body">
     <header class="page-header">
@@ -68,12 +68,17 @@
           « Ce qui le distingue » liste les expressions qu’un député (ou un groupe) emploie nettement plus que
           l’ensemble de l’Assemblée sur la même période. Nous utilisons un test statistique classique en analyse
           du discours politique (log-odds avec a priori de Dirichlet, Monroe et al., 2008) : une expression n’est
-          retenue que si l’écart est significatif (au seuil de 95 %) et si elle apparaît au moins 3 fois.
+          retenue que si l’écart est significatif (au seuil de 95 %), si elle apparaît au moins 3 fois et dans au
+          moins 3 séances différentes : une expression répétée au cours d’un seul débat en dit plus sur ce débat que
+          sur l’orateur.
         </p>
         <p>
-          Le badge <strong>×N</strong> indique combien de fois plus souvent, en proportion, l’expression est employée
-          par rapport à l’ensemble des orateurs. Les listes sont ensuite triées par nombre d’emplois décroissant. Les
-          numéros, nombres et didascalies (« applaudissements », « exclamations ») sont exclus.
+          Le badge <strong>×N</strong> indique combien de fois plus souvent, en proportion du temps de parole,
+          l’expression est employée par rapport à tous les autres orateurs réunis. Ce rapport n’est affiché que si
+          l’expression compte au moins 10 emplois d’un côté et 20 de l’autre : quand les autres ne l’ont dite que
+          3 fois, un emploi de plus ou de moins changerait le rapport d’un tiers. Le badge indique alors simplement
+          combien de fois les autres l’ont employée (« 3 ailleurs »). Les listes sont triées par nombre d’emplois
+          décroissant. Les numéros, nombres et didascalies (« applaudissements », « exclamations ») sont exclus.
         </p>
       </section>
 

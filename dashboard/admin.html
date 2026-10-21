@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Administration · La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=admin-2" />
+    <link rel="stylesheet" href="styles.css?v=admin-3" />
   </head>
   <body class="page-body admin-body">
     <header class="page-header">
@@ -110,6 +110,48 @@
         </section>
 
         <section class="page-card">
+          <h2>Alertes « Suivre mon député »</h2>
+          <p class="source-note">
+            Après chaque mise à jour des données, envoyez les alertes : chaque compte reçoit un seul email qui résume ce que
+            ses députés ont dit et voté depuis l’alerte précédente. Rien n’est envoyé s’il n’y a rien de nouveau.
+          </p>
+          <p id="alertSummary">Chargement…</p>
+          <ul id="alertPreview"></ul>
+          <div class="admin-session">
+            <button type="button" class="page-button" id="alertSend">Envoyer les alertes</button>
+            <span class="source-note" id="alertJob" role="status"></span>
+          </div>
+          <h3>Députés les plus suivis</h3>
+          <div class="admin-table-wrap">
+            <table class="terms-table admin-table">
+              <thead><tr><th>Député</th><th class="is-number">Abonnés</th></tr></thead>
+              <tbody id="alertTop"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="page-card">
+          <h2>Campagnes</h2>
+          <p class="source-note">
+            Visites arrivées par un lien marqué (<code>utm_source</code>, <code>utm_medium</code>,
+            <code>utm_campaign</code>), comme ceux de <code>npm run outreach</code>, sur 90 jours. Seul un total par jour
+            est gardé : ni adresse, ni cookie. Les aperçus de liens (WhatsApp, X…) et les robots ne sont pas comptés.
+          </p>
+          <p id="campaignSummary">Chargement…</p>
+          <div class="admin-table-wrap">
+            <table class="terms-table admin-table">
+              <thead>
+                <tr>
+                  <th>Source</th><th>Support</th><th>Campagne</th>
+                  <th class="is-number">Visites</th><th class="is-number">7 j</th><th>Dernière</th>
+                </tr>
+              </thead>
+              <tbody id="campaignRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="page-card">
           <h2>Adresse IP vue par le serveur</h2>
           <p class="source-note">
             Sert à régler <code>TRUST_PROXY</code>. Sans le bon réglage, tous les visiteurs peuvent partager l’adresse
@@ -166,6 +208,6 @@
       <a href="/">Hémicycle</a> · <a href="/conditions">Conditions et confidentialité</a> ·
       <span id="geoCredit" hidden><a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a></span>
     </footer>
-    <script src="admin.js?v=admin-2"></script>
+    <script src="admin.js?v=admin-5"></script>
   </body>
 </html>

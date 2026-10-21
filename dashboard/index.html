@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=parole-10" />
+    <link rel="stylesheet" href="styles.css?v=parole-11" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
@@ -48,7 +48,7 @@
         <div class="toolbar">
           <label class="field search-field">
             <span>Chercher un député</span>
-            <input id="searchInput" type="search" autocomplete="off" placeholder="Nom" />
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Nom ou commune" />
           </label>
           <label class="field">
             <span>Groupe</span>
@@ -121,7 +121,8 @@
         <p id="gateLead">Vous avez utilisé vos analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.</p>
         <p class="gate-why">
           Pour éviter les usages abusifs (robots, aspiration massive des données), nous vérifions que chaque utilisateur est
-          une personne réelle. Votre email sert uniquement à cela : pas de newsletter, pas de revente, pas de prospection.
+          une personne réelle. Votre email sert uniquement à cela, et aux alertes que vous demandez vous-même en suivant
+          un député : pas de newsletter, pas de revente, pas de prospection.
         </p>
         <label class="field">
           <span>Adresse email</span>
@@ -161,7 +162,9 @@
         <button class="close-button" id="closeAccount" type="button" aria-label="Fermer">×</button>
       </div>
       <div class="gate-body">
-        <p>Connecté avec <strong id="accountEmail"></strong>. Votre adresse sert uniquement à vérifier que vous êtes une personne réelle.</p>
+        <p>Connecté avec <strong id="accountEmail"></strong>. Votre adresse sert à vérifier que vous êtes une personne réelle et, si vous suivez des députés, à vous envoyer leurs alertes.</p>
+        <h3 class="account-follows-title">Députés suivis</h3>
+        <div class="account-follows" id="accountFollows"></div>
         <p class="source-note" id="accountMessage" role="status" hidden></p>
         <div class="gate-actions">
           <button class="gate-secondary" id="signOutButton" type="button">Se déconnecter</button>
@@ -173,7 +176,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="quota-gate.js?v=parole-5"></script>
-    <script src="app.js?v=parole-7"></script>
+    <script src="quota-gate.js?v=parole-6"></script>
+    <script src="app.js?v=parole-9"></script>
   </body>
 </html>

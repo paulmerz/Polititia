@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Conditions d’utilisation et confidentialité · La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=pages-2" />
+    <link rel="stylesheet" href="styles.css?v=pages-3" />
   </head>
   <body class="page-body">
     <header class="page-header">
@@ -17,7 +17,8 @@
       <p class="page-lead">
         En bref : l’outil est gratuit. Après 10 analyses, nous vous demandons de confirmer une adresse email
         pour une seule raison, la <strong>prévention des abus</strong> (robots, aspiration massive des données).
-        Nous n’envoyons ni lettre d’information ni publicité, et nous ne cédons votre adresse à personne.
+        Nous n’envoyons ni lettre d’information ni publicité, et nous ne cédons votre adresse à personne. Si vous
+        choisissez de <strong>suivre un député</strong>, vous recevez en plus ses alertes, que vous arrêtez en un clic.
       </p>
     </header>
 
@@ -53,8 +54,9 @@
         <h2>2. Pourquoi une adresse email</h2>
         <p>
           Pour éviter les usages abusifs (robots, aspiration massive des données), nous vérifions que chaque
-          utilisateur est une personne réelle. Votre email sert uniquement à cela : il permet de vous envoyer un
-          lien de connexion à usage unique, valable 15 minutes.
+          utilisateur est une personne réelle. Votre email sert à cela : il permet de vous envoyer un lien de
+          connexion à usage unique, valable 15 minutes. Il ne sert à rien d’autre, sauf aux alertes que vous demandez
+          vous-même en suivant un député (voir ci-dessous).
         </p>
         <ul>
           <li>Aucune lettre d’information, aucune prospection commerciale ou politique.</li>
@@ -65,8 +67,23 @@
         </ul>
       </section>
 
+      <section class="page-card" id="alertes">
+        <h2>3. Suivre un député (alertes par email)</h2>
+        <p>
+          Sur la fiche d’un député, le bouton « Suivre » vous inscrit à ses alertes : après chaque mise à jour des
+          données, vous recevez un seul email qui résume ce que les députés que vous suivez ont dit et voté depuis
+          l’alerte précédente. Aucun email n’est envoyé s’il n’y a rien de nouveau. Vous pouvez suivre jusqu’à 10 députés.
+        </p>
+        <ul>
+          <li>Ces emails ne parlent que des députés que vous avez choisis : ni publicité, ni message militant.</li>
+          <li>Chaque email contient un lien pour arrêter les alertes d’un député, ou toutes, sans vous connecter.
+            Vous pouvez aussi les gérer depuis « Votre compte ».</li>
+          <li>La liste des députés que vous suivez est effacée avec votre compte.</li>
+        </ul>
+      </section>
+
       <section class="page-card">
-        <h2>3. Données traitées et durées de conservation</h2>
+        <h2>4. Données traitées et durées de conservation</h2>
         <table class="terms-table">
           <thead>
             <tr><th>Donnée</th><th>Pourquoi</th><th>Conservation</th></tr>
@@ -76,6 +93,17 @@
               <td>Adresse email (après confirmation)</td>
               <td>Vous reconnaître comme personne réelle et vous reconnecter</td>
               <td>Jusqu’à la suppression de votre compte, et au plus 3 ans après votre dernière connexion</td>
+            </tr>
+            <tr>
+              <td>Députés que vous suivez et date de la dernière alerte</td>
+              <td>Vous envoyer les alertes demandées, sans répéter ce qui a déjà été envoyé</td>
+              <td>Jusqu’à l’arrêt des alertes ou la suppression de votre compte</td>
+            </tr>
+            <tr>
+              <td>Nombre de visites arrivées par un lien de campagne (par jour, source et campagne indiquées dans le
+                lien), sans aucune information sur le visiteur</td>
+              <td>Savoir quels envois et quels articles amènent des lecteurs</td>
+              <td>2 ans</td>
             </tr>
             <tr>
               <td>Demande de lien en attente (adresse et jeton)</td>
@@ -120,31 +148,32 @@
       </section>
 
       <section class="page-card">
-        <h2>4. Base légale et destinataires</h2>
+        <h2>5. Base légale et destinataires</h2>
         <p>
           Ce traitement repose sur l’intérêt légitime de l’éditeur à protéger le service contre les abus
-          (article 6.1.f du RGPD). Les cookies utilisés sont strictement nécessaires au fonctionnement du service et
-          ne demandent donc pas de consentement.
+          (article 6.1.f du RGPD). Les alertes reposent sur votre demande : elles sont l’exécution du service que vous
+          activez en cliquant sur « Suivre », et s’arrêtent dès que vous le souhaitez (article 6.1.b). Les cookies
+          utilisés sont strictement nécessaires au fonctionnement du service et ne demandent donc pas de consentement.
         </p>
         <p>
           Seuls y accèdent l’éditeur, son hébergeur et, pour l’envoi du lien de confirmation, son prestataire
-          d’envoi d’emails. Si une vérification anti-robot (Cloudflare Turnstile) est activée, elle est chargée
+          d’envoi d’emails (lien de confirmation et alertes). Si une vérification anti-robot (Cloudflare Turnstile) est activée, elle est chargée
           uniquement dans le formulaire d’inscription.
         </p>
       </section>
 
       <section class="page-card">
-        <h2>5. Vos droits</h2>
+        <h2>6. Vos droits</h2>
         <p>
           Vous pouvez accéder à vos données, les rectifier, vous opposer à leur traitement ou en demander
           l’effacement. Le bouton « Supprimer mon compte » ci-dessus efface immédiatement votre adresse, vos
-          sessions, vos compteurs d’analyses et vos lieux de connexion. Pour toute autre demande, écrivez à l’éditeur du service. Vous pouvez aussi adresser une
+          sessions, vos compteurs d’analyses, vos lieux de connexion et la liste des députés que vous suivez. Pour toute autre demande, écrivez à l’éditeur du service. Vous pouvez aussi adresser une
           réclamation à la CNIL (<a href="https://www.cnil.fr/fr/plaintes" rel="noopener">cnil.fr</a>).
         </p>
       </section>
 
       <section class="page-card">
-        <h2>6. Utilisation des contenus</h2>
+        <h2>7. Utilisation des contenus</h2>
         <p>
           Les analyses sont fournies à titre informatif. Un thème attribué ou une position estimée peut être
           erroné : vérifiez toujours la citation dans le compte rendu officiel, accessible depuis chaque extrait.

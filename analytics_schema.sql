@@ -16,12 +16,14 @@ CREATE INDEX speeches_date ON speeches (date);
 CREATE INDEX speeches_party_date ON speeches (party, date);
 CREATE TABLE ngrams (gid INTEGER PRIMARY KEY, n INTEGER NOT NULL, text TEXT NOT NULL, total INTEGER NOT NULL);
 CREATE INDEX ngrams_n_total ON ngrams (n, total);
+-- sittings: distinct sittings the phrase was said in that month. A sitting
+-- lies within one day, so summing months gives the sittings of a period.
 CREATE TABLE person_ngram_month (
-  pid INTEGER, n INTEGER, month TEXT, gid INTEGER, count INTEGER,
+  pid INTEGER, n INTEGER, month TEXT, gid INTEGER, count INTEGER, sittings INTEGER,
   PRIMARY KEY (pid, n, month, gid)
 ) WITHOUT ROWID;
 CREATE TABLE party_ngram_month (
-  party TEXT, n INTEGER, month TEXT, gid INTEGER, count INTEGER,
+  party TEXT, n INTEGER, month TEXT, gid INTEGER, count INTEGER, sittings INTEGER,
   PRIMARY KEY (party, n, month, gid)
 ) WITHOUT ROWID;
 CREATE TABLE global_ngram_month (

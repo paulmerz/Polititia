@@ -8,7 +8,8 @@ import type { AppConfig } from "./config.ts";
 import { DEVICE_COOKIE_NAME, EMAIL_MAX_PER_DAY, EMAIL_RESEND_COOLDOWN_SECONDS } from "./config.ts";
 import { Analytics, openAnalytics, PeriodError, type Period } from "./analytics.ts";
 import { createAuthInstance, type AuthInstance, type PendingMagicLink } from "./auth.ts";
-import { bootstrapPayload, loadDashboardData, politicianMarkers } from "./data.ts";
+import { loadCommunes, searchCommunes } from "./communes.ts";
+import { bootstrapPayload, loadDashboardData, politicianMarkers, type DashboardBundle } from "./data.ts";
 import { isDisposableEmail, isValidEmail, normalizeEmail } from "./emails.ts";
 import {
   accountRateLimited,
@@ -19,6 +20,7 @@ import {
   deviceCookieHeader,
   emailCooldownSeconds,
   emailDailyLimitSeconds,
+  ipRateLimited,
   parseDeviceCookie,
   readQuota,
   recordEmailSend,
@@ -37,6 +39,11 @@ import {
   unblockUser,
 } from "./admin.ts";
 import { createGeoLocator } from "./geo.ts";
+import { buildCard, headTags, isCachedCard, renderCard, shareTarget, withHeadTags, type ShareKind } from "./share.ts";
+import { addFollow, listFollows, MAX_FOLLOWS, removeAllFollows, removeFollow, verifyUnsubscribe } from "./follows.ts";
+import { sendFollowAlerts, type AlertRun } from "./alerts.ts";
+import { escapeHtml } from "./mailer.ts";
+import { campaignOf, campaignReport, isCrawler, recordCampaignVisit } from "./campaigns.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
 type NodeBindings = { incoming?: IncomingMessage };
@@ -71,6 +78,41 @@ const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
 const ADMIN_RETURN_TO = "/admin";
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+const COMMUNE_SEARCHES_PER_MINUTE = 120;
+const CARD_RENDERS_PER_MINUTE = 30;
+const CARD_MAX_AGE_SECONDS = 24 * 60 * 60;
+// Beyond this, one address is replaying links, not following them.
+const CAMPAIGN_VISITS_PER_MINUTE = 10;
+
+function simplePage(title: string, body: string, status = 200): Response {
+  const html = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>${escapeHtml(title)} · La parole des députés</title>
+    <link rel="stylesheet" href="/styles.css?v=pages-1" />
+  </head>
+  <body class="page-body">
+    <header class="page-header">
+      <a class="page-back" href="/">← Retour à l’hémicycle</a>
+      <p class="eyebrow">La parole des députés</p>
+      <h1>${escapeHtml(title)}</h1>
+    </header>
+    <main class="page-main"><section class="page-card">${body}</section></main>
+  </body>
+</html>`;
+  return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
+function bundleOrNull(config: AppConfig): DashboardBundle | null {
+  try {
+    return existsSync(config.dashboardDataPath) ? loadDashboardData(config.dashboardDataPath) : null;
+  } catch {
+    return null;
+  }
+}
 
 function originAllowed(config: AppConfig, origin: string | undefined): boolean {
   return Boolean(origin && config.trustedOrigins.includes(origin));
@@ -183,6 +225,16 @@ export async function createApp(config: AppConfig) {
       );
     }
     return requestContext.run({ ip, socketIp, headers: c.req.raw.headers }, next);
+  });
+
+  // Share cards are fetched by other sites' crawlers and may be cached. This
+  // runs last on the way out, after secureHeaders and the no-store default.
+  app.use("/og/*", async (c, next) => {
+    await next();
+    if (c.res.status === 200) {
+      c.res.headers.set("Cache-Control", `public, max-age=${CARD_MAX_AGE_SECONDS}`);
+      c.res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    }
   });
 
   app.use(
@@ -376,6 +428,48 @@ export async function createApp(config: AppConfig) {
 
   app.get("/api/assembly", (c) => metered(c, "assembly", "", (analytics, period) => analytics.assembly(period)));
 
+  // « Trouver mon député » only maps a place to constituencies, so it is not metered.
+  app.get("/api/communes", (c) => {
+    if (!sameOriginOrSafeGet(config, c.req.raw)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    if (ipRateLimited(db, config.secret, "communes", requestIp(), COMMUNE_SEARCHES_PER_MINUTE)) {
+      return c.json({ error: "rate_limited" }, 429);
+    }
+    const index = loadCommunes(config.communesPath);
+    if (!index) {
+      return c.json({ error: "communes_missing" }, 503);
+    }
+    const query = (c.req.query("q") || "").slice(0, 80);
+    return c.json({ results: searchCommunes(index, query) });
+  });
+
+  const cardHost = new URL(config.baseURL).host;
+
+  async function cardResponse(c: Context, kind: ShareKind, id: string) {
+    const analytics = openAnalytics(config.analyticsPath);
+    const bundle = bundleOrNull(config);
+    const version = `${analytics?.meta.builtOn || ""}:${String(bundle?.meta.builtOn || "")}`;
+    const cacheKey = `${kind}:${id}:${version}`;
+    if (!isCachedCard(cacheKey)) {
+      if (ipRateLimited(db, config.secret, "card", requestIp(), CARD_RENDERS_PER_MINUTE)) {
+        return c.json({ error: "rate_limited" }, 429);
+      }
+    }
+    const card = buildCard(kind, id, analytics, bundle);
+    if (!card) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const png = await renderCard(card, cardHost, cacheKey);
+    return c.body(new Uint8Array(png), 200, { "Content-Type": "image/png" });
+  }
+
+  app.get("/og/accueil.png", (c) => cardResponse(c, "accueil", ""));
+
+  app.get("/og/:kind{depute|groupe|theme}/:file{[^/]+\\.png}", (c) =>
+    cardResponse(c, c.req.param("kind") as ShareKind, decodeURIComponent(c.req.param("file").slice(0, -4))),
+  );
+
   app.post("/api/register", async (c) => {
     if (!originAllowed(config, c.req.header("origin"))) {
       return c.json({ error: "forbidden" }, 403);
@@ -463,6 +557,120 @@ export async function createApp(config: AppConfig) {
     return response;
   });
 
+  function personName(bundle: DashboardBundle | null, id: string): { name: string; party: string } {
+    const person = bundle?.politicians.find((item) => item.id === id);
+    return { name: String(person?.name || id), party: String(person?.party || "") };
+  }
+
+  function followPayload(userId: string) {
+    const bundle = bundleOrNull(config);
+    return {
+      limit: MAX_FOLLOWS,
+      follows: listFollows(db, userId).map((follow) => ({ id: follow.politicianId, ...personName(bundle, follow.politicianId), since: follow.createdAt })),
+    };
+  }
+
+  async function followUser(c: Context, write: boolean): Promise<{ id: string } | Response> {
+    const sameOrigin = write ? originAllowed(config, c.req.header("origin")) : sameOriginOrSafeGet(config, c.req.raw);
+    if (!sameOrigin) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    const user = (await currentSession(auth, db, c.req.raw))?.user;
+    if (!user?.id) {
+      return c.json({ error: "not_signed_in" }, 401);
+    }
+    return { id: user.id };
+  }
+
+  app.get("/api/follows", async (c) => {
+    const user = await followUser(c, false);
+    return user instanceof Response ? user : c.json(followPayload(user.id));
+  });
+
+  app.post("/api/follows", async (c) => {
+    const user = await followUser(c, true);
+    if (user instanceof Response) {
+      return user;
+    }
+    let body: { politicianId?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_json" }, 400);
+    }
+    const politicianId = String(body.politicianId || "");
+    if (!bundleOrNull(config)?.politicians.some((person) => person.id === politicianId)) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const since = openAnalytics(config.analyticsPath)?.meta.lastDate || new Date().toISOString().slice(0, 10);
+    const result = addFollow(db, user.id, politicianId, since);
+    if (result === "limit") {
+      return c.json({ error: "follow_limit", limit: MAX_FOLLOWS }, 400);
+    }
+    return c.json({ ok: true, added: result === "added", ...followPayload(user.id) });
+  });
+
+  app.delete("/api/follows/:id", async (c) => {
+    const user = await followUser(c, true);
+    if (user instanceof Response) {
+      return user;
+    }
+    removeFollow(db, user.id, c.req.param("id"));
+    return c.json({ ok: true, ...followPayload(user.id) });
+  });
+
+  // Linked from every alert. Mail scanners open links, so GET only asks for
+  // confirmation; the POST (also used by one-click List-Unsubscribe) acts.
+  function unsubscribeTarget(c: Context) {
+    const userId = c.req.query("u") || "";
+    const politicianId = c.req.query("p") || "";
+    if (!userId || !verifyUnsubscribe(config.secret, userId, politicianId, c.req.query("t") || "")) {
+      return null;
+    }
+    return { userId, politicianId };
+  }
+
+  const invalidUnsubscribe = () =>
+    simplePage(
+      "Lien de désabonnement invalide",
+      "<p>Ce lien est incomplet ou a été modifié. Utilisez celui de votre dernier email, ou gérez vos alertes depuis « Mon compte » sur le site.</p>",
+      400,
+    );
+
+  app.get("/desabonnement", (c) => {
+    const target = unsubscribeTarget(c);
+    if (!target) {
+      return invalidUnsubscribe();
+    }
+    const what = target.politicianId
+      ? `les alertes sur ${personName(bundleOrNull(config), target.politicianId).name}`
+      : "toutes vos alertes « Suivre mon député »";
+    const query = new URLSearchParams({ u: target.userId, ...(target.politicianId ? { p: target.politicianId } : {}), t: c.req.query("t") || "" });
+    return simplePage(
+      "Arrêter les alertes",
+      `<p>Vous allez arrêter ${escapeHtml(what)}. Votre compte reste actif.</p>
+       <form method="post" action="/desabonnement?${escapeHtml(query.toString())}">
+         <button class="page-button" type="submit">Confirmer</button>
+       </form>`,
+    );
+  });
+
+  app.post("/desabonnement", (c) => {
+    const target = unsubscribeTarget(c);
+    if (!target) {
+      return invalidUnsubscribe();
+    }
+    if (target.politicianId) {
+      removeFollow(db, target.userId, target.politicianId);
+    } else {
+      removeAllFollows(db, target.userId);
+    }
+    return simplePage(
+      "C’est noté",
+      `<p>Vous ne recevrez plus ${target.politicianId ? `d’alerte sur ${escapeHtml(personName(bundleOrNull(config), target.politicianId).name)}` : "aucune alerte"}. Vous pouvez suivre à nouveau un député depuis sa fiche.</p>`,
+    );
+  });
+
   type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
 
   // Without ADMIN_EMAILS the admin pages do not exist.
@@ -516,6 +724,83 @@ export async function createApp(config: AppConfig) {
     return c.json(describeClientIp(c.req.raw.headers, config, socketIp));
   });
 
+  type AlertJob = { startedAt: string; startedBy: string; finishedAt: string | null; run: AlertRun | null; error: string | null };
+  let alertJob: AlertJob | null = null;
+
+  app.get("/api/admin/campaigns", async (c) => {
+    const check = await requireAdmin(c, false);
+    if ("response" in check) {
+      return check.response;
+    }
+    return c.json(campaignReport(db));
+  });
+
+  app.get("/api/admin/alerts", async (c) => {
+    const check = await requireAdmin(c, false);
+    if ("response" in check) {
+      return check.response;
+    }
+    const analytics = openAnalytics(config.analyticsPath);
+    if (!analytics) {
+      return c.json({ error: "analytics_missing" }, 503);
+    }
+    const bundle = bundleOrNull(config);
+    const preview = await sendFollowAlerts(config, db, analytics, bundle, { dryRun: true });
+    const totals = db.prepare("SELECT COUNT(*) AS follows, COUNT(DISTINCT user_id) AS followers FROM follows").get() as {
+      follows: number;
+      followers: number;
+    };
+    const top = (
+      db
+        .prepare("SELECT politician_id AS id, COUNT(*) AS followers FROM follows GROUP BY politician_id ORDER BY followers DESC, id LIMIT 10")
+        .all() as Array<{ id: string; followers: number }>
+    ).map((row) => {
+      const person = personName(bundle, row.id);
+      const party = ((bundle?.parties || []) as Array<{ id?: string; label?: string }>).find((item) => item.id === person.party);
+      return { ...person, party: String(party?.label || person.party), id: row.id, followers: Number(row.followers) };
+    });
+    return c.json({
+      preview,
+      follows: Number(totals.follows),
+      followers: Number(totals.followers),
+      top,
+      job: alertJob,
+      hasMailer: config.hasMailer,
+    });
+  });
+
+  // Sending takes a while (the mail API is rate limited): the job runs in the
+  // background and GET /api/admin/alerts reports it.
+  app.post("/api/admin/alerts/send", async (c) => {
+    const check = await requireAdmin(c, true);
+    if ("response" in check) {
+      return check.response;
+    }
+    if (!config.hasMailer) {
+      return c.json({ error: "mailer_missing" }, 400);
+    }
+    if (alertJob && !alertJob.finishedAt) {
+      return c.json({ error: "already_running", job: alertJob }, 409);
+    }
+    const analytics = openAnalytics(config.analyticsPath);
+    if (!analytics) {
+      return c.json({ error: "analytics_missing" }, 503);
+    }
+    const job: AlertJob = { startedAt: new Date().toISOString(), startedBy: check.admin.email, finishedAt: null, run: null, error: null };
+    alertJob = job;
+    sendFollowAlerts(config, db, analytics, bundleOrNull(config))
+      .then((run) => {
+        job.run = run;
+      })
+      .catch((error: Error) => {
+        job.error = error.message;
+      })
+      .finally(() => {
+        job.finishedAt = new Date().toISOString();
+      });
+    return c.json({ ok: true, job });
+  });
+
   app.post("/api/admin/users/:id/:action{block|unblock}", async (c) => {
     const check = await requireAdmin(c, true);
     if ("response" in check) {
@@ -546,6 +831,20 @@ export async function createApp(config: AppConfig) {
         return c.json({ error: "not_found" }, 404);
       }
       const ext = path.extname(absolute);
+      if (relative === "index.html") {
+        const analytics = openAnalytics(config.analyticsPath);
+        const bundle = bundleOrNull(config);
+        const query = new URL(c.req.url).searchParams;
+        const campaign = campaignOf(query);
+        if (campaign && !isCrawler(c.req.raw) && !ipRateLimited(db, config.secret, "campaign", requestIp(), CAMPAIGN_VISITS_PER_MINUTE)) {
+          recordCampaignVisit(db, campaign);
+        }
+        const target = shareTarget(query, bundle, analytics);
+        const html = withHeadTags(readFileSync(absolute, "utf8"), headTags(config.baseURL, target, bundle, analytics));
+        return new Response(html, {
+          headers: { "Content-Type": CONTENT_TYPES[ext], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+        });
+      }
       return new Response(readFileSync(absolute), {
         headers: {
           "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream",

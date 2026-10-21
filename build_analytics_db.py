@@ -84,7 +84,8 @@ class Builder:
         self.min_ngram_count = min_ngram_count
         self.pids: dict[str, int] = {}
         self.sids: dict[str, int] = {}
-        self.speech_rows: list[tuple[int, str, str, list[str]]] = []
+        # (pid, party, month, sitting, content tokens)
+        self.speech_rows: list[tuple[int, str, str, str, list[str]]] = []
 
     def add_speeches(self, raw_speeches: list[dict], resolver: SpeakerResolver) -> None:
         politicians: list[tuple] = []
@@ -106,7 +107,7 @@ class Builder:
                 raw.get("section_code", ""), raw.get("bill_number", ""),
                 len((raw.get("normalized_text") or "").split()), len(tokens),
             ))
-            self.speech_rows.append((pid, identity.party_at_speech, month, tokens))
+            self.speech_rows.append((pid, identity.party_at_speech, month, raw.get("session_uid") or raw["date"], tokens))
         self.db.executemany("INSERT INTO politicians VALUES (?, ?, ?, ?, ?)", politicians)
         self.db.executemany("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", speeches)
 
@@ -116,7 +117,7 @@ class Builder:
         corpus_totals: dict[int, int] = {}
         for size in NGRAM_SIZES:
             counts: Counter[str] = Counter()
-            for _pid, _party, _month, tokens in self.speech_rows:
+            for _pid, _party, _month, _sitting, tokens in self.speech_rows:
                 counts.update(ngrams(tokens, size))
             corpus_totals[size] = sum(counts.values())
             kept: dict[str, int] = {}
@@ -131,11 +132,21 @@ class Builder:
 
             person: Counter[tuple[int, str, int]] = Counter()
             party: Counter[tuple[str, str, int]] = Counter()
+            person_sittings: Counter[tuple[int, str, int]] = Counter()
+            party_sittings: Counter[tuple[str, str, int]] = Counter()
             everyone: Counter[tuple[int, str]] = Counter()
             person_totals: Counter[tuple[int, str]] = Counter()
             party_totals: Counter[tuple[str, str]] = Counter()
             global_totals: Counter[str] = Counter()
-            for pid, party_code, month, tokens in self.speech_rows:
+            # Sitting by sitting, so "said in this sitting" needs a small set only.
+            current_sitting = None
+            seen_person: set[tuple[int, int]] = set()
+            seen_party: set[tuple[str, int]] = set()
+            for pid, party_code, month, sitting, tokens in sorted(self.speech_rows, key=lambda row: row[3]):
+                if sitting != current_sitting:
+                    current_sitting = sitting
+                    seen_person.clear()
+                    seen_party.clear()
                 grams = ngrams(tokens, size)
                 person_totals[(pid, month)] += len(grams)
                 party_totals[(party_code, month)] += len(grams)
@@ -146,13 +157,19 @@ class Builder:
                         person[(pid, month, gid)] += 1
                         party[(party_code, month, gid)] += 1
                         everyone[(gid, month)] += 1
+                        if (pid, gid) not in seen_person:
+                            seen_person.add((pid, gid))
+                            person_sittings[(pid, month, gid)] += 1
+                        if (party_code, gid) not in seen_party:
+                            seen_party.add((party_code, gid))
+                            party_sittings[(party_code, month, gid)] += 1
             self.db.executemany(
-                "INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?)",
-                ((pid, size, month, gid, count) for (pid, month, gid), count in person.items()),
+                "INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?, ?)",
+                ((pid, size, month, gid, count, person_sittings[(pid, month, gid)]) for (pid, month, gid), count in person.items()),
             )
             self.db.executemany(
-                "INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?)",
-                ((code, size, month, gid, count) for (code, month, gid), count in party.items()),
+                "INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?, ?)",
+                ((code, size, month, gid, count, party_sittings[(code, month, gid)]) for (code, month, gid), count in party.items()),
             )
             self.db.executemany(
                 "INSERT INTO global_ngram_month VALUES (?, ?, ?)",

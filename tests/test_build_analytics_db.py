@@ -58,6 +58,20 @@ class BuildTests(unittest.TestCase):
                     "SELECT SUM(count) FROM global_ngram_month g JOIN ngrams ng ON ng.gid = g.gid WHERE ng.n = ?", (n,)
                 ).fetchone()[0]
                 self.assertEqual(kept, everyone, "min count 1 keeps every n-gram")
+            for table, key in (("person_ngram_month", "pid"), ("party_ngram_month", "party")):
+                bad = db.execute(f"SELECT COUNT(*) FROM {table} WHERE sittings < 1 OR sittings > count").fetchone()[0]
+                self.assertEqual(bad, 0, f"{table}: a phrase is said at least once per sitting it is counted in")
+            # No phrase can be said by someone in more sittings than they spoke in.
+            overflow = db.execute(
+                """SELECT COUNT(*) FROM (
+                     SELECT m.pid, m.n, m.gid, SUM(m.sittings) AS sittings,
+                            (SELECT COUNT(DISTINCT session_uid) FROM speeches s WHERE s.pid = m.pid) AS spoke
+                     FROM person_ngram_month m GROUP BY m.pid, m.n, m.gid
+                   ) WHERE sittings > spoke"""
+            ).fetchone()[0]
+            self.assertEqual(overflow, 0)
+            multi = db.execute("SELECT MAX(sittings) FROM person_ngram_month").fetchone()[0]
+            self.assertGreaterEqual(multi, 1)
             meta = {key: json.loads(value) for key, value in db.execute("SELECT key, value FROM meta")}
             self.assertEqual(meta["months"], sorted(meta["months"]))
             self.assertEqual(meta["stanceVoteAgreement"], {"compared": 0, "agreeing": 0})

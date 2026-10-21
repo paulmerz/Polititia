@@ -2193,6 +2193,202 @@ button.party-pill {
   display: none;
 }
 
+.title-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+}
+
+.share-button {
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent-dark);
+  cursor: pointer;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.share-button:hover,
+.share-button:focus-visible,
+.share-button[aria-expanded="true"] {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+
+.follow-button {
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.follow-button:hover,
+.follow-button:focus-visible {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  outline: none;
+}
+
+.follow-button.is-on {
+  background: #eef7f1;
+  border-color: #b7d3c2;
+  color: #1e6b45;
+}
+
+.account-follows-title {
+  margin: 14px 0 6px;
+  font-size: 0.95rem;
+}
+
+.account-follow-list {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.account-follow-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-follow-list li > span:nth-child(2) {
+  flex: 1 1 auto;
+}
+
+.account-follow-list small {
+  color: var(--muted);
+}
+
+.share-menu {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.share-menu[hidden] {
+  display: none;
+}
+
+.share-menu a,
+.share-menu button {
+  display: block;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  text-decoration: none;
+}
+
+.share-menu a:hover,
+.share-menu a:focus-visible,
+.share-menu button:hover,
+.share-menu button:focus-visible {
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.seat-line {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.commune-finder {
+  margin: 4px 0 12px;
+}
+
+.welcome-card .commune-finder {
+  margin: 0 0 12px;
+}
+
+.commune-finder input {
+  width: 100%;
+}
+
+.commune-results:empty {
+  display: none;
+}
+
+.commune-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.search-results .commune-result {
+  flex: 1 1 100%;
+}
+
+.commune-result {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.commune-name {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+
+.commune-name small {
+  color: var(--muted);
+}
+
+.commune-result .source-note,
+.commune-result .note {
+  margin: 6px 0 0;
+}
+
+.commune-deputies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.commune-deputy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.commune-deputy small {
+  color: var(--muted);
+}
+
+.commune-vacant {
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 @media (max-width: 1080px) {
   .topbar-controls {
     justify-content: start;

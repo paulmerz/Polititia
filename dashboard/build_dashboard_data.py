@@ -193,7 +193,16 @@ def rank_counter(counts: Counter[str], total: int, speech_counts: Counter[str], 
     ]
 
 
-def load_politicians(db: sqlite3.Connection) -> list[dict]:
+def seat_payload(reference: ReferenceData | None, acteur_id: str) -> dict | None:
+    """Constituency of the deputy, for the "find my deputy" search and the cards."""
+    actor = reference.actor(acteur_id) if reference and acteur_id else None
+    seat = actor.current_seat() if actor else None
+    if seat is None:
+        return None
+    return {"dept": seat.department, "deptName": seat.department_name, "circo": seat.number, "current": not seat.end}
+
+
+def load_politicians(db: sqlite3.Connection, reference: ReferenceData | None = None) -> list[dict]:
     rows = db.execute(
         """
         SELECT p.id, p.name, p.party, p.acteur_id, COUNT(s.sid), COALESCE(SUM(s.words), 0)
@@ -202,10 +211,13 @@ def load_politicians(db: sqlite3.Connection) -> list[dict]:
         """
     ).fetchall()
     order = {config["id"]: index for index, config in enumerate(PARTY_CONFIG)}
-    politicians = [
-        {"id": pid, "name": name, "party": party, "acteurId": acteur_id, "speechCount": speeches, "words": words}
-        for pid, name, party, acteur_id, speeches, words in rows
-    ]
+    politicians = []
+    for pid, name, party, acteur_id, speeches, words in rows:
+        item = {"id": pid, "name": name, "party": party, "acteurId": acteur_id, "speechCount": speeches, "words": words}
+        seat = seat_payload(reference, acteur_id)
+        if seat:
+            item["seat"] = seat
+        politicians.append(item)
     politicians.sort(key=lambda item: (order.get(item["party"], len(order)), -item["words"], item["name"]))
     return politicians
 
@@ -325,7 +337,7 @@ def build_language_markers() -> dict[str, object]:
 def build_bundle(analytics: Path, speeches: Path, resolver: SpeakerResolver) -> dict:
     db = sqlite3.connect(f"file:{analytics}?mode=ro", uri=True)
     try:
-        politicians = load_politicians(db)
+        politicians = load_politicians(db, resolver.reference)
         parties = load_parties(db, politicians)
         row = db.execute("SELECT value FROM meta WHERE key = 'builtOn'").fetchone()
         built_on = json.loads(row[0]) if row else date.today().isoformat()

@@ -266,11 +266,12 @@
       credentials: "include",
       headers: { Accept: "application/json", ...headers },
     }).catch(() => null);
-    return response?.ok ? response.json() : null;
+    const report = response?.ok ? await response.json().catch(() => null) : null;
+    return { report, status: response?.status || 0 };
   }
 
   async function loadIpCheck() {
-    const report = await fetchIpCheck();
+    const { report } = await fetchIpCheck();
     if (!report) {
       $("ipSuggestion").textContent = "Diagnostic indisponible.";
       return;
@@ -301,16 +302,113 @@
     const result = $("ipSpoofResult");
     result.hidden = false;
     result.textContent = "Test en cours…";
-    const honest = await fetchIpCheck();
-    const forged = await fetchIpCheck({ "X-Forwarded-For": SPOOFED_IP, "CF-Connecting-IP": SPOOFED_IP });
-    if (!honest || !forged) {
+    const { report: honest } = await fetchIpCheck();
+    if (!honest) {
       result.textContent = "Test impossible : le serveur n’a pas répondu.";
+      return;
+    }
+    // Cloudflare refuses some requests that carry their own CF-Connecting-IP: only forge it when it is trusted.
+    const forgedHeaders = { "X-Forwarded-For": SPOOFED_IP };
+    if (honest.mode === "cloudflare") {
+      forgedHeaders["CF-Connecting-IP"] = SPOOFED_IP;
+    }
+    const { report: forged, status } = await fetchIpCheck(forgedHeaders);
+    if (!forged) {
+      result.textContent = status
+        ? `La requête contenant une fausse adresse a été refusée avant d’atteindre le serveur (HTTP ${status}) : elle ne peut donc pas tromper le serveur, mais le test n’a pas pu comparer les adresses.`
+        : "Test impossible : la requête contenant une fausse adresse n’a pas abouti.";
       return;
     }
     result.textContent =
       forged.usedIp === honest.usedIp && forged.usedIp !== SPOOFED_IP
         ? `Réussi : en envoyant une fausse adresse (${SPOOFED_IP}), le serveur garde ${honest.usedIp}.`
         : `Échec : le serveur a retenu ${forged.usedIp} au lieu de ${honest.usedIp}. Un visiteur peut choisir son adresse : TRUST_PROXY est trop élevé.`;
+  }
+
+  function describeJob(job) {
+    if (!job) {
+      return "";
+    }
+    if (!job.finishedAt) {
+      return `Envoi en cours (lancé ${formatDate(job.startedAt, true)} par ${job.startedBy})…`;
+    }
+    if (job.error) {
+      return `Dernier envoi interrompu : ${job.error}`;
+    }
+    return `Dernier envoi ${formatDate(job.finishedAt, true)} : ${formatNumber(job.run?.sent)} email(s) envoyé(s), ${formatNumber(job.run?.failed)} échec(s).`;
+  }
+
+  async function loadAlerts() {
+    const response = await fetch("/api/admin/alerts", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("alertSummary").textContent = "Aperçu indisponible (base d’analyse absente ?).";
+      return;
+    }
+    const { preview } = data;
+    $("alertSummary").textContent =
+      `${formatNumber(data.follows)} suivi(s) par ${formatNumber(data.followers)} compte(s). ` +
+      `Données jusqu’au ${formatDate(preview.through)} : ${formatNumber(preview.recipients)} compte(s) à prévenir, ${formatNumber(preview.upToDate)} à jour.`;
+    $("alertPreview").replaceChildren(
+      ...preview.preview.map((item) => el("li", { text: `${item.email} : « ${item.subject} »` })),
+    );
+    $("alertTop").replaceChildren(
+      ...data.top.map((row) =>
+        el("tr", {}, [el("td", { text: `${row.name} (${row.party})` }), el("td", { className: "is-number", text: formatNumber(row.followers) })]),
+      ),
+    );
+    const running = data.job && !data.job.finishedAt;
+    const button = $("alertSend");
+    button.disabled = !data.hasMailer || running || !preview.recipients;
+    button.title = data.hasMailer ? "" : "RESEND_API_KEY et EMAIL_FROM manquent : aucun email ne peut partir.";
+    $("alertJob").textContent = data.hasMailer ? describeJob(data.job) : "Envoi impossible : aucun service d’email configuré.";
+    clearTimeout(state.alertTimer);
+    if (running) {
+      state.alertTimer = setTimeout(loadAlerts, 3000);
+    }
+  }
+
+  async function sendAlerts() {
+    if (!window.confirm("Envoyer les alertes maintenant ? Chaque compte concerné recevra un email.")) {
+      return;
+    }
+    $("alertSend").disabled = true;
+    const response = await fetch("/api/admin/alerts/send", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    }).catch(() => null);
+    if (!response?.ok) {
+      say("L’envoi des alertes n’a pas pu démarrer.");
+    }
+    loadAlerts();
+  }
+
+  async function loadCampaigns() {
+    const response = await fetch("/api/admin/campaigns", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("campaignSummary").textContent = "Mesure indisponible.";
+      return;
+    }
+    $("campaignSummary").textContent = data.total
+      ? `${formatNumber(data.total)} visite(s) sur ${data.days} jours : ` +
+        data.sources.map((row) => `${row.source} ${formatNumber(row.visits)}`).join(", ") +
+        "."
+      : `Aucune visite par un lien marqué sur ${data.days} jours.`;
+    $("campaignRows").replaceChildren(
+      ...data.campaigns.map((row) =>
+        el("tr", {}, [
+          el("td", { text: row.source || "—" }),
+          el("td", { text: row.medium || "—" }),
+          el("td", { text: row.campaign || "—" }),
+          el("td", { className: "is-number", text: formatNumber(row.visits) }),
+          el("td", { className: "is-number", text: formatNumber(row.last7) }),
+          el("td", { text: formatDate(row.lastDay) }),
+        ]),
+      ),
+    );
   }
 
   function render() {
@@ -325,6 +423,8 @@
     renderDaily(data.daily);
     renderGeo(data);
     loadIpCheck();
+    loadAlerts();
+    loadCampaigns();
   }
 
   function mountTurnstile() {
@@ -479,6 +579,7 @@
   $("adminRefresh").addEventListener("click", () => load());
   $("adminSignOut").addEventListener("click", () => signOut());
   $("ipSpoofTest").addEventListener("click", () => spoofTest());
+  $("alertSend").addEventListener("click", () => sendAlerts());
   for (const id of ["userSearch", "userStatus", "userSort"]) {
     $(id).addEventListener("input", () => state.data && renderUsers());
   }

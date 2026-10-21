@@ -51,6 +51,10 @@ const dialogContent = $("dialogContent");
 const TABS = ["themes", "depute", "groupe", "assemblee", "style"];
 const OTHER_PARTIES = new Set(["GOUV", "UNLABELED"]);
 const METHOD_URL = "/methode";
+const ABROAD_DEPT = "099";
+const COMMUNE_SEARCH_DELAY_MS = 200;
+// Above this, a commune (Paris, Marseille…) asks for an arrondissement or a postcode.
+const COMMUNE_MAX_LISTED = 4;
 
 const state = {
   mode: "citizen",
@@ -74,6 +78,7 @@ const state = {
 let data = null;
 let partyMap = new Map();
 let politiciansById = new Map();
+let seatIndex = new Map();
 let themeMap = new Map();
 let languageMetricMap = new Map();
 const views = new Map();
@@ -189,6 +194,383 @@ function partyPill(partyId) {
 
 function themeLabel(themeId) {
   return themeMap.get(themeId)?.label || themeId || "";
+}
+
+function isFeminine(person) {
+  return /^(mme|mlle)\b/i.test(String(person?.name || "").trim());
+}
+
+function ordinalCirco(number) {
+  return number === 1 ? "1re" : `${number}e`;
+}
+
+function seatText(seat) {
+  if (!seat) {
+    return "";
+  }
+  const place = seat.dept === ABROAD_DEPT ? "Français de l'étranger" : seat.deptName;
+  return `${place}, ${ordinalCirco(seat.circo)} circonscription`;
+}
+
+// ---------------------------------------------------------------- find my deputy
+
+// Each search field (the toolbar one and the one in the panel) keeps its own
+// commune results; a late answer for an older query is dropped.
+const communeSearches = { top: { query: "", results: [], status: "idle", request: 0, timer: 0 }, panel: { query: "", results: [], status: "idle", request: 0, timer: 0 } };
+
+function communeMatchesFor(source) {
+  const search = communeSearches[source];
+  return search.status === "done" ? search.results : [];
+}
+
+function communeSeats(commune) {
+  return commune.circos.map((circo) => ({ circo, person: seatIndex.get(`${commune.dept}-${circo}`) || null }));
+}
+
+function queueCommuneSearch(source, value, onDone) {
+  const search = communeSearches[source];
+  const query = value.trim();
+  clearTimeout(search.timer);
+  search.query = query;
+  search.request += 1;
+  if (query.length < 2) {
+    search.results = [];
+    search.status = "idle";
+    onDone();
+    return;
+  }
+  search.status = "pending";
+  const request = search.request;
+  search.timer = setTimeout(async () => {
+    let results = [];
+    let status = "done";
+    try {
+      const response = await fetch(`/api/communes?q=${encodeURIComponent(query)}`, { credentials: "include", headers: { Accept: "application/json" } });
+      results = response.ok ? (await response.json()).results || [] : [];
+      status = response.ok ? "done" : "error";
+    } catch {
+      status = "error";
+    }
+    if (request !== search.request) {
+      return;
+    }
+    search.results = results;
+    search.status = status;
+    onDone();
+  }, COMMUNE_SEARCH_DELAY_MS);
+}
+
+function communeBlock(commune, pickAttr) {
+  const seats = communeSeats(commune);
+  const place = commune.dept === ABROAD_DEPT ? "" : `${commune.deptName} (${commune.dept})`;
+  const many = seats.length > COMMUNE_MAX_LISTED;
+  const deputies = many
+    ? note(`${plural(seats.length, "circonscription", "circonscriptions")} : précisez votre arrondissement ou votre code postal.`)
+    : `<div class="commune-deputies">${seats
+        .map(({ circo, person }) =>
+          person
+            ? `<button class="result-button commune-deputy" type="button" ${pickAttr}="${escapeHtml(person.id)}">
+                <span class="swatch" data-style="background:${partyColor(person.party)}"></span>
+                <strong>${escapeHtml(nameParts(person.name).join(" ") || person.name)}</strong>
+                <span>${escapeHtml(partyLabel(person.party))}</span>
+                <small>${ordinalCirco(circo)} circ.</small>
+              </button>`
+            : `<span class="commune-vacant">${ordinalCirco(circo)} circonscription : siège vacant</span>`,
+        )
+        .join("")}</div>`;
+  const shared =
+    !many && seats.length > 1 ? `<p class="source-note">La commune est partagée entre plusieurs circonscriptions : votre député dépend de votre adresse.</p>` : "";
+  return `
+    <div class="commune-result">
+      <p class="commune-name"><strong>${escapeHtml(commune.name)}</strong>${place ? ` <small>${escapeHtml(place)}</small>` : ""}</p>
+      ${deputies}
+      ${shared}
+    </div>`;
+}
+
+function communeResultsHtml(source, pickAttr, limit) {
+  const search = communeSearches[source];
+  if (search.status === "pending") {
+    return note("Recherche de la commune…");
+  }
+  if (search.status === "error") {
+    return note("La recherche de commune est indisponible pour le moment.");
+  }
+  if (search.status !== "done") {
+    return "";
+  }
+  if (!search.results.length) {
+    return /^\d+$/.test(search.query.replace(/\s/g, "")) ? note("Aucune commune pour ce code postal.") : "";
+  }
+  return search.results
+    .slice(0, limit)
+    .map((commune) => communeBlock(commune, pickAttr))
+    .join("");
+}
+
+function communeFinderResults(pickAttr) {
+  const search = communeSearches.panel;
+  return communeResultsHtml("panel", pickAttr, 3) || (search.status === "done" ? note("Aucune commune trouvée.") : "");
+}
+
+// pickAttr: data-select-politician opens the fiche in a dialog, data-pick-politician in the panel.
+function communeFinder(pickAttr) {
+  return `
+    <div class="commune-finder">
+      <label class="field">
+        <span>Trouver mon député</span>
+        <input type="search" autocomplete="off" enterkeyhint="search" placeholder="Votre commune ou code postal" value="${escapeHtml(communeSearches.panel.query)}" data-commune-search />
+      </label>
+      <div class="commune-results" data-commune-results="${pickAttr}">${communeFinderResults(pickAttr)}</div>
+    </div>`;
+}
+
+function refreshCommuneFinder() {
+  const container = analysisContent.querySelector("[data-commune-results]");
+  if (container) {
+    container.innerHTML = communeFinderResults(container.dataset.communeResults);
+  }
+}
+
+// ---------------------------------------------------------------- following
+
+// Deputies the signed-in visitor follows (email alerts). Loaded once signed in.
+const follows = { ids: new Set(), list: [], limit: 10, busy: false, changes: 0 };
+
+function canFollow(person) {
+  return Boolean(person) && person.party !== "UNLABELED";
+}
+
+function followButton(person) {
+  if (!canFollow(person)) {
+    return "";
+  }
+  const on = follows.ids.has(person.id);
+  const name = nameParts(person.name).join(" ") || person.name;
+  return `<button class="follow-button${on ? " is-on" : ""}" type="button" data-follow="${escapeHtml(person.id)}" aria-pressed="${on}" title="${escapeHtml(
+    on ? `Vous recevez un email quand ${name} prend la parole ou vote` : `Recevoir un email quand ${name} prend la parole ou vote`,
+  )}">${on ? "Suivi ✓" : "Suivre"}</button>`;
+}
+
+function setFollows(payload) {
+  follows.list = payload?.follows || [];
+  follows.ids = new Set(follows.list.map((item) => item.id));
+  follows.limit = payload?.limit || follows.limit;
+  renderAccountFollows();
+}
+
+async function loadFollows() {
+  if (!Gate.state.session) {
+    setFollows(null);
+    return;
+  }
+  const changes = follows.changes;
+  const response = await fetch("/api/follows", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+  const payload = response?.ok ? await response.json() : null;
+  // A follow made meanwhile carries a newer list.
+  if (payload && changes === follows.changes) {
+    setFollows(payload);
+  }
+}
+
+function renderAccountFollows() {
+  const box = $("accountFollows");
+  if (!box) {
+    return;
+  }
+  box.innerHTML = follows.list.length
+    ? `<ul class="account-follow-list">${follows.list
+        .map(
+          (item) => `
+            <li>
+              <span class="swatch" data-style="background:${partyColor(item.party)}"></span>
+              <span>${escapeHtml(nameParts(item.name).join(" ") || item.name)} <small>${escapeHtml(partyLabel(item.party))}</small></span>
+              <button class="gate-secondary" type="button" data-unfollow="${escapeHtml(item.id)}">Ne plus suivre</button>
+            </li>`,
+        )
+        .join("")}</ul>
+       <p class="source-note">Un email après chaque mise à jour des données, seulement s'il y a du nouveau. Jusqu'à ${fmtInt(follows.limit)} députés.</p>`
+    : note("Vous ne suivez aucun député. Ouvrez une fiche et cliquez sur « Suivre » pour recevoir un email quand il ou elle prend la parole ou vote.");
+}
+
+async function changeFollow(personId, on) {
+  if (follows.busy) {
+    return;
+  }
+  const person = politiciansById.get(personId);
+  const name = nameParts(person?.name).join(" ") || person?.name || "";
+  follows.busy = true;
+  try {
+    const response = await fetch(on ? "/api/follows" : `/api/follows/${encodeURIComponent(personId)}`, {
+      method: on ? "POST" : "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: on ? JSON.stringify({ politicianId: personId }) : undefined,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      Gate.updateFrom({ session: null });
+      askToFollow(personId);
+      return;
+    }
+    if (!response.ok) {
+      Gate.toast(
+        payload.error === "follow_limit"
+          ? `Vous suivez déjà ${fmtInt(payload.limit || follows.limit)} députés, le maximum. Retirez-en un depuis « Votre compte ».`
+          : "L'opération a échoué. Réessayez dans un instant.",
+        "error",
+      );
+      return;
+    }
+    follows.changes += 1;
+    setFollows(payload);
+    if (on) {
+      Gate.toast(`Vous suivez ${name} : un email quand il y a du nouveau, désabonnement en un clic.`, "success");
+    }
+  } finally {
+    follows.busy = false;
+    render();
+  }
+}
+
+function askToFollow(personId) {
+  const person = politiciansById.get(personId);
+  const name = nameParts(person?.name).join(" ") || person?.name || "";
+  Gate.show({
+    title: `Suivre ${name}`,
+    lead: `Recevez un email quand ${name} prend la parole ou vote à l'Assemblée. Confirmez simplement votre adresse : c'est gratuit, et un clic suffit pour arrêter.`,
+    returnTo: `?depute=${encodeURIComponent(personId)}&suivre=${encodeURIComponent(personId)}`,
+    retry: () => changeFollow(personId, true),
+  });
+}
+
+function toggleFollow(personId) {
+  if (!Gate.state.session) {
+    askToFollow(personId);
+    return;
+  }
+  changeFollow(personId, !follows.ids.has(personId));
+}
+
+// ---------------------------------------------------------------- sharing
+
+const SHARE_KEYS = { depute: "depute", groupe: "groupe", theme: "theme" };
+
+function shareButton(kind, id) {
+  return `<button class="share-button" type="button" data-share="${kind}" data-share-id="${escapeHtml(id)}" aria-haspopup="menu" aria-expanded="false">Partager</button>`;
+}
+
+function shareUrl(kind, id) {
+  return `${window.location.origin}/?${SHARE_KEYS[kind]}=${encodeURIComponent(id)}`;
+}
+
+function shareMessage(kind, id) {
+  if (kind === "depute") {
+    const person = politiciansById.get(id);
+    const name = nameParts(person?.name).join(" ") || person?.name || "";
+    const pronoun = isFeminine(person) ? "elle" : "il";
+    const sheIf = pronoun === "elle" ? "si elle" : "s'il";
+    const view = views.get(politicianPath(id));
+    // The phrase must match the share card, which covers the whole corpus.
+    const phrase = view && isAllPeriod() && !state.themeId ? signatureRow(view.words?.distinctive) : null;
+    const title = `Ce que dit ${name} à l'Assemblée nationale`;
+    const text = phrase
+      ? `« ${phrase.ngram} » : l'expression qui distingue ${name} à l'Assemblée. Ce qu'${pronoun} dit vraiment, et ${sheIf} vote comme ${pronoun} parle :`
+      : `Ce que ${name} dit vraiment à l'Assemblée, et ${sheIf} vote comme ${pronoun} parle :`;
+    return { title, text };
+  }
+  if (kind === "groupe") {
+    const label = partyLabel(id);
+    return {
+      title: `Ce que dit le groupe ${label} à l'Assemblée nationale`,
+      text: `Ce que dit le groupe ${label} à l'Assemblée : ses sujets, ses votes et les expressions qui le distinguent.`,
+    };
+  }
+  const label = themeLabel(id);
+  return {
+    title: `${label} : qui en parle à l'Assemblée nationale`,
+    text: `${label} : qui en parle à l'Assemblée, et comment votent les groupes ?`,
+  };
+}
+
+function shareLinks(kind, id) {
+  const url = shareUrl(kind, id);
+  const { title, text } = shareMessage(kind, id);
+  const enc = encodeURIComponent;
+  return [
+    ["WhatsApp", `https://wa.me/?text=${enc(`${text}\n${url}`)}`],
+    ["X", `https://x.com/intent/tweet?text=${enc(text)}&url=${enc(url)}`],
+    ["Bluesky", `https://bsky.app/intent/compose?text=${enc(`${text} ${url}`)}`],
+    ["Facebook", `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}`],
+    ["LinkedIn", `https://www.linkedin.com/sharing/share-offsite/?url=${enc(url)}`],
+    ["E-mail", `mailto:?subject=${enc(title)}&body=${enc(`${text}\n\n${url}`)}`],
+  ];
+}
+
+let shareMenu = null;
+let shareAnchor = null;
+
+function closeShareMenu() {
+  if (shareMenu) {
+    shareMenu.hidden = true;
+  }
+  shareAnchor?.setAttribute("aria-expanded", "false");
+  shareAnchor = null;
+}
+
+function openShareMenu(button) {
+  const { share: kind, shareId: id } = button.dataset;
+  if (!SHARE_KEYS[kind] || !id) {
+    return;
+  }
+  if (shareAnchor === button) {
+    closeShareMenu();
+    return;
+  }
+  closeShareMenu();
+  if (!shareMenu) {
+    shareMenu = document.createElement("div");
+    shareMenu.className = "share-menu";
+    shareMenu.setAttribute("role", "menu");
+  }
+  // Inside an open modal dialog, only the dialog's subtree is clickable.
+  (button.closest("dialog") || document.body).append(shareMenu);
+  shareMenu.innerHTML = `
+    ${shareLinks(kind, id)
+      .map(([label, href]) => `<a role="menuitem" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`)
+      .join("")}
+    <button type="button" role="menuitem" data-share-copy="${escapeHtml(shareUrl(kind, id))}">Copier le lien</button>
+    ${navigator.share ? `<button type="button" role="menuitem" data-share-native="${kind}" data-share-id="${escapeHtml(id)}">Autres applications…</button>` : ""}`;
+  shareMenu.hidden = false;
+  const rect = button.getBoundingClientRect();
+  const width = shareMenu.offsetWidth;
+  shareMenu.style.top = `${Math.round(rect.bottom + 6)}px`;
+  shareMenu.style.left = `${Math.round(Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)))}px`;
+  shareAnchor = button;
+  button.setAttribute("aria-expanded", "true");
+  shareMenu.querySelector("[role=menuitem]")?.focus();
+}
+
+async function copyShareLink(button) {
+  const url = button.dataset.shareCopy;
+  try {
+    await navigator.clipboard.writeText(url);
+    Gate.toast("Lien copié : collez-le où vous voulez.", "success");
+  } catch {
+    window.prompt("Copiez ce lien :", url);
+  }
+  closeShareMenu();
+}
+
+async function nativeShare(button) {
+  const { shareNative: kind, shareId: id } = button.dataset;
+  const { title, text } = shareMessage(kind, id);
+  closeShareMenu();
+  try {
+    await navigator.share({ title, text, url: shareUrl(kind, id) });
+  } catch {
+    // Cancelled by the visitor.
+  }
 }
 
 function catalogDomains() {
@@ -397,6 +779,22 @@ function writeUrl() {
   }
   const query = params.toString();
   window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  document.title = `${pageTitle()} · Polititia`;
+}
+
+// Same titles as the server-rendered page of a shared link (server/src/share.ts).
+function pageTitle() {
+  const person = state.tab === "depute" ? politiciansById.get(state.selectedId) : null;
+  if (person) {
+    return `Ce que dit ${nameParts(person.name).join(" ") || person.name} à l'Assemblée nationale`;
+  }
+  if (state.tab === "groupe" && state.partyId) {
+    return `Ce que dit le groupe ${partyLabel(state.partyId)} à l'Assemblée nationale`;
+  }
+  if (state.tab === "themes" && state.themeId) {
+    return `${themeLabel(state.themeId)} : qui en parle à l'Assemblée et comment votent les groupes`;
+  }
+  return "La parole des députés : ce que votre député dit vraiment";
 }
 
 function readUrl() {
@@ -622,17 +1020,17 @@ function renderSearchResults() {
     .filter((person) => normalize(person.name).includes(term))
     .sort((a, b) => (b.words || 0) - (a.words || 0))
     .slice(0, 10);
+  const communes = communeResultsHtml("top", "data-select-politician", 2);
   searchResults.classList.add("is-visible");
-  searchResults.innerHTML = matches.length
-    ? matches
-        .map(
-          (person) => `
-            <button class="result-button" type="button" data-select-politician="${escapeHtml(person.id)}">
-              ${escapeHtml(person.name)} · ${escapeHtml(partyLabel(person.party))}
-            </button>`,
-        )
-        .join("")
-    : note("Aucun résultat");
+  const people = matches
+    .map(
+      (person) => `
+        <button class="result-button" type="button" data-select-politician="${escapeHtml(person.id)}">
+          ${escapeHtml(person.name)} · ${escapeHtml(partyLabel(person.party))}
+        </button>`,
+    )
+    .join("");
+  searchResults.innerHTML = people || communes ? `${people}${communes}` : note("Aucun député ni aucune commune ne correspond.");
 }
 
 // ---------------------------------------------------------------- hemicycle
@@ -665,6 +1063,7 @@ function shortPoliticianName(name) {
 
 function getVisiblePoliticians() {
   const term = normalize(state.search.trim());
+  const fromCommunes = term ? new Set(communeMatchesFor("top").flatMap((commune) => communeSeats(commune).map(({ person }) => person?.id))) : null;
   return data.politicians.filter((person) => {
     if (state.partyFilter !== "ALL" && person.party !== state.partyFilter) {
       return false;
@@ -672,7 +1071,7 @@ function getVisiblePoliticians() {
     if (!partyVisible(person.party)) {
       return false;
     }
-    return !term || normalize(person.name).includes(term);
+    return !term || normalize(person.name).includes(term) || fromCommunes.has(person.id);
   });
 }
 
@@ -1034,6 +1433,13 @@ function mergeNgramRows(bySize) {
   );
 }
 
+// Same rule as signaturePhrase in server/src/share.ts (the share card): the
+// first distinctive phrase that can be stated plainly, by its counts or by a
+// stable ratio.
+function signatureRow(bySize) {
+  return mergeNgramRows(bySize).find((row) => (Number.isFinite(row.rest) && row.rest <= 5 * row.count) || row.ratio) || null;
+}
+
 function rowsForNgram(bySize) {
   return state.ngram === "auto" ? mergeNgramRows(bySize) : bySize?.[state.ngram] || [];
 }
@@ -1055,13 +1461,29 @@ function ngramSelect() {
     </label>`;
 }
 
-function phraseRows(rows, withRatio) {
+// The server only sends a ratio when both counts are large enough for it to
+// mean something; otherwise the badge says how often everyone else said it.
+function distinctiveBadge(row) {
+  if (row.ratio) {
+    return fmtRatio(row.ratio);
+  }
+  return Number.isFinite(row.rest) ? `${fmtInt(row.rest)} ailleurs` : "";
+}
+
+function distinctiveTitle(row) {
+  const sittings = row.sittings ? ` dans ${fmtInt(row.sittings)} séances` : "";
+  const elsewhere = Number.isFinite(row.rest) ? `, contre ${fmtInt(row.rest)} pour tous les autres orateurs réunis` : "";
+  const ratio = row.ratio ? ` (${fmtRatio(row.ratio)} en proportion du temps de parole)` : "";
+  return `${row.ngram} : ${fmtInt(row.count)} emplois${sittings}${elsewhere}${ratio}`;
+}
+
+function phraseRows(rows, distinctive) {
   return rows.map((row) => ({
     label: row.ngram,
     value: row.count,
-    badge: withRatio ? fmtRatio(row.ratio) : "",
+    badge: distinctive ? distinctiveBadge(row) : "",
     detail: isScientific() && row.z ? `z = ${Number(row.z).toFixed(1)}` : "",
-    title: withRatio ? `${row.ngram} : ${fmtInt(row.count)} emplois, ${fmtRatio(row.ratio)} plus souvent que la moyenne` : row.ngram,
+    title: distinctive ? distinctiveTitle(row) : row.ngram,
   }));
 }
 
@@ -1072,7 +1494,7 @@ function wordsBlock(words, who) {
     <div class="panel-control">${ngramSelect()}</div>
     ${sectionTitle(
       `Ce qui ${who.distinctive}`,
-      `Les expressions employées nettement plus que par le reste de l'Assemblée sur la même période, classées par nombre d'emplois. Le badge ×N indique combien de fois plus souvent. Seules les expressions employées au moins 3 fois sont retenues.`,
+      `Les expressions employées nettement plus que par le reste de l'Assemblée sur la même période, classées par nombre d'emplois. Seules les expressions employées au moins 3 fois, dans au moins 3 séances différentes, sont retenues. Le badge ×N indique combien de fois plus souvent, en proportion du temps de parole ; quand l'expression est trop rare ailleurs pour qu'un tel rapport ait un sens, il indique combien de fois tous les autres orateurs réunis l'ont employée.`,
     )}
     ${barList(phraseRows(distinctive, true), { empty: "Pas assez de texte sur cette période pour dégager des expressions distinctives." })}
     ${sectionTitle(`Expressions les plus fréquentes ${who.common}`, "Les expressions les plus souvent prononcées, qu'elles soient propres à cette sélection ou communes à tous.")}
@@ -1448,6 +1870,7 @@ function renderDeputyPicker() {
     <div class="detail-body">
       <h2>Fiche député</h2>
       ${note("Choisissez une personne ci-dessous, ou cliquez sur un siège de l'hémicycle, pour ouvrir sa fiche : ce qu'il ou elle dit, vote et annonce.")}
+      ${communeFinder("data-pick-politician")}
       <label class="field deputy-search">
         <span>Chercher un nom</span>
         <input type="search" autocomplete="off" placeholder="Nom" value="${escapeHtml(state.deputyQuery)}" data-deputy-search />
@@ -1468,8 +1891,9 @@ function renderPoliticianDetail(personId) {
     <div class="detail-header">
       <div class="person-title-row">
         <h2>${escapeHtml(person.name)}</h2>
-        ${partyPill(person.party)}
+        <div class="title-actions">${partyPill(person.party)}${followButton(person)}${shareButton("depute", person.id)}</div>
       </div>
+      ${person.seat ? `<p class="seat-line">${escapeHtml(seatText(person.seat))}${person.seat.current ? "" : " · mandat terminé"}</p>` : ""}
       <p class="source-note">Sur ${escapeHtml(periodLabel())}${state.themeId ? ` · thème « ${escapeHtml(themeLabel(state.themeId))} »` : ""}</p>
     </div>`;
   if (!view) {
@@ -1574,7 +1998,7 @@ function renderPartyPanel() {
     </div>
     <div class="panel-title-row">
       <h2>${escapeHtml(party?.name || partyLabel(partyId))}</h2>
-      ${partyPill(partyId)}
+      <div class="title-actions">${partyPill(partyId)}${shareButton("groupe", partyId)}</div>
     </div>
     <p class="source-note">Sur ${escapeHtml(periodLabel())}</p>`;
   if (!view) {
@@ -1631,6 +2055,7 @@ function renderThemeList() {
   const welcome = `
     <div class="welcome-card">
       <h2>Que disent et votent vos députés ?</h2>
+      ${communeFinder("data-select-politician")}
       <ul>
         <li><strong>Cliquez sur un siège</strong> pour ouvrir la fiche d'une personne : ses sujets, ses votes, ses annonces de vote et ses mots.</li>
         <li><strong>Choisissez un thème</strong> ci-dessous pour voir qui en parle, comment votent les groupes et ce qu'ils en disent.</li>
@@ -1725,7 +2150,10 @@ function renderThemePanel() {
     <button class="back-link" type="button" data-theme-id="">← Tous les thèmes</button>
     <div class="panel-title-row">
       <h2>${escapeHtml(theme?.label || state.themeId)}</h2>
-      ${parent ? `<button class="party-pill" type="button" data-theme-id="${escapeHtml(parent.id)}">${escapeHtml(parent.label)}</button>` : theme?.committee ? `<span class="party-pill">${escapeHtml(theme.committee)}</span>` : ""}
+      <div class="title-actions">
+        ${parent ? `<button class="party-pill" type="button" data-theme-id="${escapeHtml(parent.id)}">${escapeHtml(parent.label)}</button>` : theme?.committee ? `<span class="party-pill">${escapeHtml(theme.committee)}</span>` : ""}
+        ${shareButton("theme", state.themeId)}
+      </div>
     </div>
     <p class="source-note">Sur ${escapeHtml(periodLabel())}</p>`;
   if (!view) {
@@ -2024,6 +2452,9 @@ function render() {
   if (dialog.open) {
     renderDialog();
   }
+  if (shareAnchor && !shareAnchor.isConnected) {
+    closeShareMenu();
+  }
 }
 
 // ---------------------------------------------------------------- actions
@@ -2148,6 +2579,35 @@ document.body.addEventListener("click", (event) => {
     Gate.show();
     return;
   }
+  const followToggle = target.closest("[data-follow]");
+  if (followToggle) {
+    toggleFollow(followToggle.dataset.follow);
+    return;
+  }
+  const unfollowButton = target.closest("[data-unfollow]");
+  if (unfollowButton) {
+    changeFollow(unfollowButton.dataset.unfollow, false);
+    return;
+  }
+  const shareToggle = target.closest("[data-share]");
+  if (shareToggle) {
+    openShareMenu(shareToggle);
+    return;
+  }
+  const copyButton = target.closest("[data-share-copy]");
+  if (copyButton) {
+    copyShareLink(copyButton);
+    return;
+  }
+  const nativeButton = target.closest("[data-share-native]");
+  if (nativeButton) {
+    nativeShare(nativeButton);
+    return;
+  }
+  if (target.closest(".share-menu a")) {
+    closeShareMenu();
+    return;
+  }
   if (target.closest("[data-retry]")) {
     [...viewStatus.entries()].forEach(([path, status]) => ["error", "throttled"].includes(status) && viewStatus.delete(path));
     load();
@@ -2162,6 +2622,7 @@ document.body.addEventListener("click", (event) => {
   const personButton = target.closest("[data-select-politician]");
   if (personButton) {
     state.search = "";
+    communeSearches.top.status = "idle";
     selectPolitician(personButton.dataset.selectPolitician);
     return;
   }
@@ -2220,6 +2681,10 @@ partyFilter.addEventListener("change", () => {
 
 searchInput.addEventListener("input", () => {
   state.search = searchInput.value;
+  queueCommuneSearch("top", state.search, () => {
+    renderSearchResults();
+    renderChamber();
+  });
   render();
 });
 
@@ -2248,7 +2713,22 @@ document.addEventListener("click", (event) => {
     state.themeMenuOpen = false;
     syncControls();
   }
+  if (shareAnchor && !event.target.closest(".share-menu, [data-share]")) {
+    closeShareMenu();
+  }
 });
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && shareAnchor) {
+    const anchor = shareAnchor;
+    closeShareMenu();
+    anchor.focus();
+    // Keeps an open deputy dialog from closing too.
+    event.preventDefault();
+  }
+});
+
+window.addEventListener("resize", closeShareMenu);
 
 showOthers.addEventListener("change", () => {
   state.showOthers = showOthers.checked;
@@ -2280,6 +2760,11 @@ analysisContent.addEventListener("change", handlePanelChange);
 dialogContent.addEventListener("change", handlePanelChange);
 
 analysisContent.addEventListener("input", (event) => {
+  if (event.target.matches("[data-commune-search]")) {
+    queueCommuneSearch("panel", event.target.value, refreshCommuneFinder);
+    refreshCommuneFinder();
+    return;
+  }
   if (!event.target.matches("[data-deputy-search]")) {
     return;
   }
@@ -2300,7 +2785,10 @@ $("closeDialog").addEventListener("click", () => dialog.close());
 window.addEventListener("polititia:unlocked", () => {
   [...viewStatus.entries()].forEach(([path, status]) => status === "locked" && viewStatus.delete(path));
   load();
+  loadFollows().then(render);
 });
+
+window.addEventListener("polititia:account", renderAccountFollows);
 
 // ---------------------------------------------------------------- boot
 
@@ -2308,6 +2796,9 @@ function hydrate(payload) {
   data = payload;
   partyMap = new Map(data.parties.map((party) => [party.id, party]));
   politiciansById = new Map(data.politicians.map((person) => [person.id, person]));
+  seatIndex = new Map(
+    data.politicians.filter((person) => person.seat?.current).map((person) => [`${person.seat.dept}-${person.seat.circo}`, person]),
+  );
   const catalog = data.analytics?.themes || [];
   themeMap = new Map([...catalog.filter((theme) => theme.type === "domain"), ...catalog.filter((theme) => theme.type !== "domain")].map((theme) => [theme.id, theme]));
   languageMetricMap = new Map((data.languageMarkers?.metrics || []).map((metric) => [metric.key, metric]));
@@ -2326,8 +2817,16 @@ async function boot() {
     analysisContent.innerHTML = `<div class="detail-body">${note("La base d'analyse est absente : lancez build_analytics_db.py puis redémarrez le serveur.")}</div>`;
     return;
   }
+  const pendingFollow = new URLSearchParams(window.location.search).get("suivre");
   readUrl();
   commit();
+  await loadFollows();
+  // Back from the emailed link of « Suivre » (?suivre=ID): finish the follow.
+  if (pendingFollow && Gate.state.session && politiciansById.has(pendingFollow) && !follows.ids.has(pendingFollow)) {
+    await changeFollow(pendingFollow, true);
+  } else {
+    render();
+  }
 }
 
 boot();

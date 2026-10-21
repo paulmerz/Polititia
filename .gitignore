@@ -13,6 +13,8 @@ data/raw/
 extracted_texts/
 analysis_outputs/
 dashboard/data/
+# Mail-merge and press files (npm run outreach): personal contact data
+outreach/
 
 # Node server
 server/node_modules/

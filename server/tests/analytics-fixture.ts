@@ -66,6 +66,8 @@ export function buildAnalyticsFixture(): string {
   const insertSpeech = db.prepare("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   const person = new Map<string, number>();
   const party = new Map<string, number>();
+  const personSittings = new Map<string, number>();
+  const partySittings = new Map<string, number>();
   const everyone = new Map<string, number>();
   const personTotals = new Map<string, number>();
   const partyTotals = new Map<string, number>();
@@ -103,6 +105,9 @@ export function buildAnalyticsFixture(): string {
       }
       bump(person, `${speech.pid}|${gram.n}|${month}|${gram.gid}`, count);
       bump(party, `${speech.party}|${gram.n}|${month}|${gram.gid}`, count);
+      // Every fixture speech has its own sitting.
+      bump(personSittings, `${speech.pid}|${gram.n}|${month}|${gram.gid}`, 1);
+      bump(partySittings, `${speech.party}|${gram.n}|${month}|${gram.gid}`, 1);
       bump(everyone, `${gram.gid}|${month}`, count);
       corpus.set(gram.gid, (corpus.get(gram.gid) || 0) + count);
     }
@@ -112,15 +117,15 @@ export function buildAnalyticsFixture(): string {
   for (const gram of NGRAMS) {
     insertNgram.run(gram.gid, gram.n, gram.text, corpus.get(gram.gid) || 0);
   }
-  const insertPerson = db.prepare("INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?)");
+  const insertPerson = db.prepare("INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?, ?)");
   for (const [key, count] of person) {
     const [pid, n, month, gid] = key.split("|");
-    insertPerson.run(Number(pid), Number(n), month, Number(gid), count);
+    insertPerson.run(Number(pid), Number(n), month, Number(gid), count, personSittings.get(key) || 0);
   }
-  const insertParty = db.prepare("INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?)");
+  const insertParty = db.prepare("INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?, ?)");
   for (const [key, count] of party) {
     const [code, n, month, gid] = key.split("|");
-    insertParty.run(code, Number(n), month, Number(gid), count);
+    insertParty.run(code, Number(n), month, Number(gid), count, partySittings.get(key) || 0);
   }
   const insertGlobal = db.prepare("INSERT INTO global_ngram_month VALUES (?, ?, ?)");
   for (const [key, count] of everyone) {

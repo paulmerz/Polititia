@@ -8,6 +8,7 @@ window.PolititiaGate = (function createGate() {
     email: "",
     resendAt: 0,
     pendingRetry: null,
+    returnTo: null,
   };
   const cache = new Map();
   let pollTimer = null;
@@ -124,10 +125,19 @@ window.PolititiaGate = (function createGate() {
     $("gateCheck").hidden = step !== "check";
   }
 
-  function show() {
+  // Opened by the quota, or by an action that needs an account (following a
+  // deputy): `retry` runs once the address is confirmed in this tab, and
+  // `returnTo` is the dashboard query the emailed link comes back to.
+  function show({ title = "", lead = "", retry = null, returnTo = null } = {}) {
     const dialog = $("accessGate");
     const limit = state.quota?.limit || 10;
-    $("gateLead").textContent = `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+    $("gateTitle").textContent = title || "Continuer gratuitement";
+    $("gateLead").textContent =
+      lead || `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+    if (retry) {
+      state.pendingRetry = retry;
+    }
+    state.returnTo = returnTo;
     showError("");
     setStep(state.email && Date.now() < state.resendAt + 15 * 60 * 1000 ? "check" : "form");
     if (!dialog.open) {
@@ -230,6 +240,7 @@ window.PolititiaGate = (function createGate() {
     cache.clear();
     const retry = state.pendingRetry;
     state.pendingRetry = null;
+    state.returnTo = null;
     window.dispatchEvent(new CustomEvent("polititia:unlocked"));
     if (retry) {
       retry();
@@ -241,7 +252,7 @@ window.PolititiaGate = (function createGate() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email, website, turnstileToken: turnstileToken(), returnTo: window.location.search }),
+      body: JSON.stringify({ email, website, turnstileToken: turnstileToken(), returnTo: state.returnTo || window.location.search }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -315,6 +326,7 @@ window.PolititiaGate = (function createGate() {
   function openAccount() {
     $("accountEmail").textContent = state.session?.email || "";
     $("accountMessage").hidden = true;
+    window.dispatchEvent(new CustomEvent("polititia:account"));
     $("accountDialog").showModal();
   }
 
@@ -330,7 +342,7 @@ window.PolititiaGate = (function createGate() {
 
   async function deleteAccount() {
     const confirmed = window.confirm(
-      "Supprimer définitivement votre compte ? Votre adresse email et vos sessions seront effacées immédiatement.",
+      "Supprimer définitivement votre compte ? Votre adresse email, vos sessions et les députés que vous suivez seront effacés immédiatement.",
     );
     if (!confirmed) {
       return;

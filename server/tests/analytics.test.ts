@@ -22,13 +22,24 @@ test("periods default to the whole corpus and clamp to it", () => {
   assert.throws(() => analytics.period("2030-01", "2030-02"), PeriodError);
 });
 
-test("distinctive phrases are ranked by log-odds and carry a ratio", () => {
+test("distinctive phrases come with the counts behind them", () => {
   const person = analytics.politician(ALICES[0], analytics.period());
   assert.ok(person);
   const distinctive = person.words.distinctive["2"];
-  assert.equal(distinctive[0].ngram, "justice fiscale");
-  assert.ok((distinctive[0].ratio || 0) > 5);
+  assert.deepEqual(
+    { ...distinctive[0], z: undefined },
+    { ngram: "justice fiscale", count: 12, rest: 1, sittings: 3, ratio: null, z: undefined },
+    "said once elsewhere: no ratio, one use more or less would change it entirely",
+  );
+  assert.ok((distinctive[0].z ?? 0) > 0);
   assert.ok(!distinctive.some((row) => row.ngram === "projet loi"), "a phrase everyone says is not distinctive");
+});
+
+test("a phrase said in fewer than three sittings is not distinctive", () => {
+  const unigrams = (from?: string, to?: string) =>
+    (analytics.politician(BOB, analytics.period(from, to))?.words.distinctive["1"] || []).map((row) => row.ngram);
+  assert.ok(unigrams().includes("sécurité"), "three sittings over the legislature");
+  assert.ok(!unigrams("2025-02", "2025-02").includes("sécurité"), "two sittings in February");
 });
 
 test("a politician's view is limited to the period", () => {

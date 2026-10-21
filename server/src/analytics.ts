@@ -7,10 +7,17 @@ import { dirichletLogOdds, MIN_COUNT, type LogOddsRow } from "./lexical.ts";
 
 const NGRAM_SIZES = [1, 2, 3, 4] as const;
 const TOP_PHRASES = 25;
+// A phrase said in a single debate is that debate's subject, not a habit.
+const MIN_SITTINGS = 3;
+// "N times more often" only when both sides are counted often enough: with
+// 3 uses elsewhere, one more or one less moves the ratio by a third.
+const RATIO_MIN_COUNT = 10;
+const RATIO_MIN_REST = 20;
 const EXCERPT_LIMIT = 6;
 const REPORT_URL = "https://www.assemblee-nationale.fr/dyn/17/comptes-rendus/seance/";
 const VOTE_URL = "https://www.assemblee-nationale.fr/dyn/17/scrutins/";
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,200}$/;
 // Groups that are not parliamentary groups: government members and people
 // heard in the chamber without a deputy mandate.
@@ -34,7 +41,7 @@ export type Period = { from: string; to: string; firstDay: string; lastDay: stri
 
 export class PeriodError extends Error {}
 
-type PhraseRow = { ngram: string; count: number; ratio?: number; z?: number };
+type PhraseRow = { ngram: string; count: number; ratio?: number | null; z?: number; rest?: number; sittings?: number | null };
 type PhrasesBySize = Record<string, PhraseRow[]>;
 
 type VoteRow = {
@@ -93,6 +100,8 @@ export class Analytics {
   readonly db: DatabaseSync;
   readonly meta: AnalyticsMeta;
   readonly themeIds: Map<string, ThemeCatalogEntry>;
+  // Databases built before the sittings column keep working, unfiltered.
+  private readonly hasSittings: boolean;
   private cache = new Map<string, unknown>();
   private voteGroups = new Map<number, { majority: Record<string, string>; counts: Record<string, GroupCounts> }>();
 
@@ -113,6 +122,8 @@ export class Analytics {
       themes: meta.themes || [],
     };
     this.themeIds = new Map(this.meta.themes.map((theme) => [theme.id, theme]));
+    const columns = this.db.prepare("PRAGMA table_info(person_ngram_month)").all() as Array<{ name: string }>;
+    this.hasSittings = columns.some((column) => column.name === "sittings");
   }
 
   close(): void {
@@ -231,16 +242,17 @@ export class Analytics {
       const rows = this.db
         .prepare(
           `WITH t AS (
-             SELECT gid, SUM(count) AS c FROM ${table}
+             SELECT gid, SUM(count) AS c, ${this.hasSittings ? "SUM(sittings)" : "NULL"} AS sittings FROM ${table}
              WHERE ${column} = @key AND n = @n AND month BETWEEN @from AND @to
              GROUP BY gid HAVING c >= @minCount
            )
-           SELECT ng.text AS ngram, t.c AS count, ng.total AS corpus, ${everyoneColumn} AS everyone
+           SELECT ng.text AS ngram, t.c AS count, t.sittings AS sittings, ng.total AS corpus, ${everyoneColumn} AS everyone
            FROM t JOIN ngrams ng ON ng.gid = t.gid`,
         )
         .all({ key, n, from: period.from, to: period.to, minCount: MIN_COUNT }) as Array<{
         ngram: string;
         count: number;
+        sittings: number | null;
         corpus: number;
         everyone: number;
       }>;
@@ -251,20 +263,31 @@ export class Analytics {
       const target = new Map<string, number>();
       const everyone = new Map<string, number>();
       const priors = new Map<string, number>();
+      const sittings = new Map<string, number | null>();
       for (const row of rows) {
-        target.set(row.ngram, Number(row.count));
         everyone.set(row.ngram, Number(row.everyone || row.count));
+        sittings.set(row.ngram, row.sittings === null ? null : Number(row.sittings));
+        if (row.sittings !== null && Number(row.sittings) < MIN_SITTINGS) {
+          continue;
+        }
+        target.set(row.ngram, Number(row.count));
         priors.set(row.ngram, prior(Number(row.corpus)));
       }
       const scored: LogOddsRow[] = dirichletLogOdds(target, targetTotal, everyone, this.globalTotal(n, period), priors, {
         alpha0: this.meta.alpha0,
       });
-      distinctive[String(n)] = scored.slice(0, TOP_PHRASES).map((row) => ({
-        ngram: row.ngram,
-        count: row.count,
-        ratio: Number(row.ratio.toFixed(3)),
-        z: Number(row.z.toFixed(3)),
-      }));
+      distinctive[String(n)] = scored.slice(0, TOP_PHRASES).map((row) => {
+        const rest = Math.max((everyone.get(row.ngram) ?? row.count) - row.count, 0);
+        const stable = row.count >= RATIO_MIN_COUNT && rest >= RATIO_MIN_REST;
+        return {
+          ngram: row.ngram,
+          count: row.count,
+          rest,
+          sittings: sittings.get(row.ngram) ?? null,
+          ratio: stable ? Number(row.ratio.toFixed(3)) : null,
+          z: Number(row.z.toFixed(3)),
+        };
+      });
     }
     return { common, distinctive };
   }
@@ -542,6 +565,58 @@ export class Analytics {
         ).map(({ key, ...rest }) => ({ theme: key, ...rest })),
       };
     });
+  }
+
+  // What a politician said and voted after `afterDay` (exclusive), up to the
+  // end of the corpus: the content of a « Suivre mon député » alert. Not
+  // cached, since the views above key their cache on months.
+  digest(id: string, afterDay: string) {
+    if (!this.isValidId(id) || !DAY_RE.test(afterDay)) {
+      return null;
+    }
+    const person = this.db.prepare("SELECT pid, id, name, party FROM politicians WHERE id = ?").get(id) as
+      | { pid: number; id: string; name: string; party: string }
+      | undefined;
+    if (!person) {
+      return null;
+    }
+    const firstDay = new Date(Date.parse(`${afterDay}T00:00:00Z`) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const lastDay = this.meta.lastDate;
+    const range = [person.pid, firstDay, lastDay];
+    const activity = this.db
+      .prepare(
+        `SELECT COUNT(*) AS speeches, COALESCE(SUM(words), 0) AS words, COUNT(DISTINCT session_uid) AS sittings
+         FROM speeches WHERE pid = ? AND date BETWEEN ? AND ?`,
+      )
+      .get(...range) as { speeches: number; words: number; sittings: number };
+    const themes = (
+      this.db
+        .prepare(
+          `SELECT ta.theme AS id, COUNT(*) AS speechCount
+           FROM theme_attributions ta JOIN speeches s ON s.sid = ta.sid
+           WHERE s.pid = ? AND s.date BETWEEN ? AND ?
+           GROUP BY ta.theme ORDER BY speechCount DESC, ta.theme`,
+        )
+        .all(...range) as Array<{ id: string; speechCount: number }>
+    )
+      .filter((row) => this.themeIds.get(row.id)?.type === "theme")
+      .slice(0, 3)
+      .map((row) => ({ id: row.id, label: this.themeIds.get(row.id)?.label || row.id, speechCount: Number(row.speechCount) }));
+    const period: Period = { from: firstDay.slice(0, 7), to: lastDay.slice(0, 7), firstDay, lastDay, isAll: false };
+    const votes = firstDay <= lastDay ? this.politicianVotes(person.pid, period, "") : null;
+    return {
+      id: person.id,
+      name: person.name,
+      party: person.party,
+      from: firstDay,
+      through: lastDay,
+      speeches: Number(activity.speeches),
+      words: Number(activity.words),
+      sittings: Number(activity.sittings),
+      themes,
+      excerpts: activity.speeches ? this.excerpts("s.pid = ? AND s.date BETWEEN ? AND ?", range, [], 2) : [],
+      votes: votes ? { cast: votes.cast, keyVotes: votes.list.slice(0, 3), deviations: votes.deviations.slice(0, 3) } : { cast: 0, keyVotes: [], deviations: [] },
+    };
   }
 
   private politicianVotes(pid: number, period: Period, themeId: string) {

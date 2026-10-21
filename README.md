@@ -25,6 +25,7 @@ uv run --extra topics python analyze_themes.py
 uv run python analyze_stances.py
 uv run python build_analytics_db.py
 uv run python dashboard/build_dashboard_data.py
+uv run python scripts/build_communes.py
 ```
 
 - `extract_speeches.py` writes the dated speech index
@@ -42,9 +43,18 @@ uv run python dashboard/build_dashboard_data.py
 - `build_analytics_db.py` builds `analysis_outputs/analytics.sqlite`: monthly
   aggregates, n-gram counts, theme attributions, votes and stances, so the
   server can answer for any period. It also checks the stances against the
-  speakers' actual key votes.
+  speakers' actual key votes. N-gram counts per speaker and group also record
+  the number of distinct sittings: a distinctive phrase must come from at
+  least 3 sittings, and its "×N" ratio is only shown with at least 10 uses by
+  the speaker and 20 by everyone else (otherwise the raw counts are shown).
 - `dashboard/build_dashboard_data.py` writes the small first-load bundle
-  `dashboard/data/dashboard-data.json` (people, groups, style markers).
+  `dashboard/data/dashboard-data.json` (people, groups, style markers, and
+  each deputy's constituency from AMO).
+- `scripts/build_communes.py` writes `dashboard/data/communes.json`, the
+  commune and postal code → constituency table behind « Trouver mon député »
+  (INSEE, La Poste, and the 2024 polling stations for the arrondissements of
+  Paris, Lyon and Marseille; sources cached under `data/raw/geo/`). It ends
+  with a coverage check against the open seats.
 
 `uv run --extra topics --with pytest pytest -q` runs the Python tests.
 
@@ -89,6 +99,14 @@ Open http://127.0.0.1:8000.
   `/api/register`, so its checks cannot be skipped.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
+- `GET /api/communes?q=` (free, same origin, 120 per minute and per IP)
+  searches communes by name or postal code; without `communes.json` it
+  answers 503 and the dashboard hides the finder.
+- Shared links show a card: the server injects the Open Graph and Twitter tags
+  of `?depute=`, `?groupe=` or `?theme=` into the page, and draws the
+  1200×630 PNG at `/og/depute/<id>.png` (also `groupe`, `theme`,
+  `accueil.png`). Cards are cached in memory and for a day by clients; new
+  renders are limited to 30 per minute and per IP.
 
 When `SIGNUP_NOTIFY_EMAIL` is set, each new account triggers a notification to
 that address with the user's email and IP address. There is no default
@@ -126,8 +144,9 @@ quota. The admin page measures the chain instead of guessing it:
 3. If they match, set the suggested value (`TRUST_PROXY=2`, for instance) in
    the service's Environment and redeploy.
 4. Back on `/admin`, the address kept by the server must be yours, and
-   « Tester l'usurpation » must succeed (a forged `X-Forwarded-For` and
-   `CF-Connecting-IP` do not change it). If it fails, the value is too high.
+   « Tester l'usurpation » must succeed (a forged `X-Forwarded-For`, plus a
+   forged `CF-Connecting-IP` with `TRUST_PROXY=cloudflare`, does not change
+   it). If it fails, the value is too high.
 5. Sign up with a test address and check that the IP in the signup
    notification is yours.
 
@@ -167,6 +186,57 @@ data disk is only mounted at runtime (Render), start with
 missing or older than 30 days, and a failed download never blocks the start. Request counts and
 locations are kept 12 months and deleted with the account.
 
+### « Suivre mon député » alerts
+
+A signed-in account can follow up to 10 deputies (`GET/POST /api/follows`,
+`DELETE /api/follows/:id`); an anonymous visitor who clicks « Suivre » goes
+through the email form and the follow is applied when the link is opened.
+After each corpus update, send the alerts from `/admin` (section « Alertes »)
+or from the command line:
+
+```bash
+cd server
+npm run alerts            # dry run: who would receive what
+npm run alerts -- --send  # send (needs RESEND_API_KEY and EMAIL_FROM)
+```
+
+Each account gets one email covering what its deputies said and voted since
+the previous alert, and nothing when there is nothing new. Every email carries
+one-click unsubscribe links (`/desabonnement`, signed with
+`BETTER_AUTH_SECRET`, plus the `List-Unsubscribe` headers); follows are
+deleted with the account.
+
+### Launch outreach files
+
+```bash
+cd server
+npm run outreach -- --base https://your-domain
+```
+
+writes, under `outreach/` (gitignored, it holds contact data):
+
+- `deputes.csv`: one row per sitting deputy who has a page, with their AMO
+  address (the `@assemblee-nationale.fr` one when there are several), their
+  figures, a personal subject line and opening sentence, and a link with UTM
+  tags. Semicolons and a byte order mark, for Excel and mail-merge tools.
+- `modele-email-depute.txt`: the message, with `{{column}}` fields.
+- `pqr/<dept>-<name>.md` and `pqr/index.csv`: one press dossier per
+  department for the regional papers (angles, table of the deputies,
+  quotes with their report links, method).
+
+Every link carries `utm_source`, `utm_medium` and `utm_campaign`
+(`depute`/`lancement-deputes`, `presse`/`pqr-<dept>`). When the dashboard
+page is opened with them, the server adds one to a per-day total for that
+source, medium and campaign (`campaign_visits`: no address, no cookie, kept
+two years); link previews, crawlers and prefetches are not counted, nor more
+than 10 visits a minute from one address. `/admin`, section « Campagnes »,
+shows the last 90 days. The dashboard then drops the tags from the address
+bar, so a link shared onwards does not inherit the campaign.
+
+Deputies without a page (a recent substitute who has not spoken, the
+President of the Assembly) are listed on the console and left out. The
+script needs the AMO download (`--amo` to point elsewhere).
+
 Environment (`server/.env`):
 
 | Variable | Purpose |
@@ -182,6 +252,7 @@ Environment (`server/.env`):
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional captcha on the email form (both or neither) |
 | `ANALYTICS_DB_PATH` | Defaults to `analysis_outputs/analytics.sqlite` |
 | `DASHBOARD_DATA_PATH`, `DATA_DIR` | First-load bundle and server data directory |
+| `COMMUNES_PATH` | Commune table for « Trouver mon député » (default `dashboard/data/communes.json`) |
 | `AUTH_TRUSTED_ORIGINS`, `ALLOW_INSECURE_HTTP` | Extra allowed origins; plain HTTP outside production |
 | `STANCE_LLM_URL`, `STANCE_LLM_MODEL`, `STANCE_LLM_KEY` | Optional LLM classifier for `analyze_stances.py` |
 
@@ -208,9 +279,15 @@ in the detailed mode). The period selector (whole legislature, last 12 or 3
 months, parliamentary sessions, custom months) applies everywhere, including
 seat sizes, and the state is kept in the URL so any view can be shared.
 
+The search box also takes a commune or a postal code and lists the deputies
+of its constituencies (the welcome card and the deputy picker have the same
+finder). Deputy, group and theme pages have a « Partager » menu (WhatsApp, X,
+Bluesky, Facebook, LinkedIn, email, copy link); deputy pages have « Suivre ».
+
 ## Ignored Outputs
 
 - `data/raw/`
 - `extracted_texts/`
 - `analysis_outputs/`
 - `dashboard/data/`
+- `outreach/`

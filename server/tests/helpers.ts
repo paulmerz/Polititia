@@ -30,6 +30,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}, env: Record<strin
       DATA_DIR: dataDir,
       DASHBOARD_DIR: path.join(SERVER_DIR, "..", "dashboard"),
       DASHBOARD_DATA_PATH: path.join(SERVER_DIR, "fixtures", "dashboard-data.json"),
+      COMMUNES_PATH: path.join(SERVER_DIR, "fixtures", "communes.json"),
       ANALYTICS_DB_PATH: analyticsFixturePath(),
       HOST: "127.0.0.1",
       PORT: "8000",

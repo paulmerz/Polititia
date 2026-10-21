@@ -322,6 +322,18 @@ export function accountRateLimited(
   return windowBump(db, keyHash, 60, Math.floor(nowMs / 1000)) > limits.perMinute;
 }
 
+// Free routes that cost CPU (share images, commune search): a ceiling per address.
+export function ipRateLimited(
+  db: Store,
+  secret: string,
+  kind: string,
+  ip: string,
+  perMinute: number,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  return windowBump(db, hashIdentity(secret, `${kind}-minute`, ip), 60, now) > perMinute;
+}
+
 export function emailCooldownSeconds(db: Store, secret: string, email: string, cooldown: number): number {
   const keyHash = hashIdentity(secret, "email-send", email);
   const row = db.prepare("SELECT last_sent FROM email_sends WHERE key_hash = ?").get(keyHash) as

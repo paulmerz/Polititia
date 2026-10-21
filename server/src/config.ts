@@ -27,6 +27,7 @@ export type AppConfig = {
   // HOST and BETTER_AUTH_URL both point at this machine.
   localOnly: boolean;
   dashboardDataPath: string;
+  communesPath: string;
   analyticsPath: string;
   dashboardDir: string;
   usingDevSecret: boolean;
@@ -135,6 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const dashboardDataPath = path.resolve(
     env.DASHBOARD_DATA_PATH || path.join(dashboardDir, "data", "dashboard-data.json"),
   );
+  const communesPath = path.resolve(env.COMMUNES_PATH || path.join(dashboardDir, "data", "communes.json"));
   const secret = (env.BETTER_AUTH_SECRET || env.AUTH_SECRET || "").trim();
   const baseURL = (env.BETTER_AUTH_URL || env.AUTH_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
   const resendApiKey = (env.RESEND_API_KEY || "").trim();
@@ -185,6 +187,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sqlitePath: path.join(dataDir, "auth.sqlite"),
     localOnly,
     dashboardDataPath,
+    communesPath,
     analyticsPath,
     dashboardDir,
     usingDevSecret: !secret,
