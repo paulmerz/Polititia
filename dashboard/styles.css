@@ -227,7 +227,8 @@ h1 {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   min-height: 39px;
   width: 100%;
   border: 1px solid var(--strong-line);
@@ -238,8 +239,17 @@ h1 {
   outline: none;
 }
 
+.field textarea {
+  resize: vertical;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  text-transform: none;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(179, 93, 50, 0.16);
 }
@@ -1469,6 +1479,40 @@ h1 {
   padding: 18px 0 36px;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.report-line {
+  margin: 4px 18px 18px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.admin-report {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-report blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  white-space: pre-wrap;
+}
+
+.to-fill {
+  padding: 0 3px;
+  background: #fff1a8;
+  color: #6b4e00;
 }
 
 @media (max-width: 720px) {

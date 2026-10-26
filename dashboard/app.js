@@ -573,6 +573,96 @@ async function nativeShare(button) {
   }
 }
 
+// ---------------------------------------------------------------- error reports
+
+const reportDialog = $("reportDialog");
+const REPORT_ERRORS = {
+  invalid_message: "Décrivez l'erreur en quelques mots (10 caractères au moins).",
+  invalid_email: "Cette adresse email n'est pas valide.",
+  rate_limited: "Trop de signalements depuis cette connexion. Réessayez dans une heure.",
+};
+let reportSubject = "accueil";
+
+function reportTarget(fromDialog) {
+  const person = politiciansById.get(state.selectedId);
+  if (person && (fromDialog || state.tab === "depute")) {
+    return { subject: `depute:${person.id}`, label: person.name };
+  }
+  const partyId = currentPartyId();
+  if (state.tab === "groupe" && partyId) {
+    return { subject: `groupe:${partyId}`, label: `Groupe ${partyLabel(partyId)}` };
+  }
+  if (state.tab === "themes" && state.themeId) {
+    return { subject: `theme:${state.themeId}`, label: `Thème « ${themeLabel(state.themeId)} »` };
+  }
+  if (state.tab === "assemblee") {
+    return { subject: "assemblee", label: "L'Assemblée, vue d'ensemble" };
+  }
+  if (state.tab === "style") {
+    return { subject: "style", label: "Les styles de parole" };
+  }
+  return { subject: "accueil", label: "La page d'accueil" };
+}
+
+function reportLine(fromDialog = false) {
+  return `<p class="report-line">Une erreur ? <button type="button" class="link-button" data-report="${fromDialog ? "dialog" : "panel"}">Signaler une erreur</button></p>`;
+}
+
+function showReportError(message) {
+  $("reportError").textContent = message;
+  $("reportError").hidden = !message;
+}
+
+function openReport(button) {
+  const target = reportTarget(button.dataset.report === "dialog");
+  reportSubject = target.subject;
+  $("reportAbout").textContent = target.label;
+  showReportError("");
+  reportDialog.showModal();
+  $("reportMessage").focus();
+}
+
+async function sendReport(event) {
+  event.preventDefault();
+  const message = $("reportMessage").value.trim();
+  if (message.length < 10) {
+    showReportError(REPORT_ERRORS.invalid_message);
+    return;
+  }
+  const submit = $("reportSubmit");
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/reports", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        subject: reportSubject,
+        page: window.location.search,
+        message,
+        email: $("reportEmail").value.trim(),
+        website: $("reportWebsite").value,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showReportError(REPORT_ERRORS[payload.error] || "L'envoi a échoué. Réessayez dans un instant.");
+      return;
+    }
+    const answered = Boolean($("reportEmail").value.trim());
+    $("reportForm").reset();
+    reportDialog.close();
+    Gate.toast(answered ? "Merci : nous vous répondons sous 48 heures." : "Merci : nous vérifions sous 48 heures.", "success");
+  } catch {
+    showReportError("L'envoi a échoué. Vérifiez votre connexion et réessayez.");
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+$("reportForm").addEventListener("submit", sendReport);
+$("closeReport").addEventListener("click", () => reportDialog.close());
+
 function catalogDomains() {
   return (data?.analytics?.themes || []).filter((theme) => theme.type === "domain");
 }
@@ -2423,7 +2513,7 @@ function renderAnalysis() {
     style: renderStylePanel,
   };
   const searchFocused = document.activeElement?.matches("[data-deputy-search]") && analysisContent.contains(document.activeElement);
-  analysisContent.innerHTML = (renderers[state.tab] || renderThemePanel)();
+  analysisContent.innerHTML = (renderers[state.tab] || renderThemePanel)() + reportLine();
   if (searchFocused) {
     const input = analysisContent.querySelector("[data-deputy-search]");
     input?.focus();
@@ -2437,7 +2527,7 @@ function renderDialog() {
     return;
   }
   dialogTitle.textContent = person.name;
-  dialogContent.innerHTML = renderPoliticianDetail(person.id);
+  dialogContent.innerHTML = renderPoliticianDetail(person.id) + reportLine(true);
 }
 
 function render() {
@@ -2587,6 +2677,11 @@ document.body.addEventListener("click", (event) => {
   const unfollowButton = target.closest("[data-unfollow]");
   if (unfollowButton) {
     changeFollow(unfollowButton.dataset.unfollow, false);
+    return;
+  }
+  const reportButton = target.closest("[data-report]");
+  if (reportButton) {
+    openReport(reportButton);
     return;
   }
   const shareToggle = target.closest("[data-share]");

@@ -242,9 +242,9 @@ test("the email export is gone and data files are not served", async () => {
   }
 });
 
-test("terms and method pages are served", async () => {
+test("terms, method and about pages are served", async () => {
   const { request } = await startTestApp();
-  for (const path of ["/conditions", "/methode"]) {
+  for (const path of ["/conditions", "/methode", "/a-propos"]) {
     const response = await request(path);
     assert.equal(response.status, 200, path);
     assert.match(response.headers.get("content-type") || "", /text\/html/);

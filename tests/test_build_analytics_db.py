@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from analyze_themes import load_jsonl, load_lexicon, run
-from build_analytics_db import build, sessions
+from build_analytics_db import SCHEMA, Builder, build, sessions
 from extract_speeches import process_glob
 from reference_data import ReferenceData
 from speakers import SpeakerResolver
@@ -81,6 +81,26 @@ class BuildTests(unittest.TestCase):
             attributed = db.execute("SELECT COUNT(DISTINCT theme) FROM theme_attributions").fetchone()[0]
             self.assertGreater(attributed, 0)
             db.close()
+
+
+class StanceVoteAgreementTests(unittest.TestCase):
+    def test_joint_debates_are_not_compared_with_one_bill(self) -> None:
+        db = sqlite3.connect(":memory:")
+        db.executescript(SCHEMA)
+        speech = "INSERT INTO speeches VALUES (?, ?, 1, 'HOR', '2026-02-25', '2026-02', 'S1', ?, '', '', 100, 100)"
+        db.execute(speech, (1, "a", "Soins palliatifs"))
+        db.execute(speech, (2, "b", "Accompagnement et soins palliatifs \u2013 Droit à l’aide à mourir"))
+        for sid in (1, 2):
+            db.execute(
+                "INSERT INTO theme_attributions VALUES (?, 'fin-de-vie', 'social', 'debate', NULL, '', '', 'Soins palliatifs')",
+                (sid,),
+            )
+            db.execute("INSERT INTO stances VALUES (?, 'fin-de-vie', 'defavorable', 1, 'rule', 'je voterai contre ce texte')", (sid,))
+        db.execute(
+            "INSERT INTO votes VALUES (1, 'V1', 1, '2026-02-25', 'ensemble', 1, 'SPS', 1, 'Soins palliatifs', '{}', '{}')"
+        )
+        db.execute("INSERT INTO vote_positions VALUES (1, 1, 'HOR', 'pour')")
+        self.assertEqual(Builder(db, 1).stance_vote_agreement(), {"compared": 1, "agreeing": 0})
 
 
 if __name__ == "__main__":

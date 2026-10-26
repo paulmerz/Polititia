@@ -59,7 +59,7 @@ const QUIET_SPEECHES = 10;
 const NUMBER = new Intl.NumberFormat("fr-FR");
 const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
-function fmtInt(value: number): string {
+export function fmtInt(value: number): string {
   return NUMBER.format(Math.round(value));
 }
 
@@ -79,7 +79,7 @@ export function fmtDay(day: string): string {
   return `${date === 1 ? "1er" : date} ${MONTHS[month - 1]} ${year}`;
 }
 
-function plural(count: number, singular: string, pluralForm: string): string {
+export function plural(count: number, singular: string, pluralForm: string): string {
   return `${fmtInt(count)} ${count > 1 ? pluralForm : singular}`;
 }
 
@@ -96,7 +96,7 @@ export function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function withoutCivility(name: string): string {
+export function withoutCivility(name: string): string {
   return name.replace(/^(m\.|mme|mlle)\s+/i, "").trim();
 }
 

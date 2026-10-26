@@ -223,6 +223,22 @@ writes, under `outreach/` (gitignored, it holds contact data):
 - `pqr/<dept>-<name>.md` and `pqr/index.csv`: one press dossier per
   department for the regional papers (angles, table of the deputies,
   quotes with their report links, method).
+- `presse/communique.md`: the national press release. `--launch 2026-11-17`
+  sets the embargo date.
+- `presse/ecarts-annonces-votes.md`: for the outlet offered the exclusive,
+  the deputies who voted otherwise than they announced, each with the quote,
+  the official report, the scrutin and whether a vote correction was filed.
+
+```bash
+npm run visuals
+```
+
+writes, under `outreach/visuels/`:
+
+- `carrousel/`: the eight square slides to post on launch day, one phrase per
+  group. The phrases are chosen in `src/carousel.ts`.
+- `groupes/`: one landscape card per group, with the phrase the site itself
+  would show.
 
 Every link carries `utm_source`, `utm_medium` and `utm_campaign`
 (`depute`/`lancement-deputes`, `presse`/`pqr-<dept>`). When the dashboard

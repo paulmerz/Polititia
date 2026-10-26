@@ -45,7 +45,7 @@ type Engine = { fonts: Uint8Array[]; regular: FontMetrics; bold: FontMetrics };
 
 let engine: Promise<Engine> | null = null;
 
-function loadEngine(): Promise<Engine> {
+export function loadEngine(): Promise<Engine> {
   engine ||= (async () => {
     const require = createRequire(import.meta.url);
     await initWasm(readFileSync(require.resolve("@resvg/resvg-wasm/index_bg.wasm")));

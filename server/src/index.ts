@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { loadDotEnv } from "./load-env.ts";
 import { assertSafeHostBinding, loadConfig } from "./config.ts";
-import { createApp } from "./app.ts";
+import { createApp, unfilledPages } from "./app.ts";
 
 loadDotEnv();
 
@@ -20,6 +20,12 @@ if (config.exposeMagicLink) {
 }
 if (!existsSync(config.analyticsPath)) {
   console.warn("Analytics database missing:", config.analyticsPath, "- run build_analytics_db.py.");
+}
+if (config.isProduction) {
+  const unfilled = unfilledPages(config.dashboardDir);
+  if (unfilled.length) {
+    console.warn(`Pages still holding "[À compléter" placeholders (legal notice, contacts): ${unfilled.join(", ")}.`);
+  }
 }
 
 const { app } = await createApp(config);

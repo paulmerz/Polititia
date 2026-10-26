@@ -27,6 +27,7 @@ export const ACCOUNT_RETENTION_DAYS = 3 * 365;
 export const ACTIVITY_RETENTION_DAYS = 365;
 // Aggregate counts, with nothing about the visitors.
 export const CAMPAIGN_RETENTION_DAYS = 2 * 365;
+export const REPORT_RETENTION_DAYS = 365;
 
 export function openStore(sqlitePath: string): Store {
   mkdirSync(path.dirname(sqlitePath), { recursive: true, mode: 0o700 });
@@ -108,6 +109,18 @@ export function openStore(sqlitePath: string): Store {
       visits INTEGER NOT NULL,
       PRIMARY KEY (day, source, medium, campaign)
     ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS error_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      page TEXT NOT NULL,
+      message TEXT NOT NULL,
+      email TEXT,
+      status TEXT NOT NULL,
+      handled_at TEXT,
+      handled_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS error_reports_status ON error_reports (status, created_at);
   `);
   return db;
 }
@@ -124,6 +137,7 @@ export function purgeStale(db: Store, now = Date.now()): void {
   db.prepare("DELETE FROM email_sends WHERE last_sent < ?").run(nowSeconds - 24 * 60 * 60);
   db.prepare("DELETE FROM rate_windows WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
   db.prepare("DELETE FROM campaign_visits WHERE day < ?").run(new Date(now - CAMPAIGN_RETENTION_DAYS * DAY_MS).toISOString().slice(0, 10));
+  db.prepare("DELETE FROM error_reports WHERE created_at < ?").run(new Date(now - REPORT_RETENTION_DAYS * DAY_MS).toISOString());
   const tables = new Set(
     (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(
       (row) => row.name,

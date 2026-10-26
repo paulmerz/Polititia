@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=parole-11" />
+    <link rel="stylesheet" href="styles.css?v=parole-12" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
@@ -100,6 +100,7 @@
       <span>Données : comptes rendus et scrutins publiés par l'Assemblée nationale (open data).</span>
       <nav aria-label="Informations">
         <a href="/methode">Méthode et limites</a>
+        <a href="/a-propos">Qui sommes-nous</a>
         <a href="/conditions">Conditions et données personnelles</a>
       </nav>
     </footer>
@@ -174,9 +175,39 @@
       </div>
     </dialog>
 
+    <dialog id="reportDialog" class="detail-dialog gate-dialog" aria-labelledby="reportTitle">
+      <div class="dialog-bar">
+        <div id="reportTitle">Signaler une erreur</div>
+        <button class="close-button" id="closeReport" type="button" aria-label="Fermer">×</button>
+      </div>
+      <form id="reportForm" class="gate-body" novalidate>
+        <p>À propos de : <strong id="reportAbout"></strong></p>
+        <label class="field">
+          <span>Ce qui vous semble faux</span>
+          <textarea id="reportMessage" name="message" rows="5" required minlength="10" maxlength="2000"
+            placeholder="Par exemple : cette citation n'est pas de ce député, ce vote est mal rapporté…"></textarea>
+        </label>
+        <label class="field">
+          <span>Votre email, si vous souhaitez une réponse (facultatif)</span>
+          <input id="reportEmail" type="email" name="email" autocomplete="email" maxlength="254" placeholder="vous@exemple.fr" />
+        </label>
+        <label class="gate-honeypot" aria-hidden="true">
+          <span>Site web (laisser vide)</span>
+          <input id="reportWebsite" type="text" name="website" tabindex="-1" autocomplete="off" />
+        </label>
+        <p class="gate-error" id="reportError" role="alert" hidden></p>
+        <button class="gate-submit" id="reportSubmit" type="submit">Envoyer le signalement</button>
+        <p class="source-note">
+          Nous répondons sous 48 heures et corrigeons tout ce qui est factuellement inexact. Votre message et votre
+          adresse ne servent qu'à traiter ce signalement et sont effacés au bout de 12 mois
+          (<a href="/conditions" target="_blank" rel="noopener">conditions</a>).
+        </p>
+      </form>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
     <script src="quota-gate.js?v=parole-6"></script>
-    <script src="app.js?v=parole-9"></script>
+    <script src="app.js?v=parole-10"></script>
   </body>
 </html>

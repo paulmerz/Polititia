@@ -14,12 +14,15 @@ import {
   pressIndexCsv,
   sittingDeputies,
 } from "../src/outreach.ts";
+import { announcedVotes, gapsNote, pressFigures, pressRelease } from "../src/press.ts";
 
-// npm run outreach -- --base https://polititia.fr
+// npm run outreach -- --base https://polititia.fr --launch 2026-11-17
 //   outreach/deputes.csv              one mail-merge row per sitting deputy
 //   outreach/modele-email-depute.txt  the message, with {{column}} fields
 //   outreach/pqr/<dept>-<name>.md     one press dossier per department
 //   outreach/pqr/index.csv            the list of dossiers, for the press mailing
+//   outreach/presse/communique.md     the national press release
+//   outreach/presse/ecarts-annonces-votes.md  for the exclusive: announced vs cast votes
 
 loadDotEnv();
 const config = loadConfig();
@@ -31,6 +34,8 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const baseURL = argument("--base") || config.baseURL;
 const outDir = path.resolve(argument("--out") || path.join(repoRoot, "outreach"));
 const amoDir = path.resolve(argument("--amo") || path.join(repoRoot, "data", "raw", "opendata", "amo", "json", "acteur"));
+const scrutinDir = path.join(repoRoot, "data", "raw", "opendata", "scrutins", "json");
+const launchDay = argument("--launch") || "2026-11-17";
 
 const analytics = openAnalytics(config.analyticsPath);
 if (!analytics) {
@@ -62,6 +67,12 @@ for (const dossier of dossiers) {
 }
 writeFileSync(path.join(outDir, "pqr", "index.csv"), pressIndexCsv(dossiers, rows));
 
+const { compared, agreeing, gaps } = announcedVotes(analytics, bundle, existsSync(scrutinDir) ? scrutinDir : null);
+const figures = pressFigures(analytics, { compared, agreeing });
+mkdirSync(path.join(outDir, "presse"), { recursive: true });
+writeFileSync(path.join(outDir, "presse", "communique.md"), pressRelease(figures, baseURL, launchDay));
+writeFileSync(path.join(outDir, "presse", "ecarts-annonces-votes.md"), gapsNote(figures, gaps, baseURL));
+
 const missing = rows.filter((row) => !row.email);
 const segments = Object.groupBy(rows, (row) => row.segment);
 console.log(`${rows.length} sitting deputies, ${rows.length - missing.length} with an email (corpus ${analytics.meta.firstDate} → ${analytics.meta.lastDate}).`);
@@ -78,3 +89,4 @@ if (withoutPage.length) {
   }
 }
 console.log(`${dossiers.length} press dossiers in ${path.join(outDir, "pqr")}.`);
+console.log(`Press release and vote gaps in ${path.join(outDir, "presse")}: ${agreeing}/${compared} announced votes kept, ${gaps.length} gaps.`);

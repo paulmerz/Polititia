@@ -385,6 +385,58 @@
     loadAlerts();
   }
 
+  function reportItem(report, closable) {
+    const link = el("a", { text: report.label });
+    link.href = `/${report.page}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    const meta = el("p", { className: "source-note" }, [
+      `n° ${report.id} · ${formatDate(report.createdAt, true)} · `,
+      link,
+      report.email ? ` · répondre à ${report.email}` : " · pas d’adresse laissée",
+      report.handledAt ? ` · clôturé le ${formatDate(report.handledAt, true)} par ${report.handledBy}` : "",
+    ]);
+    const item = el("div", { className: "admin-report" }, [meta, el("blockquote", { text: report.message })]);
+    if (closable) {
+      const button = el("button", { className: "page-button", text: "Clôturer" });
+      button.type = "button";
+      button.addEventListener("click", () => closeReport(report.id, button));
+      item.append(button);
+    }
+    return item;
+  }
+
+  async function loadReports() {
+    const response = await fetch("/api/admin/reports", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("reportSummary").textContent = "Signalements indisponibles.";
+      return;
+    }
+    const late = data.open.filter((report) => Date.now() - new Date(report.createdAt).getTime() > 48 * 60 * 60 * 1000).length;
+    $("reportSummary").textContent = data.open.length
+      ? `${formatNumber(data.open.length)} signalement(s) à traiter${late ? `, dont ${formatNumber(late)} depuis plus de 48 heures` : ""}.`
+      : "Aucun signalement en attente.";
+    $("reportList").replaceChildren(...data.open.map((report) => reportItem(report, true)));
+    $("reportDone").replaceChildren(...data.done.map((report) => reportItem(report, false)));
+  }
+
+  async function closeReport(id, button) {
+    button.disabled = true;
+    const response = await fetch(`/api/admin/reports/${id}/close`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    }).catch(() => null);
+    if (!response?.ok) {
+      button.disabled = false;
+      say("Le signalement n’a pas pu être clôturé.");
+      return;
+    }
+    loadReports();
+  }
+
   async function loadCampaigns() {
     const response = await fetch("/api/admin/campaigns", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
     const data = response?.ok ? await response.json().catch(() => null) : null;
@@ -424,6 +476,7 @@
     renderGeo(data);
     loadIpCheck();
     loadAlerts();
+    loadReports();
     loadCampaigns();
   }
 

@@ -38,6 +38,8 @@ DEFAULT_OUTPUT = Path("analysis_outputs/analytics.sqlite")
 NGRAM_SIZES = (1, 2, 3, 4)
 MIN_NGRAM_COUNT = 5
 LEGISLATURE_START = "2024-07-18"
+# The agenda titles a debate on two bills "Bill A – Bill B".
+JOINT_DEBATE_SEPARATOR = "\u2013"
 
 SCHEMA = (Path(__file__).resolve().parent / "analytics_schema.sql").read_text(encoding="utf-8")
 
@@ -240,7 +242,12 @@ class Builder:
         self.db.executemany("INSERT OR IGNORE INTO stances VALUES (?, ?, ?, ?, ?, ?)", rows)
 
     def stance_vote_agreement(self) -> dict[str, int]:
-        """Announced stances checked against the speaker's next key vote on the same bill."""
+        """Announced stances checked against the speaker's next key vote on the same bill.
+
+        Joint debates ("Soins palliatifs – Aide à mourir") cover two bills while the
+        speech is attributed to one, so "je voterai contre ce texte" may be about the
+        other: they are left out rather than compared with the wrong vote.
+        """
         rows = self.db.execute(
             """
             WITH announced AS (
@@ -248,14 +255,16 @@ class Builder:
                      (SELECT ta.dossier_title FROM theme_attributions ta
                       WHERE ta.sid = s.sid AND ta.dossier_title != '' LIMIT 1) AS dossier
               FROM stances st JOIN speeches s ON s.sid = st.sid
+              WHERE instr(s.debate_title, ?) = 0
             )
             SELECT a.stance, (
               SELECT vp.position FROM votes v JOIN vote_positions vp ON vp.vid = v.vid AND vp.pid = a.pid
               WHERE v.dossier_title = a.dossier AND v.is_key = 1 AND v.vote_type != 'MOC' AND v.date >= a.date
-              ORDER BY v.date LIMIT 1
+              ORDER BY v.date, v.number LIMIT 1
             ) AS position
             FROM announced a WHERE a.dossier IS NOT NULL
-            """
+            """,
+            (JOINT_DEBATE_SEPARATOR,),
         ).fetchall()
         expected = {"favorable": "pour", "defavorable": "contre", "abstention": "abstention"}
         compared = [(stance, position) for stance, position in rows if position in ("pour", "contre", "abstention")]

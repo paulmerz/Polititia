@@ -334,6 +334,17 @@ export function ipRateLimited(
   return windowBump(db, hashIdentity(secret, `${kind}-minute`, ip), 60, now) > perMinute;
 }
 
+export function ipHourlyLimited(
+  db: Store,
+  secret: string,
+  kind: string,
+  ip: string,
+  perHour: number,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  return windowBump(db, hashIdentity(secret, `${kind}-hour`, ip), 60 * 60, now) > perHour;
+}
+
 export function emailCooldownSeconds(db: Store, secret: string, email: string, cooldown: number): number {
   const keyHash = hashIdentity(secret, "email-send", email);
   const row = db.prepare("SELECT last_sent FROM email_sends WHERE key_hash = ?").get(keyHash) as

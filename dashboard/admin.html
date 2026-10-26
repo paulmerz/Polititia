@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Administration · La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=admin-3" />
+    <link rel="stylesheet" href="styles.css?v=admin-4" />
   </head>
   <body class="page-body admin-body">
     <header class="page-header">
@@ -131,6 +131,21 @@
         </section>
 
         <section class="page-card">
+          <h2>Signalements d’erreur</h2>
+          <p class="source-note">
+            Envoyés par le bouton « Signaler une erreur ». Engagement public : une réponse sous 48 heures. Chaque
+            signalement est aussi envoyé par email aux administrateurs ; répondez à l’auteur s’il a laissé son adresse,
+            puis clôturez-le ici.
+          </p>
+          <p id="reportSummary">Chargement…</p>
+          <div id="reportList"></div>
+          <details>
+            <summary>Derniers signalements clôturés</summary>
+            <div id="reportDone"></div>
+          </details>
+        </section>
+
+        <section class="page-card">
           <h2>Campagnes</h2>
           <p class="source-note">
             Visites arrivées par un lien marqué (<code>utm_source</code>, <code>utm_medium</code>,
@@ -208,6 +223,6 @@
       <a href="/">Hémicycle</a> · <a href="/conditions">Conditions et confidentialité</a> ·
       <span id="geoCredit" hidden><a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a></span>
     </footer>
-    <script src="admin.js?v=admin-5"></script>
+    <script src="admin.js?v=admin-6"></script>
   </body>
 </html>

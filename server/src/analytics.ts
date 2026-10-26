@@ -59,11 +59,11 @@ type VoteRow = {
 
 type GroupCounts = { pour: number; contre: number; abstention: number; members?: number };
 
-function reportUrl(sessionUid: string): string {
+export function reportUrl(sessionUid: string): string {
   return sessionUid ? `${REPORT_URL}${encodeURIComponent(sessionUid)}` : "";
 }
 
-function voteUrl(number: number): string {
+export function voteUrl(number: number): string {
   return `${VOTE_URL}${number}`;
 }
 

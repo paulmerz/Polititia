@@ -20,6 +20,7 @@ import {
   deviceCookieHeader,
   emailCooldownSeconds,
   emailDailyLimitSeconds,
+  ipHourlyLimited,
   ipRateLimited,
   parseDeviceCookie,
   readQuota,
@@ -44,6 +45,7 @@ import { addFollow, listFollows, MAX_FOLLOWS, removeAllFollows, removeFollow, ve
 import { sendFollowAlerts, type AlertRun } from "./alerts.ts";
 import { escapeHtml } from "./mailer.ts";
 import { campaignOf, campaignReport, isCrawler, recordCampaignVisit } from "./campaigns.ts";
+import { closeReport, createReport, listReports, notifyReport, parseReport, REPORTS_PER_HOUR, type Report } from "./reports.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
 type NodeBindings = { incoming?: IncomingMessage };
@@ -53,6 +55,7 @@ const STATIC_FILES: Record<string, string> = {
   "/index.html": "index.html",
   "/conditions": "conditions.html",
   "/methode": "methode.html",
+  "/a-propos": "a-propos.html",
   "/app.js": "app.js",
   "/pages.js": "pages.js",
   "/styles.css": "styles.css",
@@ -104,6 +107,15 @@ function simplePage(title: string, body: string, status = 200): Response {
   </body>
 </html>`;
   return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
+export function unfilledPages(dashboardDir: string): string[] {
+  return [...new Set(Object.values(STATIC_FILES))]
+    .filter((relative) => relative.endsWith(".html"))
+    .filter((relative) => {
+      const absolute = path.join(dashboardDir, relative);
+      return existsSync(absolute) && readFileSync(absolute, "utf8").includes("[À compléter");
+    });
 }
 
 function bundleOrNull(config: AppConfig): DashboardBundle | null {
@@ -671,6 +683,50 @@ export async function createApp(config: AppConfig) {
     );
   });
 
+  function subjectLabel(subject: string): string {
+    const [kind, id = ""] = subject.split(":");
+    const bundle = bundleOrNull(config);
+    if (kind === "depute" && id) {
+      return personName(bundle, id).name;
+    }
+    if (kind === "groupe" && id) {
+      const parties = (bundle?.parties || []) as Array<{ id: string; label?: string }>;
+      return `groupe ${parties.find((item) => item.id === id)?.label || id}`;
+    }
+    if (kind === "theme" && id) {
+      return `thème « ${openAnalytics(config.analyticsPath)?.themeIds.get(id)?.label || id} »`;
+    }
+    return { assemblee: "l'Assemblée (vue d'ensemble)", style: "les styles de parole" }[kind] || "la page d'accueil";
+  }
+
+  app.post("/api/reports", async (c) => {
+    if (!originAllowed(config, c.req.header("origin"))) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_json" }, 400);
+    }
+    // Honeypot: a robot filled the hidden field; pretend all went well.
+    if (String(body.website || "")) {
+      return c.json({ ok: true });
+    }
+    const report = parseReport(body);
+    if ("error" in report) {
+      return c.json(report, 400);
+    }
+    if (ipHourlyLimited(db, config.secret, "report", requestIp(), REPORTS_PER_HOUR)) {
+      return c.json({ error: "rate_limited" }, 429);
+    }
+    const id = createReport(db, report);
+    notifyReport(config, { ...report, id }, subjectLabel(report.subject)).catch((error: Error) =>
+      console.error("Report notification failed:", error.message),
+    );
+    return c.json({ ok: true, id });
+  });
+
   type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
 
   // Without ADMIN_EMAILS the admin pages do not exist.
@@ -799,6 +855,27 @@ export async function createApp(config: AppConfig) {
         job.finishedAt = new Date().toISOString();
       });
     return c.json({ ok: true, job });
+  });
+
+  app.get("/api/admin/reports", async (c) => {
+    const check = await requireAdmin(c, false);
+    if ("response" in check) {
+      return check.response;
+    }
+    const { open, done } = listReports(db);
+    const withLabel = (report: Report) => ({ ...report, label: subjectLabel(report.subject) });
+    return c.json({ open: open.map(withLabel), done: done.map(withLabel) });
+  });
+
+  app.post("/api/admin/reports/:id{[0-9]+}/close", async (c) => {
+    const check = await requireAdmin(c, true);
+    if ("response" in check) {
+      return check.response;
+    }
+    if (!closeReport(db, Number(c.req.param("id")), check.admin.email)) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    return c.json({ ok: true });
   });
 
   app.post("/api/admin/users/:id/:action{block|unblock}", async (c) => {
