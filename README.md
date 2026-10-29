@@ -84,9 +84,10 @@ Open http://127.0.0.1:8000.
 - After 10 analyses (IP **and** device cookie), access stays free once the
   visitor confirms an email: a magic link, valid 15 minutes. The address is
   stored only after the link is opened, and only to tell people from robots.
-  A honeypot field, a disposable-domain list, a per-IP rate limit, a resend
-  cooldown, at most 5 links per address and per day, and optional Cloudflare
-  Turnstile protect the form.
+  A honeypot field, a disposable-domain list, a per-IP rate limit (5 per hour,
+  IPv6 counted per /64), a resend cooldown, at most 5 links per address and
+  per day, a service-wide `EMAIL_DAILY_LIMIT` and optional Cloudflare Turnstile
+  protect the form.
 - Signed-in accounts have no analysis quota, only a ceiling against scraping
   (`ACCOUNT_REQUESTS_PER_MINUTE`, `ACCOUNT_REQUESTS_PER_DAY`); administrators
   are not limited.
@@ -97,6 +98,10 @@ Open http://127.0.0.1:8000.
 - Only two Better Auth routes are reachable: `GET /api/auth/magic-link/verify`
   and `POST /api/auth/sign-out`. Links are always requested through
   `/api/register`, so its checks cannot be skipped.
+- « Se connecter » in the header sends the same link at any time. A known
+  address gets its existing account back; nothing is created twice. Sessions
+  last 30 days and are extended at most once a day while the account is used,
+  so only 30 days without a visit sign a person out.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
 - `GET /api/communes?q=` (free, same origin, 120 per minute and per IP)
@@ -159,8 +164,11 @@ would bypass the quota.
 It also shows each account's requests (today, 7 days, 30 days, total), the
 daily requests over 30 days, and where accounts connect from (countries and
 cities). Only signed-in accounts whose email is listed in `ADMIN_EMAILS`
-(comma-separated) can open it; without `ADMIN_EMAILS`, `/admin` and
-`/api/admin/*` answer 404. The page has its own magic-link form.
+(comma-separated) can open it: for everyone else, signed in or not, `/admin`,
+`/admin.js` and `/api/admin/*` answer 404, as they do without `ADMIN_EMAILS`.
+The page has no sign-in form: an administrator signs in from the homepage
+(« Se connecter ») and then opens `/admin`. Adding an administrator means
+editing `ADMIN_EMAILS` and restarting the server.
 
 - A request is one analysis call (deputy, group, theme, Assembly) made by a
   signed-in account. Anonymous visitors are not tied to an account: only
@@ -262,6 +270,7 @@ Environment (`server/.env`):
 | `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
 | `ACCOUNT_REQUESTS_PER_MINUTE`, `ACCOUNT_REQUESTS_PER_DAY` | Ceilings for signed-in accounts, administrators excepted (default 120 and 2000 analysis requests) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
+| `EMAIL_DAILY_LIMIT` | Sign-in links sent per 24 hours, all addresses together (default 200) |
 | `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (no default: empty or `off` disables it) |
 | `ADMIN_EMAILS` | Comma-separated accounts allowed on `/admin` (empty disables it) |
 | `GEOIP_DB_PATH` | MMDB file for the admin geography (default `server/data/geoip.mmdb`, see `npm run geoip`) |
@@ -277,6 +286,8 @@ Production checklist:
 - `NODE_ENV=production`
 - `BETTER_AUTH_SECRET` (>= 32 chars) and `BETTER_AUTH_URL=https://...`
 - `RESEND_API_KEY` and `EMAIL_FROM`
+- `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`: without them, robots can
+  spend the whole `EMAIL_DAILY_LIMIT` (the server warns at start)
 - `HOST=127.0.0.1` behind a reverse proxy (`0.0.0.0` on Render), with
   `TRUST_PROXY` set to the number of proxies (or `cloudflare`), checked on
   `/admin` (see « Setting TRUST_PROXY on Render »)

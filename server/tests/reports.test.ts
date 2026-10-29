@@ -69,7 +69,7 @@ test("anyone can report an error, the admins are emailed and close it from /admi
   assert.equal(list.open.length, 1);
   assert.equal(list.open[0].id, id);
   assert.match(list.open[0].label, /Bob/i);
-  assert.equal((await reader.request("/api/admin/reports")).status, 401);
+  assert.equal((await reader.request("/api/admin/reports")).status, 404);
 
   assert.equal((await boss.request(`/api/admin/reports/${id}/close`, post({}))).status, 200);
   assert.equal((await boss.request(`/api/admin/reports/${id}/close`, post({}))).status, 404, "already closed");

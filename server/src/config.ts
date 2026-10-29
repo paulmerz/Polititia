@@ -10,6 +10,7 @@ export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
 export const EMAIL_RESEND_COOLDOWN_SECONDS = 60;
 export const EMAIL_MAX_PER_DAY = 5;
+export const EMAIL_DAILY_LIMIT_DEFAULT = 200;
 // One action sends up to 4 requests (Assembly, theme, person, group).
 export const ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT = 120;
 export const ACCOUNT_REQUESTS_PER_DAY_DEFAULT = 2000;
@@ -46,6 +47,9 @@ export type AppConfig = {
   exposeMagicLink: boolean;
   resendApiKey: string;
   emailFrom: string;
+  // Sign-in links sent per 24 hours, all addresses together: a ceiling on
+  // what a robot can make the Resend account send.
+  emailDailyLimit: number;
   turnstileSiteKey: string;
   turnstileSecretKey: string;
   signupNotifyEmail: string;
@@ -202,6 +206,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     exposeMagicLink: !isProduction && !hasMailer && localOnly,
     resendApiKey,
     emailFrom,
+    emailDailyLimit: Math.max(1, Number(env.EMAIL_DAILY_LIMIT || EMAIL_DAILY_LIMIT_DEFAULT) || EMAIL_DAILY_LIMIT_DEFAULT),
     turnstileSiteKey,
     turnstileSecretKey,
     signupNotifyEmail: parseNotifyEmail(env.SIGNUP_NOTIFY_EMAIL),

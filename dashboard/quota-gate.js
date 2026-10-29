@@ -21,6 +21,7 @@ window.PolititiaGate = (function createGate() {
     captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
     rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
     email_daily_limit: "Plusieurs liens ont déjà été envoyés à cette adresse aujourd’hui. Vérifiez vos courriers indésirables, ou réessayez demain.",
+    daily_limit: "Le service a atteint sa limite d’envoi d’emails pour aujourd’hui. Réessayez plus tard.",
     account_blocked: "Ce compte a été bloqué. Écrivez à l’éditeur du service si vous pensez qu’il s’agit d’une erreur.",
     forbidden: "Requête refusée par le serveur.",
     invalid_json: "Requête invalide.",
@@ -46,16 +47,19 @@ window.PolititiaGate = (function createGate() {
   function renderChip() {
     const chip = $("quotaChip");
     const account = $("accountButton");
-    if (!chip || !account) {
+    const signIn = $("signInButton");
+    if (!chip || !account || !signIn) {
       return;
     }
     if (state.session?.email) {
       chip.hidden = true;
+      signIn.hidden = true;
       account.hidden = false;
       account.textContent = state.session.email;
       return;
     }
     account.hidden = true;
+    signIn.hidden = false;
     chip.hidden = false;
     const remaining = Math.max(0, Number(state.quota.remaining || 0));
     chip.textContent = remaining
@@ -125,9 +129,9 @@ window.PolititiaGate = (function createGate() {
     $("gateCheck").hidden = step !== "check";
   }
 
-  // Opened by the quota, or by an action that needs an account (following a
-  // deputy): `retry` runs once the address is confirmed in this tab, and
-  // `returnTo` is the dashboard query the emailed link comes back to.
+  // Opened by the quota, by « Se connecter », or by an action that needs an
+  // account (following a deputy): `retry` runs once the address is confirmed
+  // in this tab, and `returnTo` is the dashboard query the emailed link comes back to.
   function show({ title = "", lead = "", retry = null, returnTo = null } = {}) {
     const dialog = $("accessGate");
     const limit = state.quota?.limit || 10;
@@ -409,6 +413,12 @@ window.PolititiaGate = (function createGate() {
     $("closeGate")?.addEventListener("click", () => hide());
     $("accessGate")?.addEventListener("close", () => stopPolling());
     $("accountButton")?.addEventListener("click", () => openAccount());
+    $("signInButton")?.addEventListener("click", () =>
+      show({
+        title: "Se connecter",
+        lead: "Indiquez votre adresse email : vous recevez un lien de connexion. Si vous vous êtes déjà inscrit, vous retrouvez votre compte ; sinon il est créé quand vous ouvrez le lien.",
+      }),
+    );
     $("closeAccount")?.addEventListener("click", () => $("accountDialog").close());
     $("signOutButton")?.addEventListener("click", () => signOut());
     $("deleteAccountButton")?.addEventListener("click", () => deleteAccount());

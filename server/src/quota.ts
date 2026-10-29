@@ -302,6 +302,17 @@ export function emailDailyLimitSeconds(
   return count >= max ? resetIn : 0;
 }
 
+// Seconds until any address may receive a link (0 when the service still has budget).
+export function emailServiceLimitSeconds(
+  db: Store,
+  secret: string,
+  max: number,
+  now = Math.floor(Date.now() / 1000),
+): number {
+  const { count, resetIn } = windowCount(db, hashIdentity(secret, "email-day", "*"), DAY_SECONDS, now);
+  return count >= max ? resetIn : 0;
+}
+
 export type AccountLimits = { perMinute: number; perDay: number };
 
 // Signed-in accounts have no analysis quota, only a ceiling against scraping.
@@ -361,10 +372,32 @@ export function recordEmailSend(db: Store, secret: string, email: string, now = 
   const keyHash = hashIdentity(secret, "email-send", email);
   db.prepare("INSERT OR REPLACE INTO email_sends (key_hash, last_sent) VALUES (?, ?)").run(keyHash, now);
   windowBump(db, hashIdentity(secret, "email-day", email), DAY_SECONDS, now);
+  windowBump(db, hashIdentity(secret, "email-day", "*"), DAY_SECONDS, now);
+}
+
+// One IPv6 subscriber usually holds a whole /64, so its addresses share a limit.
+export function ipRateKey(ip: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped) {
+    return mapped[1];
+  }
+  if (!ip.includes(":")) {
+    return ip;
+  }
+  const address = ip.split("%")[0].toLowerCase();
+  const [head, tail] = address.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups =
+    tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
 }
 
 export function registerRateLimited(db: Store, secret: string, ip: string): boolean {
-  const keyHash = hashIdentity(secret, "register-ip", ip);
+  const keyHash = hashIdentity(secret, "register-ip", ipRateKey(ip));
   const now = Math.floor(Date.now() / 1000);
   const window = 60 * 60;
   const row = db.prepare("SELECT window_start, count FROM auth_attempts WHERE key_hash = ?").get(keyHash) as

@@ -52,7 +52,7 @@ test("tagged visits are counted per day without anything about the visitor", asy
   assert.deepEqual(report.sources, [{ source: "depute", visits: 13 }]);
   assert.equal(report.campaigns[0].campaign, "lancement-deputes");
   assert.equal(report.campaigns[0].last7, 13);
-  assert.equal((await started.client(visitor()).request("/api/admin/campaigns")).status, 401);
+  assert.equal((await started.client(visitor()).request("/api/admin/campaigns")).status, 404);
 
   started.db.prepare("UPDATE campaign_visits SET day = '2020-01-01'").run();
   purgeStale(started.db);

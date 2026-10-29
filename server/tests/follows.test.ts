@@ -156,5 +156,5 @@ test("admins preview the next alerts and see the most followed deputies", async 
   const send = await boss.request("/api/admin/alerts/send", { method: "POST", headers: { origin: ORIGIN } });
   assert.equal(send.status, 400);
   assert.equal((await send.json()).error, "mailer_missing");
-  assert.equal((await reader.request("/api/admin/alerts")).status, 403);
+  assert.equal((await reader.request("/api/admin/alerts")).status, 404);
 });

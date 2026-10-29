@@ -20,6 +20,7 @@ import {
   deviceCookieHeader,
   emailCooldownSeconds,
   emailDailyLimitSeconds,
+  emailServiceLimitSeconds,
   ipHourlyLimited,
   ipRateLimited,
   parseDeviceCookie,
@@ -79,7 +80,6 @@ const AUTH_ROUTES = new Set(["GET /api/auth/magic-link/verify", "POST /api/auth/
 
 const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
-const ADMIN_RETURN_TO = "/admin";
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const COMMUNE_SEARCHES_PER_MINUTE = 120;
 const CARD_RENDERS_PER_MINUTE = 30;
@@ -482,6 +482,7 @@ export async function createApp(config: AppConfig) {
     cardResponse(c, c.req.param("kind") as ShareKind, decodeURIComponent(c.req.param("file").slice(0, -4))),
   );
 
+  let budgetWarnedAt = 0;
   app.post("/api/register", async (c) => {
     if (!originAllowed(config, c.req.header("origin"))) {
       return c.json({ error: "forbidden" }, 403);
@@ -525,11 +526,20 @@ export async function createApp(config: AppConfig) {
       return applyDeviceCookie(config, c.json({ error: "email_daily_limit", retryAfter: dailyWait }, 429), deviceId);
     }
 
+    const serviceWait = emailServiceLimitSeconds(db, config.secret, config.emailDailyLimit);
+    if (serviceWait > 0) {
+      if (Date.now() - budgetWarnedAt > PURGE_INTERVAL_MS) {
+        budgetWarnedAt = Date.now();
+        console.warn(`[register] EMAIL_DAILY_LIMIT (${config.emailDailyLimit}) reached: no link is sent until it frees up.`);
+      }
+      return applyDeviceCookie(config, c.json({ error: "daily_limit", retryAfter: serviceWait }, 503), deviceId);
+    }
+
     // Only a query string of the dashboard is accepted, so the link can never
     // send the visitor to another path or origin.
     const returnTo = String(body.returnTo || "");
     const query = RETURN_TO_PATTERN.test(returnTo) ? returnTo.slice(1) : "";
-    const callbackURL = returnTo === ADMIN_RETURN_TO ? ADMIN_RETURN_TO : `/?${query ? `${query}&` : ""}verifie=1`;
+    const callbackURL = `/?${query ? `${query}&` : ""}verifie=1`;
     await auth.api.signInMagicLink({
       body: { email, name: email.split("@")[0], callbackURL },
       headers: withClientIp(c.req.raw.headers, ip),
@@ -729,29 +739,32 @@ export async function createApp(config: AppConfig) {
 
   type AdminCheck = { admin: { id: string; email: string } } | { response: Response };
 
-  // Without ADMIN_EMAILS the admin pages do not exist.
-  async function requireAdmin(c: Context, write: boolean): Promise<AdminCheck> {
+  async function signedInAdmin(request: Request): Promise<{ id: string; email: string } | null> {
     if (!adminEmails.size) {
+      return null;
+    }
+    const user = (await currentSession(auth, db, request))?.user;
+    const email = normalizeEmail(user?.email || "");
+    return user?.id && adminEmails.has(email) ? { id: user.id, email } : null;
+  }
+
+  // The admin pages only exist for a signed-in administrator: anyone else,
+  // signed in or not, gets the same 404 as an unknown path.
+  async function requireAdmin(c: Context, write: boolean): Promise<AdminCheck> {
+    const admin = await signedInAdmin(c.req.raw);
+    if (!admin) {
       return { response: c.json({ error: "not_found" }, 404) };
     }
     const sameOrigin = write ? originAllowed(config, c.req.header("origin")) : sameOriginOrSafeGet(config, c.req.raw);
     if (!sameOrigin) {
       return { response: c.json({ error: "forbidden" }, 403) };
     }
-    const user = (await currentSession(auth, db, c.req.raw))?.user;
-    if (!user?.id || !user.email) {
-      return { response: c.json({ error: "not_signed_in", auth: authInfo() }, 401) };
-    }
-    const email = normalizeEmail(user.email);
-    if (!adminEmails.has(email)) {
-      return { response: c.json({ error: "not_admin", session: { email } }, 403) };
-    }
-    return { admin: { id: user.id, email } };
+    return { admin };
   }
 
   for (const adminPath of ["/admin", "/admin.js"]) {
     app.use(adminPath, async (c, next) => {
-      if (!adminEmails.size) {
+      if (!(await signedInAdmin(c.req.raw))) {
         return c.json({ error: "not_found" }, 404);
       }
       await next();

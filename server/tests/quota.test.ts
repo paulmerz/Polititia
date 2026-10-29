@@ -13,11 +13,15 @@ import {
   describeClientIp,
   emailCooldownSeconds,
   emailDailyLimitSeconds,
+  emailServiceLimitSeconds,
+  ipRateKey,
   parseDeviceCookie,
   readQuota,
   recordEmailSend,
+  registerRateLimited,
   signDeviceId,
 } from "../src/quota.ts";
+import { REGISTER_MAX_PER_HOUR } from "../src/config.ts";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +32,8 @@ test("device cookie is signed and rejected if tampered", () => {
   const deviceId = createDeviceId();
   const cookie = signDeviceId(secret, deviceId);
   assert.equal(parseDeviceCookie(secret, cookie), deviceId);
-  assert.equal(parseDeviceCookie(secret, cookie.replace(/[0-9a-f]$/i, "0")), null);
+  const tampered = `${cookie.slice(0, -1)}${cookie.endsWith("0") ? "1" : "0"}`;
+  assert.equal(parseDeviceCookie(secret, tampered), null);
   assert.equal(parseDeviceCookie(secret, deviceId), null);
 });
 
@@ -164,6 +169,33 @@ test("email sends are throttled per address", () => {
   recordEmailSend(db, secret, "a@example.org");
   assert.ok(emailCooldownSeconds(db, secret, "a@example.org", 60) > 0);
   assert.equal(emailCooldownSeconds(db, secret, "b@example.org", 60), 0);
+});
+
+test("IPv6 addresses share a rate limit per /64", () => {
+  assert.equal(ipRateKey("203.0.113.9"), "203.0.113.9");
+  assert.equal(ipRateKey("::ffff:203.0.113.9"), "203.0.113.9");
+  assert.equal(ipRateKey("2001:db8:0a:1::1"), "2001:db8:a:1::/64");
+  assert.equal(ipRateKey("2001:DB8:A:1:ffff:1:2:3"), "2001:db8:a:1::/64");
+  assert.equal(ipRateKey("2001:db8::7"), "2001:db8:0:0::/64");
+  assert.equal(ipRateKey("fe80::1%eth0"), "fe80:0:0:0::/64");
+
+  const db = freshStore();
+  for (let index = 1; index <= REGISTER_MAX_PER_HOUR; index += 1) {
+    assert.equal(registerRateLimited(db, secret, `2001:db8:a:1::${index}`), false);
+  }
+  assert.equal(registerRateLimited(db, secret, "2001:db8:a:1:dead:beef:0:1"), true, "same /64");
+  assert.equal(registerRateLimited(db, secret, "2001:db8:a:2::1"), false, "another /64");
+});
+
+test("the service-wide email budget is counted apart from each address", () => {
+  const db = freshStore();
+  const start = 1_800_000_000;
+  recordEmailSend(db, secret, "a@example.org", start);
+  recordEmailSend(db, secret, "b@example.org", start + 1);
+  assert.equal(emailServiceLimitSeconds(db, secret, 2, start + 2), 24 * 60 * 60 - 2);
+  assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + 2), 0, "neither address is at its own ceiling");
+  assert.equal(emailDailyLimitSeconds(db, secret, "b@example.org", 5, start + 2), 0);
+  assert.equal(emailServiceLimitSeconds(db, secret, 2, start + 24 * 60 * 60), 0, "the next day starts afresh");
 });
 
 test("an address receives a limited number of links per day, then the window reopens", () => {
