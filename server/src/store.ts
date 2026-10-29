@@ -25,6 +25,9 @@ export const QUOTA_RETENTION_DAYS = 365;
 export const SEEN_RETENTION_DAYS = 90;
 export const ACCOUNT_RETENTION_DAYS = 3 * 365;
 export const ACTIVITY_RETENTION_DAYS = 365;
+// Aggregate counts, with nothing about the visitors.
+export const CAMPAIGN_RETENTION_DAYS = 2 * 365;
+export const REPORT_RETENTION_DAYS = 365;
 
 export function openStore(sqlitePath: string): Store {
   mkdirSync(path.dirname(sqlitePath), { recursive: true, mode: 0o700 });
@@ -48,6 +51,13 @@ export function openStore(sqlitePath: string): Store {
       created_at TEXT NOT NULL,
       PRIMARY KEY (device_hash, key)
     );
+    CREATE TABLE IF NOT EXISTS quota_interactions (
+      device_hash TEXT NOT NULL,
+      interaction_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      views INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (device_hash, interaction_id)
+    );
     CREATE TABLE IF NOT EXISTS auth_attempts (
       key_hash TEXT PRIMARY KEY,
       window_start INTEGER NOT NULL,
@@ -56,6 +66,11 @@ export function openStore(sqlitePath: string): Store {
     CREATE TABLE IF NOT EXISTS email_sends (
       key_hash TEXT PRIMARY KEY,
       last_sent INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS rate_windows (
+      key_hash TEXT PRIMARY KEY,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS user_blocks (
       user_id TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
@@ -79,6 +94,33 @@ export function openStore(sqlitePath: string): Store {
       last_seen TEXT NOT NULL,
       PRIMARY KEY (user_id, country, city)
     );
+    CREATE TABLE IF NOT EXISTS follows (
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      politician_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      notified_through TEXT NOT NULL,
+      PRIMARY KEY (user_id, politician_id)
+    );
+    CREATE TABLE IF NOT EXISTS campaign_visits (
+      day TEXT NOT NULL,
+      source TEXT NOT NULL,
+      medium TEXT NOT NULL,
+      campaign TEXT NOT NULL,
+      visits INTEGER NOT NULL,
+      PRIMARY KEY (day, source, medium, campaign)
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS error_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      page TEXT NOT NULL,
+      message TEXT NOT NULL,
+      email TEXT,
+      status TEXT NOT NULL,
+      handled_at TEXT,
+      handled_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS error_reports_status ON error_reports (status, created_at);
   `);
   return db;
 }
@@ -90,8 +132,12 @@ export function purgeStale(db: Store, now = Date.now()): void {
   const nowSeconds = Math.floor(now / 1000);
   db.prepare("DELETE FROM quota_counters WHERE last_seen < ?").run(quotaCutoff);
   db.prepare("DELETE FROM quota_seen WHERE created_at < ?").run(seenCutoff);
+  db.prepare("DELETE FROM quota_interactions WHERE created_at < ?").run(new Date(now - DAY_MS).toISOString());
   db.prepare("DELETE FROM auth_attempts WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
   db.prepare("DELETE FROM email_sends WHERE last_sent < ?").run(nowSeconds - 24 * 60 * 60);
+  db.prepare("DELETE FROM rate_windows WHERE window_start < ?").run(nowSeconds - 24 * 60 * 60);
+  db.prepare("DELETE FROM campaign_visits WHERE day < ?").run(new Date(now - CAMPAIGN_RETENTION_DAYS * DAY_MS).toISOString().slice(0, 10));
+  db.prepare("DELETE FROM error_reports WHERE created_at < ?").run(new Date(now - REPORT_RETENTION_DAYS * DAY_MS).toISOString());
   const tables = new Set(
     (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(
       (row) => row.name,

@@ -64,7 +64,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA1",
       "speechCount": 4,
-      "words": 480
+      "words": 480,
+      "seat": {
+        "dept": "33",
+        "deptName": "Gironde",
+        "circo": 1,
+        "current": true
+      }
     },
     {
       "id": "m-alice-1--lfi-nfp",
@@ -72,7 +78,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA2",
       "speechCount": 1,
-      "words": 120
+      "words": 120,
+      "seat": {
+        "dept": "33",
+        "deptName": "Gironde",
+        "circo": 2,
+        "current": true
+      }
     },
     {
       "id": "m-alice-2--lfi-nfp",
@@ -80,7 +92,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA3",
       "speechCount": 1,
-      "words": 120
+      "words": 120,
+      "seat": {
+        "dept": "75",
+        "deptName": "Paris",
+        "circo": 6,
+        "current": true
+      }
     },
     {
       "id": "m-alice-3--lfi-nfp",
@@ -88,7 +106,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA4",
       "speechCount": 1,
-      "words": 120
+      "words": 120,
+      "seat": {
+        "dept": "75",
+        "deptName": "Paris",
+        "circo": 7,
+        "current": true
+      }
     },
     {
       "id": "m-alice-4--lfi-nfp",
@@ -96,7 +120,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA5",
       "speechCount": 1,
-      "words": 120
+      "words": 120,
+      "seat": {
+        "dept": "099",
+        "deptName": "FranÃ§ais Ã©tablis hors de France",
+        "circo": 1,
+        "current": true
+      }
     },
     {
       "id": "m-alice-5--lfi-nfp",
@@ -152,7 +182,13 @@
       "party": "LFI_NFP",
       "acteurId": "PA12",
       "speechCount": 1,
-      "words": 120
+      "words": 120,
+      "seat": {
+        "dept": "33",
+        "deptName": "Gironde",
+        "circo": 3,
+        "current": false
+      }
     },
     {
       "id": "m-bob--rn",
@@ -160,7 +196,13 @@
       "party": "RN",
       "acteurId": "PA13",
       "speechCount": 3,
-      "words": 360
+      "words": 360,
+      "seat": {
+        "dept": "33",
+        "deptName": "Gironde",
+        "circo": 4,
+        "current": true
+      }
     },
     {
       "id": "mme-carla--gouv",

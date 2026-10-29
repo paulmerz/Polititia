@@ -91,6 +91,17 @@ class Membership:
 
 
 @dataclass
+class Seat:
+    """A deputy mandate of the 17th legislature and the constituency it represents."""
+
+    start: str
+    end: str
+    department: str
+    department_name: str
+    number: int
+
+
+@dataclass
 class Actor:
     uid: str
     civility: str
@@ -98,10 +109,25 @@ class Actor:
     last_name: str
     groups: list[Membership] = field(default_factory=list)
     government: list[tuple[str, str]] = field(default_factory=list)
+    seats: list[Seat] = field(default_factory=list)
+    emails: list[str] = field(default_factory=list)
 
     @property
     def name(self) -> str:
         return " ".join(part for part in (self.civility, self.first_name, self.last_name) if part)
+
+    def current_seat(self) -> Seat | None:
+        """The open mandate, else the latest one (a resigned or appointed deputy)."""
+        if not self.seats:
+            return None
+        open_seats = [seat for seat in self.seats if not seat.end]
+        return max(open_seats or self.seats, key=lambda seat: seat.start)
+
+    def official_email(self) -> str:
+        for email in self.emails:
+            if email.lower().endswith("@assemblee-nationale.fr"):
+                return email
+        return self.emails[0] if self.emails else ""
 
     def party_on(self, day: str, role: str = "") -> str:
         """Group on ``day`` (YYYY-MM-DD); government membership wins.
@@ -204,6 +230,16 @@ class ReferenceData:
                     # Deputies "en mission" for a minister stay deputies.
                     if quality != "en mission":
                         actor.government.append((start, end))
+                elif organ_type == "ASSEMBLEE" and str(mandate.get("legislature")) == "17":
+                    place = (mandate.get("election") or {}).get("lieu") or {}
+                    number = str(place.get("numCirco") or "")
+                    if place.get("numDepartement") and number.isdigit():
+                        actor.seats.append(
+                            Seat(start, end, str(place["numDepartement"]), place.get("departement") or "", int(number))
+                        )
+            for address in as_list((raw.get("adresses") or {}).get("adresse")):
+                if str(address.get("type")) == "15" and address.get("valElec"):
+                    actor.emails.append(str(address["valElec"]).strip())
             actor.groups.sort(key=lambda item: item.start)
             self.actors[uid] = actor
 

@@ -1,20 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openStore, purgeStale } from "../src/store.ts";
+import { dayKey } from "../src/admin.ts";
 import {
+  accountRateLimited,
+  clientIp,
   consumeInteraction,
+  INTERACTION_MAX_VIEWS,
+  INTERACTION_WINDOW_MS,
   consumeQuota,
   createDeviceId,
+  describeClientIp,
   emailCooldownSeconds,
+  emailDailyLimitSeconds,
+  emailServiceLimitSeconds,
   ipRateKey,
   parseDeviceCookie,
   readQuota,
   recordEmailSend,
   registerRateLimited,
-  reserveEmail,
   signDeviceId,
 } from "../src/quota.ts";
-import { EMAIL_MAX_PER_ADDRESS_PER_DAY, REGISTER_MAX_PER_HOUR } from "../src/config.ts";
+import { REGISTER_MAX_PER_HOUR } from "../src/config.ts";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -91,6 +98,71 @@ test("malformed interaction ids are ignored", () => {
   assert.equal(second.counted, true);
 });
 
+test("an interaction id covers a few views only, and replaying it never reopens it", () => {
+  const db = freshStore();
+  const device = "1".repeat(32);
+  const interactionId = "replayed-0000001";
+  const counted = (index: number) =>
+    consumeInteraction(db, secret, "6.6.6.6", device, 100, { interactionId, view: `politician:${index}` }).counted;
+  assert.equal(counted(0), true);
+  for (let index = 1; index < INTERACTION_MAX_VIEWS; index += 1) {
+    assert.equal(counted(index), false, `view ${index} belongs to the same action`);
+  }
+  for (let index = INTERACTION_MAX_VIEWS; index < INTERACTION_MAX_VIEWS + 5; index += 1) {
+    assert.equal(counted(index), true, `view ${index} is past the action`);
+  }
+  assert.equal(readQuota(db, secret, "6.6.6.6", device, 100).used, 6);
+});
+
+test("an interaction id expires after a few seconds", () => {
+  const db = freshStore();
+  const device = "2".repeat(32);
+  const start = Date.now();
+  const consume = (view: string, at: number) =>
+    consumeInteraction(db, secret, "7.7.7.7", device, 100, { interactionId: "late-action-0001", view }, at).counted;
+  assert.equal(consume("a", start), true);
+  assert.equal(consume("b", start + 1000), false);
+  assert.equal(consume("c", start + INTERACTION_WINDOW_MS + 1000), true);
+  assert.equal(consume("d", start + INTERACTION_WINDOW_MS + 2000), true, "a late request does not open a new window");
+});
+
+test("reopening a counted view does not lend its interaction id to new views", () => {
+  const db = freshStore();
+  const device = "3".repeat(32);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "first-action-01", view: "a" }).counted, true);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "reopen-action-1", view: "a" }).counted, false);
+  assert.equal(consumeInteraction(db, secret, "8.8.4.4", device, 100, { interactionId: "reopen-action-1", view: "b" }).counted, true);
+});
+
+test("the client address comes from the trusted end of X-Forwarded-For", () => {
+  const headers = new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.5, 10.0.0.2", "cf-connecting-ip": "198.51.100.9" });
+  assert.equal(clientIp(headers, { proxyHops: 0, trustCloudflare: false }, "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientIp(headers, { proxyHops: 1, trustCloudflare: false }, "192.0.2.1"), "10.0.0.2");
+  assert.equal(clientIp(headers, { proxyHops: 2, trustCloudflare: false }, "192.0.2.1"), "203.0.113.5");
+  assert.equal(clientIp(headers, { proxyHops: 5, trustCloudflare: false }, "192.0.2.1"), "6.6.6.6");
+  assert.equal(clientIp(new Headers(), { proxyHops: 1, trustCloudflare: false }, "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientIp(headers, { proxyHops: 0, trustCloudflare: true }, "192.0.2.1"), "198.51.100.9");
+  assert.equal(clientIp(new Headers(), { proxyHops: 0, trustCloudflare: true }, "192.0.2.1"), "192.0.2.1");
+});
+
+test("the IP diagnostic suggests the number of proxies that wrote X-Forwarded-For", () => {
+  const off = { proxyHops: 0, trustCloudflare: false };
+  const render = new Headers({ "x-forwarded-for": "198.51.100.9, 172.71.0.5", "cf-connecting-ip": "198.51.100.9" });
+  const report = describeClientIp(render, off, "10.0.0.2");
+  assert.equal(report.mode, "off");
+  assert.equal(report.usedIp, "10.0.0.2", "with TRUST_PROXY=0 every visitor is the proxy");
+  assert.deepEqual(report.suggestion.trustProxy, "2");
+  assert.equal(report.suggestion.visitorIp, "198.51.100.9");
+  assert.equal(describeClientIp(render, { proxyHops: 2, trustCloudflare: false }, "10.0.0.2").usedIp, "198.51.100.9");
+
+  const direct = describeClientIp(new Headers(), off, "192.0.2.8");
+  assert.deepEqual([direct.suggestion.trustProxy, direct.suggestion.visitorIp], ["0", "192.0.2.8"]);
+  const cloudflareOnly = describeClientIp(new Headers({ "cf-connecting-ip": "198.51.100.3" }), off, "172.68.0.1");
+  assert.deepEqual([cloudflareOnly.suggestion.trustProxy, cloudflareOnly.suggestion.visitorIp], ["cloudflare", "198.51.100.3"]);
+  const mismatch = describeClientIp(new Headers({ "x-forwarded-for": "198.51.100.9", "cf-connecting-ip": "203.0.113.1" }), off, "10.0.0.2");
+  assert.match(mismatch.suggestion.reason, /ne correspond pas/);
+});
+
 test("email sends are throttled per address", () => {
   const db = freshStore();
   assert.equal(emailCooldownSeconds(db, secret, "a@example.org", 60), 0);
@@ -115,17 +187,44 @@ test("IPv6 addresses share a rate limit per /64", () => {
   assert.equal(registerRateLimited(db, secret, "2001:db8:a:2::1"), false, "another /64");
 });
 
-test("email budgets hold per address and for the whole service over 24 hours", () => {
+test("the service-wide email budget is counted apart from each address", () => {
   const db = freshStore();
-  const now = Date.now();
-  for (let index = 0; index < EMAIL_MAX_PER_ADDRESS_PER_DAY; index += 1) {
-    assert.equal(reserveEmail(db, secret, "a@example.org", 100, now), "ok");
+  const start = 1_800_000_000;
+  recordEmailSend(db, secret, "a@example.org", start);
+  recordEmailSend(db, secret, "b@example.org", start + 1);
+  assert.equal(emailServiceLimitSeconds(db, secret, 2, start + 2), 24 * 60 * 60 - 2);
+  assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + 2), 0, "neither address is at its own ceiling");
+  assert.equal(emailDailyLimitSeconds(db, secret, "b@example.org", 5, start + 2), 0);
+  assert.equal(emailServiceLimitSeconds(db, secret, 2, start + 24 * 60 * 60), 0, "the next day starts afresh");
+});
+
+test("an address receives a limited number of links per day, then the window reopens", () => {
+  const db = freshStore();
+  const start = 1_800_000_000;
+  for (let index = 0; index < 5; index += 1) {
+    assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + index), 0);
+    recordEmailSend(db, secret, "a@example.org", start + index);
   }
-  assert.equal(reserveEmail(db, secret, "a@example.org", 100, now), "address_limit");
-  const limit = EMAIL_MAX_PER_ADDRESS_PER_DAY + 1;
-  assert.equal(reserveEmail(db, secret, "b@example.org", limit, now), "ok", "the refused link used no budget");
-  assert.equal(reserveEmail(db, secret, "c@example.org", limit, now), "daily_limit");
-  assert.equal(reserveEmail(db, secret, "a@example.org", 100, now + 25 * 60 * 60 * 1000), "ok", "the next day starts afresh");
+  assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + 10), 24 * 60 * 60 - 10);
+  assert.equal(emailDailyLimitSeconds(db, secret, "b@example.org", 5, start + 10), 0);
+  assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + 24 * 60 * 60), 0);
+  recordEmailSend(db, secret, "a@example.org", start + 24 * 60 * 60);
+  assert.equal(emailDailyLimitSeconds(db, secret, "a@example.org", 5, start + 24 * 60 * 60 + 1), 0, "a new day starts from 1");
+});
+
+test("signed-in accounts are limited per minute and per day", () => {
+  const db = freshStore();
+  db.exec(`CREATE TABLE "user" (id TEXT PRIMARY KEY); INSERT INTO "user" (id) VALUES ('u1'), ('u2')`);
+  const limits = { perMinute: 3, perDay: 5 };
+  const start = Date.parse("2026-03-10T10:00:00Z");
+  const limited = (userId: string, at: number) => accountRateLimited(db, secret, userId, limits, at);
+  assert.deepEqual([0, 1, 2, 3].map((index) => limited("u1", start + index)), [false, false, false, true]);
+  assert.equal(limited("u2", start), false, "each account has its own window");
+  assert.equal(limited("u1", start + 61_000), false, "the next minute reopens");
+
+  db.prepare("INSERT INTO user_usage (user_id, day, requests) VALUES (?, ?, ?)").run("u2", dayKey(start), 5);
+  assert.equal(limited("u2", start + 120_000), true, "the daily ceiling holds whatever the minute");
+  assert.equal(limited("u2", start + 24 * 60 * 60 * 1000), false, "and resets the next day");
 });
 
 test("stale counters are purged after a year", () => {

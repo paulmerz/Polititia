@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isValidEmail } from "./emails.ts";
 
 const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(SERVER_DIR, "..");
@@ -8,10 +9,12 @@ const REPO_ROOT = path.resolve(SERVER_DIR, "..");
 export const FREE_REQUEST_LIMIT_DEFAULT = 10;
 export const REGISTER_MAX_PER_HOUR = 5;
 export const EMAIL_RESEND_COOLDOWN_SECONDS = 60;
-export const EMAIL_MAX_PER_ADDRESS_PER_DAY = 5;
+export const EMAIL_MAX_PER_DAY = 5;
 export const EMAIL_DAILY_LIMIT_DEFAULT = 200;
+// One action sends up to 4 requests (Assembly, theme, person, group).
+export const ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT = 120;
+export const ACCOUNT_REQUESTS_PER_DAY_DEFAULT = 2000;
 export const DEVICE_COOKIE_NAME = "pt_did";
-export const SIGNUP_NOTIFY_EMAIL_DEFAULT = "paul@maj.digital";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
 
 export type AppConfig = {
@@ -22,17 +25,25 @@ export type AppConfig = {
   host: string;
   dataDir: string;
   sqlitePath: string;
+  // HOST and BETTER_AUTH_URL both point at this machine.
+  localOnly: boolean;
   dashboardDataPath: string;
+  communesPath: string;
   analyticsPath: string;
   dashboardDir: string;
   usingDevSecret: boolean;
   secret: string;
   baseURL: string;
   trustedOrigins: string[];
+  // True when the client address comes from a proxy header (proxyHops or Cloudflare).
   trustProxy: boolean;
+  // Number of reverse proxies that append to X-Forwarded-For in front of the server.
+  proxyHops: number;
+  // Cloudflare is the only way in: CF-Connecting-IP, CF-IPCountry and CF-IPCity are trusted.
+  trustCloudflare: boolean;
   hasMailer: boolean;
-  // Without a mailer (development and tests only) the magic link is returned
-  // to the browser instead of being emailed.
+  // Without a mailer (development on this machine and tests only) the magic
+  // link is returned to the browser instead of being emailed.
   exposeMagicLink: boolean;
   resendApiKey: string;
   emailFrom: string;
@@ -46,8 +57,16 @@ export type AppConfig = {
   adminEmails: string[];
   geoipPath: string;
   freeRequestLimit: number;
+  // Ceilings for signed-in accounts (administrators excepted).
+  accountRequestsPerMinute: number;
+  accountRequestsPerDay: number;
   allowInsecureHttp: boolean;
 };
+
+function readPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function readBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value === "") {
@@ -56,12 +75,30 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
+// TRUST_PROXY: 0/off (default), 1/on (one proxy), a number of proxies, or "cloudflare".
+function parseTrustProxy(value: string | undefined): { proxyHops: number; trustCloudflare: boolean } {
+  const trimmed = (value || "").trim().toLowerCase();
+  if (trimmed === "cloudflare") {
+    return { proxyHops: 0, trustCloudflare: true };
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return { proxyHops: Math.min(Number(trimmed), 10), trustCloudflare: false };
+  }
+  return { proxyHops: readBoolean(trimmed, false) ? 1 : 0, trustCloudflare: false };
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+// No default recipient: every deployment chooses who receives the users' emails and IPs.
 function parseNotifyEmail(value: string | undefined): string {
   const trimmed = (value || "").trim().toLowerCase();
-  if (!trimmed) {
-    return SIGNUP_NOTIFY_EMAIL_DEFAULT;
+  if (!trimmed || ["0", "false", "no", "off"].includes(trimmed)) {
+    return "";
   }
-  return ["0", "false", "no", "off"].includes(trimmed) ? "" : trimmed;
+  if (!isValidEmail(trimmed)) {
+    throw new Error("SIGNUP_NOTIFY_EMAIL must be an email address, or empty/off to disable the notification.");
+  }
+  return trimmed;
 }
 
 function parseEmailList(value: string | undefined): string[] {
@@ -103,6 +140,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const dashboardDataPath = path.resolve(
     env.DASHBOARD_DATA_PATH || path.join(dashboardDir, "data", "dashboard-data.json"),
   );
+  const communesPath = path.resolve(env.COMMUNES_PATH || path.join(dashboardDir, "data", "communes.json"));
   const secret = (env.BETTER_AUTH_SECRET || env.AUTH_SECRET || "").trim();
   const baseURL = (env.BETTER_AUTH_URL || env.AUTH_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
   const resendApiKey = (env.RESEND_API_KEY || "").trim();
@@ -114,7 +152,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     env.ANALYTICS_DB_PATH || path.join(REPO_ROOT, "analysis_outputs", "analytics.sqlite"),
   );
   const allowInsecureHttp = readBoolean(env.ALLOW_INSECURE_HTTP, !isProduction);
+  const host = env.HOST || "127.0.0.1";
+  const localOnly = LOOPBACK_HOSTS.has(host) && LOOPBACK_HOSTS.has(new URL(baseURL).hostname);
+  const { proxyHops, trustCloudflare } = parseTrustProxy(env.TRUST_PROXY);
 
+  if (!isProduction && !isTest && !localOnly && !secret) {
+    throw new Error(
+      "Outside this machine, set NODE_ENV=production and BETTER_AUTH_SECRET: the development secret is public.",
+    );
+  }
   if (isProduction) {
     if (secret.length < 32) {
       throw new Error("BETTER_AUTH_SECRET must be set to at least 32 characters in production.");
@@ -140,19 +186,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     isProduction,
     isTest,
     port: Number(env.PORT || 8000),
-    host: env.HOST || "127.0.0.1",
+    host,
     dataDir,
     sqlitePath: path.join(dataDir, "auth.sqlite"),
+    localOnly,
     dashboardDataPath,
+    communesPath,
     analyticsPath,
     dashboardDir,
     usingDevSecret: !secret,
     secret: secret || DEV_SECRET,
     baseURL,
     trustedOrigins: parseOrigins(baseURL, env.AUTH_TRUSTED_ORIGINS),
-    trustProxy: readBoolean(env.TRUST_PROXY, false),
+    trustProxy: proxyHops > 0 || trustCloudflare,
+    proxyHops,
+    trustCloudflare,
     hasMailer,
-    exposeMagicLink: !isProduction && !hasMailer,
+    // Anyone who can reach the server could sign in as anyone, admins included.
+    exposeMagicLink: !isProduction && !hasMailer && localOnly,
     resendApiKey,
     emailFrom,
     emailDailyLimit: Math.max(1, Number(env.EMAIL_DAILY_LIMIT || EMAIL_DAILY_LIMIT_DEFAULT) || EMAIL_DAILY_LIMIT_DEFAULT),
@@ -162,12 +213,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     adminEmails: parseEmailList(env.ADMIN_EMAILS),
     geoipPath: path.resolve(env.GEOIP_DB_PATH || path.join(dataDir, "geoip.mmdb")),
     freeRequestLimit: Math.max(1, Number(env.FREE_REQUEST_LIMIT || FREE_REQUEST_LIMIT_DEFAULT) || FREE_REQUEST_LIMIT_DEFAULT),
+    accountRequestsPerMinute: readPositiveInt(env.ACCOUNT_REQUESTS_PER_MINUTE, ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT),
+    accountRequestsPerDay: readPositiveInt(env.ACCOUNT_REQUESTS_PER_DAY, ACCOUNT_REQUESTS_PER_DAY_DEFAULT),
     allowInsecureHttp,
   };
 }
 
 export function assertSafeHostBinding(config: AppConfig): void {
   if (config.isProduction && config.host === "0.0.0.0" && !config.trustProxy) {
-    console.warn("HOST=0.0.0.0 without TRUST_PROXY=1: client IPs will not be taken from X-Forwarded-For.");
+    console.warn("HOST=0.0.0.0 without TRUST_PROXY: client IPs are the socket addresses, not X-Forwarded-For.");
   }
 }

@@ -1,0 +1,22 @@
+{
+  "builtOn": "2026-10-21",
+  "sources": {},
+  "departments": {
+    "33": "Gironde",
+    "42": "Loire",
+    "75": "Paris",
+    "099": "Français établis hors de France"
+  },
+  "columns": ["code", "name", "dept", "postcodes", "circos"],
+  "communes": [
+    ["33063", "Bordeaux", "33", ["33000", "33100", "33200", "33300", "33800"], [1, 2, 3]],
+    ["33318", "Pessac", "33", ["33600"], [4]],
+    ["33529", "Le Taillan-Médoc", "33", ["33320"], [4]],
+    ["42218", "Saint-Étienne", "42", ["42000", "42100"], [1, 2]],
+    ["42207", "Saint-Chamond", "42", ["42400"], [3]],
+    ["75056", "Paris", "75", ["75011", "75012"], [5, 6, 7]],
+    ["75111", "Paris 11e arrondissement", "75", ["75011"], [6, 7]],
+    ["75112", "Paris 12e arrondissement", "75", ["75012"], [7]],
+    ["99", "Français établis hors de France", "099", [], [1]]
+  ]
+}

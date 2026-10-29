@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { loadDotEnv } from "./load-env.ts";
 import { assertSafeHostBinding, loadConfig } from "./config.ts";
-import { createApp } from "./app.ts";
+import { createApp, unfilledPages } from "./app.ts";
 
 loadDotEnv();
 
@@ -12,6 +12,9 @@ assertSafeHostBinding(config);
 if (config.usingDevSecret) {
   console.warn("Auth secret is a development default. Set BETTER_AUTH_SECRET before production.");
 }
+if (config.isProduction && !config.signupNotifyEmail) {
+  console.warn("SIGNUP_NOTIFY_EMAIL is not set: nobody is notified of new accounts.");
+}
 if (config.exposeMagicLink) {
   console.warn("No Resend mailer configured: magic links are logged and shown in the browser (development only).");
 }
@@ -20,6 +23,12 @@ if (config.isProduction && !config.turnstileSiteKey) {
 }
 if (!existsSync(config.analyticsPath)) {
   console.warn("Analytics database missing:", config.analyticsPath, "- run build_analytics_db.py.");
+}
+if (config.isProduction) {
+  const unfilled = unfilledPages(config.dashboardDir);
+  if (unfilled.length) {
+    console.warn(`Pages still holding "[À compléter" placeholders (legal notice, contacts): ${unfilled.join(", ")}.`);
+  }
 }
 
 const { app } = await createApp(config);

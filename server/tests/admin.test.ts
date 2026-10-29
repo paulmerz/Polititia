@@ -18,12 +18,12 @@ function nextIp(): string {
   return `203.0.113.${lastOctet}`;
 }
 function lyon() {
-  return { "x-forwarded-for": nextIp(), "cf-ipcountry": "FR", "cf-ipcity": "Lyon" };
+  return { "cf-connecting-ip": nextIp(), "cf-ipcountry": "FR", "cf-ipcity": "Lyon" };
 }
 function anywhere() {
-  return { "x-forwarded-for": nextIp() };
+  return { "cf-connecting-ip": nextIp() };
 }
-const BRUSSELS = { "x-forwarded-for": "198.51.100.4", "cf-ipcountry": "BE", "cf-ipcity": "Bruxelles" };
+const BRUSSELS = { "cf-connecting-ip": "198.51.100.4", "cf-ipcountry": "BE", "cf-ipcity": "Bruxelles" };
 const DASHBOARD_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "dashboard");
 
 type Overview = {
@@ -45,7 +45,7 @@ type Overview = {
 };
 
 async function startAdminApp() {
-  const started = await startTestApp({}, { ADMIN_EMAILS: ` ${ADMIN.toUpperCase()} , ops@example.org` });
+  const started = await startTestApp({}, { ADMIN_EMAILS: ` ${ADMIN.toUpperCase()} , ops@example.org`, TRUST_PROXY: "cloudflare" });
   const admin = started.client(anywhere());
   await admin.signIn(ADMIN);
 
@@ -149,6 +149,30 @@ test("requests and connection places are counted per account", async () => {
   assert.equal(data.stats.activeToday, 1);
   assert.equal(data.stats.anonymousDevices30, 1);
   assert.equal(data.stats.anonymousAnalyses30, 2);
+});
+
+test("signed-in accounts hit a per-minute ceiling, administrators do not", async () => {
+  const started = await startTestApp(
+    {},
+    { ADMIN_EMAILS: ADMIN, TRUST_PROXY: "cloudflare", ACCOUNT_REQUESTS_PER_MINUTE: "3", ACCOUNT_REQUESTS_PER_DAY: "50" },
+  );
+  const user = started.client(anywhere());
+  await user.signIn("busy@example.org");
+  const statuses: number[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    statuses.push((await user.request("/api/assembly")).status);
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 429]);
+  const refused = await user.request("/api/assembly");
+  assert.equal((await refused.json()).error, "account_rate_limited");
+  const usage = started.db.prepare("SELECT SUM(requests) AS n FROM user_usage").get() as { n: number };
+  assert.equal(usage.n, 3, "refused requests are not counted as served");
+
+  const admin = started.client(anywhere());
+  await admin.signIn(ADMIN);
+  for (let index = 0; index < 5; index += 1) {
+    assert.equal((await admin.request("/api/assembly")).status, 200);
+  }
 });
 
 test("blocking signs the account out at once and refuses new links until it is unblocked", async () => {
@@ -270,6 +294,40 @@ test("an administrator whose session ended signs in from the homepage and gets t
   assert.equal((await returning.request("/api/admin/overview")).status, 200);
 });
 
+test("the IP diagnostic is for administrators and shows a forged address is ignored", async () => {
+  const started = await startTestApp({}, { ADMIN_EMAILS: ADMIN, TRUST_PROXY: "2" });
+  // Behind two proxies (Cloudflare, then Render), the browser sends no X-Forwarded-For of its own.
+  const chain = "198.51.100.20, 172.71.0.5";
+  const admin = started.client({ "x-forwarded-for": chain }, "10.0.0.2");
+  await admin.signIn(ADMIN);
+  const reader = started.client({ "x-forwarded-for": "198.51.100.21, 172.71.0.5" }, "10.0.0.2");
+  assert.equal((await reader.request("/api/admin/ip-check")).status, 404);
+  await reader.signIn("reader@example.org");
+  assert.equal((await reader.request("/api/admin/ip-check")).status, 404);
+
+  const honest = await (await admin.request("/api/admin/ip-check")).json();
+  assert.equal(honest.mode, "proxies");
+  assert.equal(honest.socketIp, "10.0.0.2");
+  assert.deepEqual(honest.forwardedFor, ["198.51.100.20", "172.71.0.5"]);
+  assert.equal(honest.usedIp, "198.51.100.20");
+  assert.deepEqual(honest.suggestion, { ...honest.suggestion, trustProxy: "2", visitorIp: "198.51.100.20" });
+
+  const forged = await (
+    await admin.request("/api/admin/ip-check", { headers: { "x-forwarded-for": `203.0.113.7, ${chain}` } })
+  ).json();
+  assert.equal(forged.usedIp, "198.51.100.20", "the entry the browser added on the left is ignored");
+});
+
+test("in production, a request through an untrusted proxy is logged once", async (t) => {
+  const warnings: string[] = [];
+  t.mock.method(console, "warn", (message: string) => warnings.push(String(message)));
+  const started = await startTestApp({ isProduction: true, trustProxy: false, proxyHops: 0, trustCloudflare: false });
+  for (let index = 0; index < 3; index += 1) {
+    await started.request("/api/health", { headers: { "x-forwarded-for": `198.51.100.${index}` } });
+  }
+  assert.equal(warnings.filter((message) => message.includes("TRUST_PROXY is probably wrong")).length, 1);
+});
+
 test("the admin page carries every element its script drives", async () => {
   const html = readFileSync(path.join(DASHBOARD_DIR, "admin.html"), "utf8");
   const script = readFileSync(path.join(DASHBOARD_DIR, "admin.js"), "utf8");
@@ -288,14 +346,14 @@ test("the admin page carries every element its script drives", async () => {
   assert.doesNotMatch(html, /style=/, "the CSP forbids inline styles");
 });
 
-test("proxy location headers are only trusted behind a trusted proxy", () => {
+test("Cloudflare location headers are only trusted with TRUST_PROXY=cloudflare", () => {
   const headers = new Headers({ "cf-ipcountry": "fr", "cf-ipcity": Buffer.from("Besançon").toString("latin1") });
-  const trusted = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustProxy: true });
+  const trusted = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustCloudflare: true });
   assert.deepEqual(trusted.locate("203.0.113.1", headers), { country: "FR", city: "Besançon" });
   assert.deepEqual(trusted.locate("203.0.113.1", new Headers({ "cf-ipcountry": "XX" })), { country: "", city: "" });
   assert.deepEqual(trusted.locate("203.0.113.1", new Headers({ "cf-ipcountry": "T1" })), { country: "", city: "" });
 
-  const direct = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustProxy: false });
+  const direct = createGeoLocator({ geoipPath: "/nonexistent.mmdb", trustCloudflare: false });
   assert.deepEqual(direct.locate("203.0.113.1", headers), { country: "", city: "" });
   assert.equal(direct.source(), null);
 });

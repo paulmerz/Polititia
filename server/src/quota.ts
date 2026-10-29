@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Store } from "./store.ts";
-import { DEVICE_COOKIE_NAME, EMAIL_MAX_PER_ADDRESS_PER_DAY, REGISTER_MAX_PER_HOUR } from "./config.ts";
+import { DEVICE_COOKIE_NAME, REGISTER_MAX_PER_HOUR } from "./config.ts";
+import { dayKey } from "./admin.ts";
 
 export type QuotaView = {
   limit: number;
@@ -52,21 +53,80 @@ export function parseDeviceCookie(secret: string, raw: string | undefined): stri
   return deviceId;
 }
 
-export function clientIp(headers: Headers, trustProxy: boolean, fallback = "127.0.0.1"): string {
-  if (trustProxy) {
-    const forwarded = headers.get("x-forwarded-for");
-    if (forwarded) {
-      const first = forwarded.split(",")[0]?.trim();
-      if (first) {
-        return first.slice(0, 64);
-      }
+export type ProxyTrust = { proxyHops: number; trustCloudflare: boolean };
+
+// Proxies append the address they see to X-Forwarded-For, so only the last
+// `proxyHops` entries are trustworthy: anything to their left was sent by the client.
+export function clientIp(headers: Headers, trust: ProxyTrust, socketIp: string): string {
+  if (trust.trustCloudflare) {
+    const connecting = headers.get("cf-connecting-ip")?.trim();
+    if (connecting) {
+      return connecting.slice(0, 64);
     }
-    const realIp = headers.get("x-real-ip")?.trim();
-    if (realIp) {
-      return realIp.slice(0, 64);
+  } else if (trust.proxyHops > 0) {
+    const forwarded = (headers.get("x-forwarded-for") || "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (forwarded.length) {
+      return forwarded[Math.max(0, forwarded.length - trust.proxyHops)].slice(0, 64);
     }
   }
-  return fallback;
+  return socketIp;
+}
+
+export type ClientIpReport = {
+  mode: "off" | "proxies" | "cloudflare";
+  proxyHops: number;
+  socketIp: string;
+  // Left to right, as received: proxies append, so the rightmost entry is the closest proxy's view.
+  forwardedFor: string[];
+  cfConnectingIp: string | null;
+  cfCountry: string | null;
+  usedIp: string;
+  // What TRUST_PROXY should be, assuming the request comes from a browser that adds no header itself.
+  suggestion: { trustProxy: string; visitorIp: string; reason: string };
+};
+
+// Admin diagnostic: the headers a request arrived with and the address the server keeps.
+export function describeClientIp(headers: Headers, trust: ProxyTrust, socketIp: string): ClientIpReport {
+  const forwardedFor = (headers.get("x-forwarded-for") || "")
+    .split(",")
+    .map((part) => part.trim().slice(0, 64))
+    .filter(Boolean)
+    .slice(-20);
+  const cfConnectingIp = headers.get("cf-connecting-ip")?.trim().slice(0, 64) || null;
+  const cfCountry = headers.get("cf-ipcountry")?.trim().slice(0, 8) || null;
+  let suggestion: ClientIpReport["suggestion"];
+  if (!forwardedFor.length) {
+    suggestion = {
+      trustProxy: cfConnectingIp ? "cloudflare" : "0",
+      visitorIp: cfConnectingIp || socketIp,
+      reason: cfConnectingIp
+        ? "Aucun X-Forwarded-For, mais un CF-Connecting-IP : seul Cloudflare se trouve devant le serveur."
+        : "Aucun en-tête de proxy : le navigateur se connecte directement au serveur.",
+    };
+  } else {
+    // A browser sends no X-Forwarded-For: every entry was added by a proxy, the first one is the visitor.
+    const consistent = !cfConnectingIp || cfConnectingIp === forwardedFor[0];
+    suggestion = {
+      trustProxy: String(forwardedFor.length),
+      visitorIp: forwardedFor[0],
+      reason: consistent
+        ? `${forwardedFor.length} proxy(s) ont ajouté une adresse à X-Forwarded-For ; la première est la vôtre.`
+        : `${forwardedFor.length} proxy(s) dans X-Forwarded-For, mais CF-Connecting-IP (${cfConnectingIp}) ne correspond pas à la première entrée : vérifiez votre adresse avant de choisir.`,
+    };
+  }
+  return {
+    mode: trust.trustCloudflare ? "cloudflare" : trust.proxyHops > 0 ? "proxies" : "off",
+    proxyHops: trust.proxyHops,
+    socketIp,
+    forwardedFor,
+    cfConnectingIp,
+    cfCountry,
+    usedIp: clientIp(headers, trust, socketIp),
+    suggestion,
+  };
 }
 
 function bumpCounter(db: Store, kind: string, keyHash: string): number {
@@ -130,14 +190,19 @@ export function consumeQuota(
 }
 
 const INTERACTION_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+// One action loads at most the Assembly, a theme, a person and a group, in parallel.
+export const INTERACTION_MAX_VIEWS = 4;
+export const INTERACTION_WINDOW_MS = 30 * 1000;
 
 export function isInteractionId(value: string | null | undefined): value is string {
   return Boolean(value && INTERACTION_ID_RE.test(value));
 }
 
-// One analysis = one user action. Several requests sent for the same action
-// share an interaction id, and reopening a view already counted on this device
-// (same person or theme, same period) is free: neither reveals new data.
+// One analysis = one user action. The requests an action sends at once share
+// an interaction id: the first new view is counted, the next ones are free for
+// a few seconds and a few views only, so an id cannot be replayed to read
+// everything. Reopening a view already counted on this device (same person or
+// theme, same period) is free too: it reveals no new data.
 export function consumeInteraction(
   db: Store,
   secret: string,
@@ -145,33 +210,46 @@ export function consumeInteraction(
   deviceId: string,
   limit: number,
   keys: { interactionId?: string | null; view: string },
+  nowMs = Date.now(),
 ): QuotaView & { allowed: boolean; counted: boolean } {
   const deviceHash = hashIdentity(secret, "device", deviceId);
-  const seenKeys = [`v:${keys.view}`];
-  if (isInteractionId(keys.interactionId)) {
-    seenKeys.push(`i:${keys.interactionId}`);
-  }
-  const now = new Date().toISOString();
-  const remember = db.prepare("INSERT OR IGNORE INTO quota_seen (device_hash, key, created_at) VALUES (?, ?, ?)");
+  const viewKey = `v:${keys.view}`;
+  const interactionId = isInteractionId(keys.interactionId) ? keys.interactionId : null;
+  const now = new Date(nowMs).toISOString();
+  const rememberView = db.prepare("INSERT OR IGNORE INTO quota_seen (device_hash, key, created_at) VALUES (?, ?, ?)");
+  const free = () => {
+    rememberView.run(deviceHash, viewKey, now);
+    db.exec("COMMIT");
+    return { ...readQuota(db, secret, ip, deviceId, limit), allowed: true, counted: false };
+  };
   db.exec("BEGIN IMMEDIATE");
   try {
-    const seen = db
-      .prepare(`SELECT 1 FROM quota_seen WHERE device_hash = ? AND key IN (${seenKeys.map(() => "?").join(",")}) LIMIT 1`)
-      .get(deviceHash, ...seenKeys);
-    if (seen) {
-      for (const key of seenKeys) {
-        remember.run(deviceHash, key, now);
+    if (db.prepare("SELECT 1 FROM quota_seen WHERE device_hash = ? AND key = ?").get(deviceHash, viewKey)) {
+      return free();
+    }
+    if (interactionId) {
+      const joined = db
+        .prepare(
+          `UPDATE quota_interactions SET views = views + 1
+           WHERE device_hash = ? AND interaction_id = ? AND created_at >= ? AND views < ?`,
+        )
+        .run(deviceHash, interactionId, new Date(nowMs - INTERACTION_WINDOW_MS).toISOString(), INTERACTION_MAX_VIEWS);
+      if (Number(joined.changes) > 0) {
+        return free();
       }
-      db.exec("COMMIT");
-      return { ...readQuota(db, secret, ip, deviceId, limit), allowed: true, counted: false };
     }
     const ipCount = bumpCounter(db, "ip", hashIdentity(secret, "ip", ip));
     const deviceCount = bumpCounter(db, "device", deviceHash);
     const used = Math.max(ipCount, deviceCount);
     const allowed = used <= limit;
     if (allowed) {
-      for (const key of seenKeys) {
-        remember.run(deviceHash, key, now);
+      rememberView.run(deviceHash, viewKey, now);
+      if (interactionId) {
+        // An expired or full id keeps its row, so replaying it never opens a new window.
+        db.prepare(
+          `INSERT OR IGNORE INTO quota_interactions (device_hash, interaction_id, created_at, views)
+           VALUES (?, ?, ?, 1)`,
+        ).run(deviceHash, interactionId, now);
       }
     }
     db.exec("COMMIT");
@@ -189,6 +267,95 @@ export function consumeInteraction(
   }
 }
 
+const DAY_SECONDS = 24 * 60 * 60;
+
+// Fixed windows: a key counts its hits until `windowSeconds` after the first one.
+function windowCount(db: Store, keyHash: string, windowSeconds: number, now: number): { count: number; resetIn: number } {
+  const row = db.prepare("SELECT window_start, count FROM rate_windows WHERE key_hash = ?").get(keyHash) as
+    | { window_start: number; count: number }
+    | undefined;
+  if (!row || now - Number(row.window_start) >= windowSeconds) {
+    return { count: 0, resetIn: 0 };
+  }
+  return { count: Number(row.count), resetIn: windowSeconds - (now - Number(row.window_start)) };
+}
+
+function windowBump(db: Store, keyHash: string, windowSeconds: number, now: number): number {
+  db.prepare(
+    `INSERT INTO rate_windows (key_hash, window_start, count) VALUES (?, ?, 1)
+     ON CONFLICT(key_hash) DO UPDATE SET
+       count = CASE WHEN ? - window_start >= ? THEN 1 ELSE count + 1 END,
+       window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
+  ).run(keyHash, now, now, windowSeconds, now, windowSeconds, now);
+  return windowCount(db, keyHash, windowSeconds, now).count;
+}
+
+// Seconds until this address may receive another link today (0 when it may).
+export function emailDailyLimitSeconds(
+  db: Store,
+  secret: string,
+  email: string,
+  max: number,
+  now = Math.floor(Date.now() / 1000),
+): number {
+  const { count, resetIn } = windowCount(db, hashIdentity(secret, "email-day", email), DAY_SECONDS, now);
+  return count >= max ? resetIn : 0;
+}
+
+// Seconds until any address may receive a link (0 when the service still has budget).
+export function emailServiceLimitSeconds(
+  db: Store,
+  secret: string,
+  max: number,
+  now = Math.floor(Date.now() / 1000),
+): number {
+  const { count, resetIn } = windowCount(db, hashIdentity(secret, "email-day", "*"), DAY_SECONDS, now);
+  return count >= max ? resetIn : 0;
+}
+
+export type AccountLimits = { perMinute: number; perDay: number };
+
+// Signed-in accounts have no analysis quota, only a ceiling against scraping.
+export function accountRateLimited(
+  db: Store,
+  secret: string,
+  userId: string,
+  limits: AccountLimits,
+  nowMs = Date.now(),
+): boolean {
+  const today = db.prepare("SELECT requests FROM user_usage WHERE user_id = ? AND day = ?").get(userId, dayKey(nowMs)) as
+    | { requests: number }
+    | undefined;
+  if (Number(today?.requests || 0) >= limits.perDay) {
+    return true;
+  }
+  const keyHash = hashIdentity(secret, "account-minute", userId);
+  return windowBump(db, keyHash, 60, Math.floor(nowMs / 1000)) > limits.perMinute;
+}
+
+// Free routes that cost CPU (share images, commune search): a ceiling per address.
+export function ipRateLimited(
+  db: Store,
+  secret: string,
+  kind: string,
+  ip: string,
+  perMinute: number,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  return windowBump(db, hashIdentity(secret, `${kind}-minute`, ip), 60, now) > perMinute;
+}
+
+export function ipHourlyLimited(
+  db: Store,
+  secret: string,
+  kind: string,
+  ip: string,
+  perHour: number,
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  return windowBump(db, hashIdentity(secret, `${kind}-hour`, ip), 60 * 60, now) > perHour;
+}
+
 export function emailCooldownSeconds(db: Store, secret: string, email: string, cooldown: number): number {
   const keyHash = hashIdentity(secret, "email-send", email);
   const row = db.prepare("SELECT last_sent FROM email_sends WHERE key_hash = ?").get(keyHash) as
@@ -201,12 +368,11 @@ export function emailCooldownSeconds(db: Store, secret: string, email: string, c
   return 0;
 }
 
-export function recordEmailSend(db: Store, secret: string, email: string): void {
+export function recordEmailSend(db: Store, secret: string, email: string, now = Math.floor(Date.now() / 1000)): void {
   const keyHash = hashIdentity(secret, "email-send", email);
-  db.prepare("INSERT OR REPLACE INTO email_sends (key_hash, last_sent) VALUES (?, ?)").run(
-    keyHash,
-    Math.floor(Date.now() / 1000),
-  );
+  db.prepare("INSERT OR REPLACE INTO email_sends (key_hash, last_sent) VALUES (?, ?)").run(keyHash, now);
+  windowBump(db, hashIdentity(secret, "email-day", email), DAY_SECONDS, now);
+  windowBump(db, hashIdentity(secret, "email-day", "*"), DAY_SECONDS, now);
 }
 
 // One IPv6 subscriber usually holds a whole /64, so its addresses share a limit.
@@ -230,65 +396,25 @@ export function ipRateKey(ip: string): string {
     .join(":")}::/64`;
 }
 
-const DAY_SECONDS = 24 * 60 * 60;
-
-function windowCount(db: Store, keyHash: string, window: number, now: number): number {
-  const row = db.prepare("SELECT window_start, count FROM auth_attempts WHERE key_hash = ?").get(keyHash) as
-    | { window_start: number; count: number }
-    | undefined;
-  return row && now - Number(row.window_start) < window ? Number(row.count) : 0;
-}
-
-function bumpWindow(db: Store, keyHash: string, window: number, now: number): void {
-  if (windowCount(db, keyHash, window, now) === 0) {
-    db.prepare("INSERT OR REPLACE INTO auth_attempts (key_hash, window_start, count) VALUES (?, ?, 1)").run(
-      keyHash,
-      now,
-    );
-    return;
-  }
-  db.prepare("UPDATE auth_attempts SET count = count + 1 WHERE key_hash = ?").run(keyHash);
-}
-
 export function registerRateLimited(db: Store, secret: string, ip: string): boolean {
   const keyHash = hashIdentity(secret, "register-ip", ipRateKey(ip));
   const now = Math.floor(Date.now() / 1000);
   const window = 60 * 60;
-  if (windowCount(db, keyHash, window, now) >= REGISTER_MAX_PER_HOUR) {
+  const row = db.prepare("SELECT window_start, count FROM auth_attempts WHERE key_hash = ?").get(keyHash) as
+    | { window_start: number; count: number }
+    | undefined;
+  if (!row || now - Number(row.window_start) >= window) {
+    db.prepare("INSERT OR REPLACE INTO auth_attempts (key_hash, window_start, count) VALUES (?, ?, 1)").run(
+      keyHash,
+      now,
+    );
+    return false;
+  }
+  if (Number(row.count) >= REGISTER_MAX_PER_HOUR) {
     return true;
   }
-  bumpWindow(db, keyHash, window, now);
+  db.prepare("UPDATE auth_attempts SET count = count + 1 WHERE key_hash = ?").run(keyHash);
   return false;
-}
-
-// Takes one email from both 24-hour budgets, or none when either is spent.
-export function reserveEmail(
-  db: Store,
-  secret: string,
-  email: string,
-  dailyLimit: number,
-  now = Date.now(),
-): "ok" | "address_limit" | "daily_limit" {
-  const seconds = Math.floor(now / 1000);
-  const addressKey = hashIdentity(secret, "email-day", email);
-  const globalKey = hashIdentity(secret, "email-day", "*");
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    let outcome: "ok" | "address_limit" | "daily_limit" = "ok";
-    if (windowCount(db, addressKey, DAY_SECONDS, seconds) >= EMAIL_MAX_PER_ADDRESS_PER_DAY) {
-      outcome = "address_limit";
-    } else if (windowCount(db, globalKey, DAY_SECONDS, seconds) >= dailyLimit) {
-      outcome = "daily_limit";
-    } else {
-      bumpWindow(db, addressKey, DAY_SECONDS, seconds);
-      bumpWindow(db, globalKey, DAY_SECONDS, seconds);
-    }
-    db.exec("COMMIT");
-    return outcome;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
 }
 
 export function deviceCookieHeader(secret: string, deviceId: string, secure: boolean): string {

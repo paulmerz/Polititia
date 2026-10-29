@@ -52,7 +52,7 @@ export function locationFromMmdb(record: MmdbRecord | null | undefined): GeoLoca
   return { country, city: country ? cleanCity(names.fr || names.en || "") : "" };
 }
 
-export function createGeoLocator(config: Pick<AppConfig, "geoipPath" | "trustProxy">): GeoLocator {
+export function createGeoLocator(config: Pick<AppConfig, "geoipPath" | "trustCloudflare">): GeoLocator {
   const dbPath: string = config.geoipPath;
   let reader: Reader<CityResponse> | null = null;
   let loadedMtime = 0;
@@ -96,8 +96,8 @@ export function createGeoLocator(config: Pick<AppConfig, "geoipPath" | "trustPro
 
   return {
     locate(ip, headers) {
-      // Proxy headers can be forged by any client unless the proxy is trusted.
-      const headerCountry = config.trustProxy ? cleanCountry(headers?.get("cf-ipcountry")) : "";
+      // Any client can send these headers: only Cloudflare in front of the server makes them true.
+      const headerCountry = config.trustCloudflare ? cleanCountry(headers?.get("cf-ipcountry")) : "";
       if (headerCountry) {
         sawProxyHeader = true;
         const city = cleanCity(headers?.get("cf-ipcity"));

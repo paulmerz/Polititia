@@ -38,6 +38,8 @@ DEFAULT_OUTPUT = Path("analysis_outputs/analytics.sqlite")
 NGRAM_SIZES = (1, 2, 3, 4)
 MIN_NGRAM_COUNT = 5
 LEGISLATURE_START = "2024-07-18"
+# The agenda titles a debate on two bills "Bill A – Bill B".
+JOINT_DEBATE_SEPARATOR = "\u2013"
 
 SCHEMA = (Path(__file__).resolve().parent / "analytics_schema.sql").read_text(encoding="utf-8")
 
@@ -84,7 +86,8 @@ class Builder:
         self.min_ngram_count = min_ngram_count
         self.pids: dict[str, int] = {}
         self.sids: dict[str, int] = {}
-        self.speech_rows: list[tuple[int, str, str, list[str]]] = []
+        # (pid, party, month, sitting, content tokens)
+        self.speech_rows: list[tuple[int, str, str, str, list[str]]] = []
 
     def add_speeches(self, raw_speeches: list[dict], resolver: SpeakerResolver) -> None:
         politicians: list[tuple] = []
@@ -106,7 +109,7 @@ class Builder:
                 raw.get("section_code", ""), raw.get("bill_number", ""),
                 len((raw.get("normalized_text") or "").split()), len(tokens),
             ))
-            self.speech_rows.append((pid, identity.party_at_speech, month, tokens))
+            self.speech_rows.append((pid, identity.party_at_speech, month, raw.get("session_uid") or raw["date"], tokens))
         self.db.executemany("INSERT INTO politicians VALUES (?, ?, ?, ?, ?)", politicians)
         self.db.executemany("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", speeches)
 
@@ -116,7 +119,7 @@ class Builder:
         corpus_totals: dict[int, int] = {}
         for size in NGRAM_SIZES:
             counts: Counter[str] = Counter()
-            for _pid, _party, _month, tokens in self.speech_rows:
+            for _pid, _party, _month, _sitting, tokens in self.speech_rows:
                 counts.update(ngrams(tokens, size))
             corpus_totals[size] = sum(counts.values())
             kept: dict[str, int] = {}
@@ -131,11 +134,21 @@ class Builder:
 
             person: Counter[tuple[int, str, int]] = Counter()
             party: Counter[tuple[str, str, int]] = Counter()
+            person_sittings: Counter[tuple[int, str, int]] = Counter()
+            party_sittings: Counter[tuple[str, str, int]] = Counter()
             everyone: Counter[tuple[int, str]] = Counter()
             person_totals: Counter[tuple[int, str]] = Counter()
             party_totals: Counter[tuple[str, str]] = Counter()
             global_totals: Counter[str] = Counter()
-            for pid, party_code, month, tokens in self.speech_rows:
+            # Sitting by sitting, so "said in this sitting" needs a small set only.
+            current_sitting = None
+            seen_person: set[tuple[int, int]] = set()
+            seen_party: set[tuple[str, int]] = set()
+            for pid, party_code, month, sitting, tokens in sorted(self.speech_rows, key=lambda row: row[3]):
+                if sitting != current_sitting:
+                    current_sitting = sitting
+                    seen_person.clear()
+                    seen_party.clear()
                 grams = ngrams(tokens, size)
                 person_totals[(pid, month)] += len(grams)
                 party_totals[(party_code, month)] += len(grams)
@@ -146,13 +159,19 @@ class Builder:
                         person[(pid, month, gid)] += 1
                         party[(party_code, month, gid)] += 1
                         everyone[(gid, month)] += 1
+                        if (pid, gid) not in seen_person:
+                            seen_person.add((pid, gid))
+                            person_sittings[(pid, month, gid)] += 1
+                        if (party_code, gid) not in seen_party:
+                            seen_party.add((party_code, gid))
+                            party_sittings[(party_code, month, gid)] += 1
             self.db.executemany(
-                "INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?)",
-                ((pid, size, month, gid, count) for (pid, month, gid), count in person.items()),
+                "INSERT INTO person_ngram_month VALUES (?, ?, ?, ?, ?, ?)",
+                ((pid, size, month, gid, count, person_sittings[(pid, month, gid)]) for (pid, month, gid), count in person.items()),
             )
             self.db.executemany(
-                "INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?)",
-                ((code, size, month, gid, count) for (code, month, gid), count in party.items()),
+                "INSERT INTO party_ngram_month VALUES (?, ?, ?, ?, ?, ?)",
+                ((code, size, month, gid, count, party_sittings[(code, month, gid)]) for (code, month, gid), count in party.items()),
             )
             self.db.executemany(
                 "INSERT INTO global_ngram_month VALUES (?, ?, ?)",
@@ -223,7 +242,12 @@ class Builder:
         self.db.executemany("INSERT OR IGNORE INTO stances VALUES (?, ?, ?, ?, ?, ?)", rows)
 
     def stance_vote_agreement(self) -> dict[str, int]:
-        """Announced stances checked against the speaker's next key vote on the same bill."""
+        """Announced stances checked against the speaker's next key vote on the same bill.
+
+        Joint debates ("Soins palliatifs – Aide à mourir") cover two bills while the
+        speech is attributed to one, so "je voterai contre ce texte" may be about the
+        other: they are left out rather than compared with the wrong vote.
+        """
         rows = self.db.execute(
             """
             WITH announced AS (
@@ -231,14 +255,16 @@ class Builder:
                      (SELECT ta.dossier_title FROM theme_attributions ta
                       WHERE ta.sid = s.sid AND ta.dossier_title != '' LIMIT 1) AS dossier
               FROM stances st JOIN speeches s ON s.sid = st.sid
+              WHERE instr(s.debate_title, ?) = 0
             )
             SELECT a.stance, (
               SELECT vp.position FROM votes v JOIN vote_positions vp ON vp.vid = v.vid AND vp.pid = a.pid
               WHERE v.dossier_title = a.dossier AND v.is_key = 1 AND v.vote_type != 'MOC' AND v.date >= a.date
-              ORDER BY v.date LIMIT 1
+              ORDER BY v.date, v.number LIMIT 1
             ) AS position
             FROM announced a WHERE a.dossier IS NOT NULL
-            """
+            """,
+            (JOINT_DEBATE_SEPARATOR,),
         ).fetchall()
         expected = {"favorable": "pour", "defavorable": "contre", "abstention": "abstention"}
         compared = [(stance, position) for stance, position in rows if position in ("pour", "contre", "abstention")]

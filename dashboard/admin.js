@@ -243,10 +243,214 @@
     };
     $("geoNote").textContent =
       notes[data.geoSource] ||
-      "Aucune source de géolocalisation : lancez « npm run geoip » dans server/ (base DB-IP Lite gratuite) ou placez le serveur derrière Cloudflare avec TRUST_PROXY=1. En attendant, les lieux restent inconnus.";
+      "Aucune source de géolocalisation : lancez « npm run geoip » dans server/ (base DB-IP Lite gratuite) ou, si le serveur n’est joignable que par Cloudflare, réglez TRUST_PROXY=cloudflare. En attendant, les lieux restent inconnus.";
     $("geoCredit").hidden = data.geoSource !== "mmdb";
     geoRows("countryRows", data.countries, (item) => countryName(item.country));
     geoRows("cityRows", data.cities, (item) => placeLabel(item));
+  }
+
+  const SPOOFED_IP = "203.0.113.7";
+
+  async function fetchIpCheck(headers = {}) {
+    const response = await fetch("/api/admin/ip-check", {
+      credentials: "include",
+      headers: { Accept: "application/json", ...headers },
+    }).catch(() => null);
+    const report = response?.ok ? await response.json().catch(() => null) : null;
+    return { report, status: response?.status || 0 };
+  }
+
+  async function loadIpCheck() {
+    const { report } = await fetchIpCheck();
+    if (!report) {
+      $("ipSuggestion").textContent = "Diagnostic indisponible.";
+      return;
+    }
+    const modes = {
+      off: "TRUST_PROXY=0 : l’adresse de la connexion est utilisée telle quelle",
+      proxies: `TRUST_PROXY=${report.proxyHops} : ${report.proxyHops} proxy(s) de confiance dans X-Forwarded-For`,
+      cloudflare: "TRUST_PROXY=cloudflare : l’adresse vient de CF-Connecting-IP",
+    };
+    $("ipMode").textContent = modes[report.mode] || report.mode;
+    $("ipUsed").textContent = report.usedIp;
+    $("ipSocket").textContent = report.socketIp;
+    $("ipForwarded").textContent = report.forwardedFor.length
+      ? report.forwardedFor.map((ip, index) => `${ip} (n°${report.forwardedFor.length - index} depuis la droite)`).join(", ")
+      : "absent";
+    $("ipCloudflare").textContent = report.cfConnectingIp
+      ? `${report.cfConnectingIp}${report.cfCountry ? ` (pays : ${report.cfCountry})` : ""}`
+      : "absent";
+    const current = report.mode === "proxies" ? String(report.proxyHops) : report.mode === "cloudflare" ? "cloudflare" : "0";
+    const settled = current === report.suggestion.trustProxy && report.usedIp === report.suggestion.visitorIp;
+    $("ipSuggestion").textContent = settled
+      ? `Votre adresse probable : ${report.usedIp}. Le réglage actuel (TRUST_PROXY=${current}) retient bien cette adresse.`
+      : `Votre adresse probable : ${report.suggestion.visitorIp}. Valeur suggérée : TRUST_PROXY=${report.suggestion.trustProxy}.`;
+    $("ipSuggestionReason").textContent = report.suggestion.reason;
+  }
+
+  async function spoofTest() {
+    const result = $("ipSpoofResult");
+    result.hidden = false;
+    result.textContent = "Test en cours…";
+    const { report: honest } = await fetchIpCheck();
+    if (!honest) {
+      result.textContent = "Test impossible : le serveur n’a pas répondu.";
+      return;
+    }
+    // Cloudflare refuses some requests that carry their own CF-Connecting-IP: only forge it when it is trusted.
+    const forgedHeaders = { "X-Forwarded-For": SPOOFED_IP };
+    if (honest.mode === "cloudflare") {
+      forgedHeaders["CF-Connecting-IP"] = SPOOFED_IP;
+    }
+    const { report: forged, status } = await fetchIpCheck(forgedHeaders);
+    if (!forged) {
+      result.textContent = status
+        ? `La requête contenant une fausse adresse a été refusée avant d’atteindre le serveur (HTTP ${status}) : elle ne peut donc pas tromper le serveur, mais le test n’a pas pu comparer les adresses.`
+        : "Test impossible : la requête contenant une fausse adresse n’a pas abouti.";
+      return;
+    }
+    result.textContent =
+      forged.usedIp === honest.usedIp && forged.usedIp !== SPOOFED_IP
+        ? `Réussi : en envoyant une fausse adresse (${SPOOFED_IP}), le serveur garde ${honest.usedIp}.`
+        : `Échec : le serveur a retenu ${forged.usedIp} au lieu de ${honest.usedIp}. Un visiteur peut choisir son adresse : TRUST_PROXY est trop élevé.`;
+  }
+
+  function describeJob(job) {
+    if (!job) {
+      return "";
+    }
+    if (!job.finishedAt) {
+      return `Envoi en cours (lancé ${formatDate(job.startedAt, true)} par ${job.startedBy})…`;
+    }
+    if (job.error) {
+      return `Dernier envoi interrompu : ${job.error}`;
+    }
+    return `Dernier envoi ${formatDate(job.finishedAt, true)} : ${formatNumber(job.run?.sent)} email(s) envoyé(s), ${formatNumber(job.run?.failed)} échec(s).`;
+  }
+
+  async function loadAlerts() {
+    const response = await fetch("/api/admin/alerts", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("alertSummary").textContent = "Aperçu indisponible (base d’analyse absente ?).";
+      return;
+    }
+    const { preview } = data;
+    $("alertSummary").textContent =
+      `${formatNumber(data.follows)} suivi(s) par ${formatNumber(data.followers)} compte(s). ` +
+      `Données jusqu’au ${formatDate(preview.through)} : ${formatNumber(preview.recipients)} compte(s) à prévenir, ${formatNumber(preview.upToDate)} à jour.`;
+    $("alertPreview").replaceChildren(
+      ...preview.preview.map((item) => el("li", { text: `${item.email} : « ${item.subject} »` })),
+    );
+    $("alertTop").replaceChildren(
+      ...data.top.map((row) =>
+        el("tr", {}, [el("td", { text: `${row.name} (${row.party})` }), el("td", { className: "is-number", text: formatNumber(row.followers) })]),
+      ),
+    );
+    const running = data.job && !data.job.finishedAt;
+    const button = $("alertSend");
+    button.disabled = !data.hasMailer || running || !preview.recipients;
+    button.title = data.hasMailer ? "" : "RESEND_API_KEY et EMAIL_FROM manquent : aucun email ne peut partir.";
+    $("alertJob").textContent = data.hasMailer ? describeJob(data.job) : "Envoi impossible : aucun service d’email configuré.";
+    clearTimeout(state.alertTimer);
+    if (running) {
+      state.alertTimer = setTimeout(loadAlerts, 3000);
+    }
+  }
+
+  async function sendAlerts() {
+    if (!window.confirm("Envoyer les alertes maintenant ? Chaque compte concerné recevra un email.")) {
+      return;
+    }
+    $("alertSend").disabled = true;
+    const response = await fetch("/api/admin/alerts/send", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    }).catch(() => null);
+    if (!response?.ok) {
+      say("L’envoi des alertes n’a pas pu démarrer.");
+    }
+    loadAlerts();
+  }
+
+  function reportItem(report, closable) {
+    const link = el("a", { text: report.label });
+    link.href = `/${report.page}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    const meta = el("p", { className: "source-note" }, [
+      `n° ${report.id} · ${formatDate(report.createdAt, true)} · `,
+      link,
+      report.email ? ` · répondre à ${report.email}` : " · pas d’adresse laissée",
+      report.handledAt ? ` · clôturé le ${formatDate(report.handledAt, true)} par ${report.handledBy}` : "",
+    ]);
+    const item = el("div", { className: "admin-report" }, [meta, el("blockquote", { text: report.message })]);
+    if (closable) {
+      const button = el("button", { className: "page-button", text: "Clôturer" });
+      button.type = "button";
+      button.addEventListener("click", () => closeReport(report.id, button));
+      item.append(button);
+    }
+    return item;
+  }
+
+  async function loadReports() {
+    const response = await fetch("/api/admin/reports", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("reportSummary").textContent = "Signalements indisponibles.";
+      return;
+    }
+    const late = data.open.filter((report) => Date.now() - new Date(report.createdAt).getTime() > 48 * 60 * 60 * 1000).length;
+    $("reportSummary").textContent = data.open.length
+      ? `${formatNumber(data.open.length)} signalement(s) à traiter${late ? `, dont ${formatNumber(late)} depuis plus de 48 heures` : ""}.`
+      : "Aucun signalement en attente.";
+    $("reportList").replaceChildren(...data.open.map((report) => reportItem(report, true)));
+    $("reportDone").replaceChildren(...data.done.map((report) => reportItem(report, false)));
+  }
+
+  async function closeReport(id, button) {
+    button.disabled = true;
+    const response = await fetch(`/api/admin/reports/${id}/close`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    }).catch(() => null);
+    if (!response?.ok) {
+      button.disabled = false;
+      say("Le signalement n’a pas pu être clôturé.");
+      return;
+    }
+    loadReports();
+  }
+
+  async function loadCampaigns() {
+    const response = await fetch("/api/admin/campaigns", { credentials: "include", headers: { Accept: "application/json" } }).catch(() => null);
+    const data = response?.ok ? await response.json().catch(() => null) : null;
+    if (!data) {
+      $("campaignSummary").textContent = "Mesure indisponible.";
+      return;
+    }
+    $("campaignSummary").textContent = data.total
+      ? `${formatNumber(data.total)} visite(s) sur ${data.days} jours : ` +
+        data.sources.map((row) => `${row.source} ${formatNumber(row.visits)}`).join(", ") +
+        "."
+      : `Aucune visite par un lien marqué sur ${data.days} jours.`;
+    $("campaignRows").replaceChildren(
+      ...data.campaigns.map((row) =>
+        el("tr", {}, [
+          el("td", { text: row.source || "—" }),
+          el("td", { text: row.medium || "—" }),
+          el("td", { text: row.campaign || "—" }),
+          el("td", { className: "is-number", text: formatNumber(row.visits) }),
+          el("td", { className: "is-number", text: formatNumber(row.last7) }),
+          el("td", { text: formatDate(row.lastDay) }),
+        ]),
+      ),
+    );
   }
 
   function render() {
@@ -260,6 +464,10 @@
     renderUsers();
     renderDaily(data.daily);
     renderGeo(data);
+    loadIpCheck();
+    loadAlerts();
+    loadReports();
+    loadCampaigns();
   }
 
   // The page answers 404 to anyone but a signed-in administrator, so the
@@ -330,6 +538,8 @@
 
   $("adminRefresh").addEventListener("click", () => load());
   $("adminSignOut").addEventListener("click", () => signOut());
+  $("ipSpoofTest").addEventListener("click", () => spoofTest());
+  $("alertSend").addEventListener("click", () => sendAlerts());
   for (const id of ["userSearch", "userStatus", "userSort"]) {
     $(id).addEventListener("input", () => state.data && renderUsers());
   }

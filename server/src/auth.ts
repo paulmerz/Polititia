@@ -5,7 +5,7 @@ import type { Store } from "./store.ts";
 import type { AppConfig } from "./config.ts";
 import { isValidEmail, normalizeEmail } from "./emails.ts";
 import { escapeHtml, notifySignup, sendEmail } from "./mailer.ts";
-import { requestContext } from "./request-context.ts";
+import { CLIENT_IP_HEADER, requestContext } from "./request-context.ts";
 import { isBlocked, recordActivity } from "./admin.ts";
 import type { GeoLocator } from "./geo.ts";
 
@@ -62,7 +62,7 @@ export async function createAuthInstance(
         path: "/",
       },
       ipAddress: {
-        ipAddressHeaders: config.trustProxy ? ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] : [],
+        ipAddressHeaders: [CLIENT_IP_HEADER],
       },
     },
     emailAndPassword: {
@@ -111,7 +111,9 @@ export async function createAuthInstance(
             return;
           }
           // The address is only stored (as a Better Auth user) once this link is opened.
-          pending.set(normalized, { email: normalized, token, url });
+          if (config.exposeMagicLink) {
+            pending.set(normalized, { email: normalized, token, url });
+          }
           if (config.hasMailer) {
             await sendEmail(config, {
               to: normalized,

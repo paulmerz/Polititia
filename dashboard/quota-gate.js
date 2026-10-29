@@ -8,6 +8,7 @@ window.PolititiaGate = (function createGate() {
     email: "",
     resendAt: 0,
     pendingRetry: null,
+    returnTo: null,
   };
   const cache = new Map();
   let pollTimer = null;
@@ -19,7 +20,7 @@ window.PolititiaGate = (function createGate() {
     disposable_email: "Les adresses jetables (boîtes temporaires) ne sont pas acceptées : elles ne permettent pas de vérifier qu’une personne réelle se connecte.",
     captcha_failed: "La vérification anti-robot a échoué. Réessayez.",
     rate_limited: "Trop de tentatives depuis cette connexion. Réessayez dans une heure.",
-    address_limit: "Trop de liens ont été envoyés à cette adresse aujourd’hui. Utilisez le dernier reçu ou réessayez demain.",
+    email_daily_limit: "Plusieurs liens ont déjà été envoyés à cette adresse aujourd’hui. Vérifiez vos courriers indésirables, ou réessayez demain.",
     daily_limit: "Le service a atteint sa limite d’envoi d’emails pour aujourd’hui. Réessayez plus tard.",
     account_blocked: "Ce compte a été bloqué. Écrivez à l’éditeur du service si vous pensez qu’il s’agit d’une erreur.",
     forbidden: "Requête refusée par le serveur.",
@@ -128,16 +129,19 @@ window.PolititiaGate = (function createGate() {
     $("gateCheck").hidden = step !== "check";
   }
 
-  // "signin" is a returning visitor who asked to sign in; otherwise the free
-  // analyses are used up.
-  function show(reason = "quota") {
+  // Opened by the quota, by « Se connecter », or by an action that needs an
+  // account (following a deputy): `retry` runs once the address is confirmed
+  // in this tab, and `returnTo` is the dashboard query the emailed link comes back to.
+  function show({ title = "", lead = "", retry = null, returnTo = null } = {}) {
     const dialog = $("accessGate");
     const limit = state.quota?.limit || 10;
-    $("gateTitle").textContent = reason === "signin" ? "Se connecter" : "Continuer gratuitement";
+    $("gateTitle").textContent = title || "Continuer gratuitement";
     $("gateLead").textContent =
-      reason === "signin"
-        ? "Indiquez votre adresse email : vous recevez un lien de connexion. Si vous vous êtes déjà inscrit, vous retrouvez votre compte ; sinon il est créé quand vous ouvrez le lien."
-        : `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+      lead || `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+    if (retry) {
+      state.pendingRetry = retry;
+    }
+    state.returnTo = returnTo;
     showError("");
     setStep(state.email && Date.now() < state.resendAt + 15 * 60 * 1000 ? "check" : "form");
     if (!dialog.open) {
@@ -240,6 +244,7 @@ window.PolititiaGate = (function createGate() {
     cache.clear();
     const retry = state.pendingRetry;
     state.pendingRetry = null;
+    state.returnTo = null;
     window.dispatchEvent(new CustomEvent("polititia:unlocked"));
     if (retry) {
       retry();
@@ -251,7 +256,7 @@ window.PolititiaGate = (function createGate() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email, website, turnstileToken: turnstileToken(), returnTo: window.location.search }),
+      body: JSON.stringify({ email, website, turnstileToken: turnstileToken(), returnTo: state.returnTo || window.location.search }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -325,6 +330,7 @@ window.PolititiaGate = (function createGate() {
   function openAccount() {
     $("accountEmail").textContent = state.session?.email || "";
     $("accountMessage").hidden = true;
+    window.dispatchEvent(new CustomEvent("polititia:account"));
     $("accountDialog").showModal();
   }
 
@@ -340,7 +346,7 @@ window.PolititiaGate = (function createGate() {
 
   async function deleteAccount() {
     const confirmed = window.confirm(
-      "Supprimer définitivement votre compte ? Votre adresse email et vos sessions seront effacées immédiatement.",
+      "Supprimer définitivement votre compte ? Votre adresse email, vos sessions et les députés que vous suivez seront effacés immédiatement.",
     );
     if (!confirmed) {
       return;
@@ -407,7 +413,12 @@ window.PolititiaGate = (function createGate() {
     $("closeGate")?.addEventListener("click", () => hide());
     $("accessGate")?.addEventListener("close", () => stopPolling());
     $("accountButton")?.addEventListener("click", () => openAccount());
-    $("signInButton")?.addEventListener("click", () => show("signin"));
+    $("signInButton")?.addEventListener("click", () =>
+      show({
+        title: "Se connecter",
+        lead: "Indiquez votre adresse email : vous recevez un lien de connexion. Si vous vous êtes déjà inscrit, vous retrouvez votre compte ; sinon il est créé quand vous ouvrez le lien.",
+      }),
+    );
     $("closeAccount")?.addEventListener("click", () => $("accountDialog").close());
     $("signOutButton")?.addEventListener("click", () => signOut());
     $("deleteAccountButton")?.addEventListener("click", () => deleteAccount());
