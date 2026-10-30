@@ -47,7 +47,9 @@ type Announced = { sid: number; pid: number; date: string; sessionUid: string; d
 
 // Explanations received after we wrote to the deputy. Keyed by acteur id so a
 // later data rebuild still prints them under the right name. The wording is
-// theirs: it is reproduced, not summarised.
+// theirs: it is reproduced, not summarised. Anyone absent from this map had
+// not answered by REPLIES_CHECKED.
+const REPLIES_CHECKED = "2026-10-30";
 const EXPLANATIONS: Record<string, { received: string; from: string; onBehalfOf: string; paragraphs: string[] }> = {
   PA840889: {
     received: "2026-10-26",
@@ -64,10 +66,39 @@ const EXPLANATIONS: Record<string, { received: string; from: string; onBehalfOf:
 function explanationOf(gap: Gap): string[] {
   const reply = EXPLANATIONS[gap.acteurId];
   if (!reply) {
-    return [];
+    return ["", `**Aucune réponse reçue au ${fmtDay(REPLIES_CHECKED)}.**`];
   }
   const quoted = reply.paragraphs.map((paragraph) => `> ${paragraph}`).join("\n>\n");
   return ["", `**Explication reçue le ${fmtDay(reply.received)}.** ${reply.from}, au nom de ${reply.onBehalfOf} :`, "", quoted];
+}
+
+function joinNames(names: string[]): string {
+  if (names.length <= 1) {
+    return names[0] || "";
+  }
+  return `${names.slice(0, -1).join(", ")} et ${names[names.length - 1]}`;
+}
+
+function publicationAdvice(gaps: Gap[]): string {
+  const answered = gaps.filter((gap) => EXPLANATIONS[gap.acteurId]);
+  const silent = gaps.filter((gap) => !EXPLANATIONS[gap.acteurId]);
+  if (answered.length === 0) {
+    return "Nous recommandons de demander leur explication aux députés concernés avant de les citer.";
+  }
+  if (silent.length === 0) {
+    return "Chaque député concerné a répondu : son explication est reproduite sous son nom et doit être citée avec le constat.";
+  }
+  const replies = answered.map((gap) => {
+    const reply = EXPLANATIONS[gap.acteurId];
+    const speaker = reply.from === reply.onBehalfOf ? gap.name : `${reply.from}, au nom de ${reply.onBehalfOf},`;
+    return `${speaker} a répondu, le ${fmtDay(reply.received)}`;
+  });
+  const lead = answered.length === 1 ? `Seul ${replies[0]}` : replies.join(" ; ");
+  const cited = answered.length === 1
+    ? `Cette explication est reproduite sous le nom de ${EXPLANATIONS[answered[0].acteurId].onBehalfOf} et doit être citée avec le constat.`
+    : "Ces explications sont reproduites sous le nom de chaque député et doivent être citées avec le constat.";
+  const verb = silent.length === 1 ? "n'a pas répondu" : "n'ont pas répondu";
+  return `${lead}. ${cited} ${joinNames(silent.map((gap) => gap.name))} ${verb} au ${fmtDay(REPLIES_CHECKED)}.`;
 }
 
 export function pressFigures(analytics: Analytics, gapsFound: { compared: number; agreeing: number }): PressFigures {
@@ -246,7 +277,6 @@ export function gapsNote(figures: PressFigures, gaps: Gap[], baseURL: string): s
       "",
     ].join("\n"),
   );
-  const awaiting = gaps.filter((gap) => !EXPLANATIONS[gap.acteurId]).length;
   return `# Annonces de vote et votes réels : les écarts
 
 Note réservée au média qui reçoit l'exclusivité. Données du ${fmtDay(figures.firstDate)} au ${fmtDay(figures.lastDate)}.
@@ -256,7 +286,7 @@ Quand un député annonce explicitement son vote en séance, nous le comparons �
 **Avant publication :**
 
 - Un écart n'est pas forcément un revirement : le texte voté peut différer de celui débattu (amendements, commission mixte paritaire), un député peut parler au nom de son groupe puis voter autrement, et il peut se tromper de bouton.
-- ${awaiting === gaps.length ? "Nous recommandons de demander leur explication aux députés concernés avant de les citer." : awaiting === 0 ? "Chaque député concerné a répondu : son explication est reproduite sous son nom et doit être citée avec le constat." : "L'explication déjà reçue est reproduite sous le nom du député et doit être citée avec le constat. Pour les autres, demandez la leur avant de les citer."}
+- ${publicationAdvice(gaps)}
 - Les débats communs à deux textes (par exemple « Soins palliatifs – Aide à mourir ») sont exclus du calcul : une annonce y peut porter sur l'un ou l'autre texte.
 - Les votes à main levée ne sont pas enregistrés nominativement et ne peuvent donc pas être comparés.
 

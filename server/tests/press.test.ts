@@ -101,13 +101,34 @@ test("Bloch's explanation is reproduced next to his case", () => {
         },
         correction: "none",
       },
+      {
+        name: "Gérault Verny",
+        party: "UDR",
+        acteurId: "PA840809",
+        date: "2024-11-19",
+        debate: "Projet de loi de finances de fin de gestion pour 2024",
+        quote: "Notre groupe votera donc contre ce texte.",
+        stance: "defavorable",
+        reportUrl: "https://www.assemblee-nationale.fr/dyn/17/comptes-rendus/seance/CRSANR5L17S2025O1N047",
+        vote: {
+          number: 518,
+          date: "2024-12-04",
+          title: "l'ensemble du projet de loi.",
+          position: "pour",
+          url: "https://www.assemblee-nationale.fr/dyn/17/scrutins/518",
+        },
+        correction: "none",
+      },
     ],
     "https://polititia.example",
   );
   assert.match(note, /David Desgouilles, au nom de Matthieu Bloch/);
   assert.match(note, /orateur du groupe UDR/);
   assert.match(note, /liberté de vote dont dispose chaque parlementaire/);
-  assert.match(note, /doit être citée avec le constat/);
+  assert.match(note, /Seul David Desgouilles, au nom de Matthieu Bloch, a répondu, le 26 octobre 2026/);
+  assert.match(note, /Cette explication est reproduite sous le nom de Matthieu Bloch et doit être citée avec le constat/);
+  assert.match(note, /Gérault Verny n'a pas répondu au 30 octobre 2026/);
+  assert.match(note, /Aucune réponse reçue au 30 octobre 2026/);
 });
 
 test("without the raw scrutin files, corrections are marked unknown", () => {
