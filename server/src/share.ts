@@ -207,7 +207,8 @@ function politicianCard(analytics: Analytics | null, bundle: DashboardBundle | n
       ? "Membre du Gouvernement"
       : "Intervenant à l'Assemblée"
     : `${seat && !seat.current ? (feminine ? "Ancienne " : "Ancien ") : ""}${feminine ? "Députée" : "Député"}`;
-  const phrase = signaturePhrase(view?.words?.distinctive as Record<string, PhraseRow[]> | undefined);
+  const favorite = view?.flavor?.interruptions?.favorites?.[0];
+  const phrase = favorite ? null : signaturePhrase(view?.words?.distinctive as Record<string, PhraseRow[]> | undefined);
   const speeches = view?.activity.speeches ?? person?.speechCount ?? 0;
   const votes = view?.votes;
   const stats = [plural(speeches, "intervention en séance", "interventions en séance")];
@@ -219,14 +220,20 @@ function politicianCard(analytics: Analytics | null, bundle: DashboardBundle | n
     kicker: role,
     title: withoutCivility(name),
     tag: party ? { label: party.label, color: party.color || COLORS.muted, detail: seatLine(seat) } : undefined,
-    quote: phrase
+    quote: favorite
+      ? {
+          label: feminine ? "L'interruption qu'elle reprend le plus" : "L'interruption qu'il reprend le plus",
+          text: quoted(favorite.quote),
+          note: `${plural(favorite.count, "fois", "fois")}, sur ${plural(favorite.sittings, "séance", "séances")}`,
+        }
+      : phrase
       ? {
           label: feminine ? "L'expression qui la distingue" : "L'expression qui le distingue",
           text: quoted(phrase.ngram),
           note: phraseNote(phrase),
         }
       : undefined,
-    lead: phrase ? undefined : "Ses sujets, ses expressions, ses votes et ses annonces de vote, à partir des comptes rendus officiels.",
+    lead: favorite || phrase ? undefined : "Ses sujets, ses expressions, ses votes et ses annonces de vote, à partir des comptes rendus officiels.",
     stats,
   };
 }

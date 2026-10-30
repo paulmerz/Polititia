@@ -238,6 +238,42 @@ export function buildAnalyticsFixture(): string {
     "Nous voterons pour ce texte.",
   );
 
+  const insertInterruption = db.prepare("INSERT INTO interruptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  ["2025-01-15", "2025-03-10", "2025-03-11", "2025-03-12"].forEach((date, index) => {
+    insertInterruption.run(index + 1, 1, "LFI_NFP", date, `SES-A${index}`, "Budget", "C'est une blague !", "c est une blague", 4, 1);
+  });
+  insertInterruption.run(5, 13, "RN", "2025-02-03", "SES-B0", "Budget", "C'est une blague", "c est une blague", 4, 1);
+  for (let index = 0; index < 9; index += 1) {
+    insertInterruption.run(
+      6 + index,
+      13,
+      "RN",
+      "2025-02-04",
+      `SES-C${index}`,
+      "Budget",
+      "Ce n'est pas sérieux.",
+      "ce n est pas serieux",
+      5,
+      1,
+    );
+  }
+  const insertReaction = db.prepare("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  insertReaction.run(1, 1, "LFI_NFP", "2025-03-10", "SES-A1", "Budget", "rire", "Nous refusons ce texte.", "nous refusons ce texte", "Rires sur divers bancs.", 1);
+  insertReaction.run(2, 1, "LFI_NFP", "2025-03-11", "SES-A2", "Budget", "rire", "Nous refusons ce texte.", "nous refusons ce texte", "Rires sur divers bancs.", 1);
+  db.prepare("INSERT INTO person_style_month VALUES (1, '2025-03', 3000, 30, 40, 4, 10, 40, 8)").run();
+  db.prepare("INSERT INTO party_style_month VALUES ('LFI_NFP', '2025-03', 3000, 30, 40, 4, 10, 40, 8)").run();
+  db.prepare("INSERT INTO global_style_month VALUES ('2025-03', 23000, 200, 60, 80, 100, 80, 40)").run();
+  const insertMention = db.prepare("INSERT INTO mentions VALUES (?, ?, ?, ?, ?)");
+  ["2025-01-15", "2025-03-10", "2025-03-12"].forEach((date, index) => {
+    insertMention.run(1, 13, date, `SES-M${index}`, "Monsieur Bob, ce n'est pas sérieux.");
+  });
+  db.prepare("INSERT INTO ngrams VALUES (5, 2, 'pouvoir achat', 44)").run();
+  db.prepare("INSERT INTO global_ngram_month VALUES (5, '2025-02', 4)").run();
+  db.prepare("INSERT INTO global_ngram_month VALUES (5, '2025-03', 40)").run();
+  const bumpTotal = db.prepare("UPDATE global_totals SET total = total + ? WHERE n = 2 AND month = ?");
+  bumpTotal.run(4, "2025-02");
+  bumpTotal.run(40, "2025-03");
+
   const meta = {
     firstDate: "2025-01-15",
     lastDate: "2025-06-02",

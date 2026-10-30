@@ -471,12 +471,15 @@ function shareMessage(kind, id) {
     const pronoun = isFeminine(person) ? "elle" : "il";
     const sheIf = pronoun === "elle" ? "si elle" : "s'il";
     const view = views.get(politicianPath(id));
-    // The phrase must match the share card, which covers the whole corpus.
-    const phrase = view && isAllPeriod() && !state.themeId ? signatureRow(view.words?.distinctive) : null;
+    // The line must match the share card, which covers the whole corpus.
+    const favorite = view && isAllPeriod() && !state.themeId ? view.flavor?.interruptions?.favorites?.[0] : null;
+    const phrase = !favorite && view && isAllPeriod() && !state.themeId ? signatureRow(view.words?.distinctive) : null;
     const title = `Ce que dit ${name} à l'Assemblée nationale`;
-    const text = phrase
-      ? `« ${phrase.ngram} » : l'expression qui distingue ${name} à l'Assemblée. Ce qu'${pronoun} dit vraiment, et ${sheIf} vote comme ${pronoun} parle :`
-      : `Ce que ${name} dit vraiment à l'Assemblée, et ${sheIf} vote comme ${pronoun} parle :`;
+    const text = favorite
+      ? `« ${favorite.quote} » : l'interruption que ${name} reprend le plus à l'Assemblée. Ce qu'${pronoun} dit vraiment, et ${sheIf} vote comme ${pronoun} parle :`
+      : phrase
+        ? `« ${phrase.ngram} » : l'expression qui distingue ${name} à l'Assemblée. Ce qu'${pronoun} dit vraiment, et ${sheIf} vote comme ${pronoun} parle :`
+        : `Ce que ${name} dit vraiment à l'Assemblée, et ${sheIf} vote comme ${pronoun} parle :`;
     return { title, text };
   }
   if (kind === "groupe") {
@@ -1969,6 +1972,115 @@ function renderDeputyPicker() {
     </div>`;
 }
 
+function fmtFixed(value, digits = 1) {
+  return Number(value || 0).toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function asideQuotes(rows) {
+  if (!rows?.length) {
+    return "";
+  }
+  return `<div class="quote-stack">${rows
+    .map(
+      (row) => `
+        <blockquote class="stance-quote">
+          <p>« ${escapeHtml(row.quote)} »${row.detail ? ` <span class="aside-detail">(${escapeHtml(row.detail)})</span>` : ""}</p>
+          <footer>
+            ${row.id ? `<button class="excerpt-speaker" type="button" data-select-politician="${escapeHtml(row.id)}">${escapeHtml(row.name)}</button>` : ""}
+            <span>${escapeHtml(fmtDate(row.date))}${row.debate ? ` · débat « ${escapeHtml(row.debate)} »` : ""} · ${plural(row.count, "fois", "fois")}, ${plural(row.sittings, "séance", "séances")}</span>
+            ${row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">Compte rendu ↗</a>` : ""}
+          </footer>
+        </blockquote>`,
+    )
+    .join("")}</div>`;
+}
+
+function interruptionNote(interruptions, who) {
+  if (!interruptions?.count) {
+    return "";
+  }
+  const presence = who === "elle" ? "elle est présente" : who === "il" ? "il est présent" : "ses membres sont présents";
+  const parts = [plural(interruptions.count, "interruption", "interruptions")];
+  if (interruptions.perMember != null) {
+    parts.push(`soit ${fmtFixed(interruptions.perMember)} par membre`);
+  }
+  if (interruptions.perHundred != null) {
+    parts.push(`soit ${fmtFixed(interruptions.perHundred)} pour 100 discours des autres`);
+  }
+  return `${parts.join(", ")}, sur les séances où ${presence}.`;
+}
+
+function wordingNote(wording) {
+  if (!wording || wording.words < 200) {
+    return "";
+  }
+  const rate = wording.perThousand || {};
+  return `
+    ${wording.sentence ? `<p class="lead-sentence">${escapeHtml(wording.sentence)}</p>` : ""}
+    ${note(`Pour 1 000 mots : ${fmtFixed(rate.negation)} négations, ${fmtFixed(rate.obligation)} obligations (« doit », « il faut »), ${fmtFixed(rate.possibility)} possibilités (« peut »).`)}
+    ${note(`« nous » ${fmtFixed(rate.nous)}, « je » ${fmtFixed(rate.je)}, « vous » ${fmtFixed(rate.vous)}, pour 1 000 mots.`)}`;
+}
+
+const SESSION_HELP =
+  "Les interruptions favorites sont les répliques courtes reprises au moins 3 fois, dans 3 séances, et plus souvent que par le reste de l'hémicycle. Le taux compte toutes les interruptions, rapportées aux discours des autres sur les séances où la personne est là. Les rires et les applaudissements d'un autre banc sont les didascalies du compte rendu, quand elles reviennent au moins deux fois. « Qui il nomme » compte les « monsieur » ou « madame » suivis du nom d'un autre député. Les taux pour 1 000 mots décrivent la formulation, pas un caractère.";
+
+function sessionBlock(view, who) {
+  const flavor = view?.flavor;
+  if (!flavor) {
+    return "";
+  }
+  const interruptions = flavor.interruptions || {};
+  const favorites = interruptions.favorites || [];
+  const reactions = [...(flavor.reactions?.laughs || []), ...(flavor.reactions?.applause || [])];
+  const named = flavor.named || [];
+  const wording = wordingNote(flavor.wording);
+  if (!interruptions.count && !favorites.length && !reactions.length && !named.length && !wording) {
+    return "";
+  }
+  const namesTitle = who === "elle" ? "Qui elle nomme" : who === "groupe" ? "Qui le groupe nomme" : "Qui il nomme";
+  const formTitle = who === "elle" ? "Comment elle formule" : who === "groupe" ? "Comment le groupe formule" : "Comment il formule";
+  return block(
+    "En séance",
+    `
+      ${
+        interruptions.count || favorites.length
+          ? `<h4 class="sub-title">Ses interruptions favorites</h4>
+             ${interruptionNote(interruptions, who) ? note(interruptionNote(interruptions, who)) : ""}
+             ${favorites.length ? asideQuotes(favorites) : note("Aucune réplique reprise au moins 3 fois, dans 3 séances, et plus souvent que par le reste de l'hémicycle.")}`
+          : ""
+      }
+      ${reactions.length ? `<h4 class="sub-title">Ce qui fait réagir la salle</h4>${asideQuotes(reactions)}` : ""}
+      ${named.length ? `<h4 class="sub-title">${namesTitle}</h4>${asideQuotes(named)}` : ""}
+      ${wording ? `<h4 class="sub-title">${formTitle}</h4>${wording}` : ""}`,
+    { help: SESSION_HELP },
+  );
+}
+
+function risingBlock(rising) {
+  if (!rising?.available) {
+    return "";
+  }
+  const previous = rising.previous || {};
+  const span = previous.from === previous.to ? fmtMonth(previous.from) : `${fmtMonth(previous.from)} – ${fmtMonth(previous.to)}`;
+  return block(
+    "Le mot qui monte",
+    `
+      ${note(`Expressions de deux mots plus fréquentes que sur la période précédente (${span}).`)}
+      ${barList(
+        (rising.phrases || []).map((row) => ({
+          label: row.ngram,
+          value: row.now,
+          badge: fmtRatio(row.lift),
+          title: `${fmtInt(row.now)} fois sur la période, ${fmtInt(row.previous)} fois sur la période précédente`,
+        })),
+        { empty: "Aucune expression ne monte nettement sur cette période." },
+      )}`,
+    {
+      help: "La fréquence est comparée à la période précédente de même longueur, à condition que cette période soit entièrement dans le corpus. Une expression est retenue à partir de 15 emplois et d'un rapport d'au moins 1,5. Un débat où le mot revient sans cesse peut suffire à le faire monter.",
+    },
+  );
+}
+
 function renderPoliticianDetail(personId) {
   const person = politiciansById.get(personId);
   if (!person) {
@@ -2039,6 +2151,7 @@ function renderPoliticianDetail(personId) {
       ${block("En bref", brief)}
       ${block("Ses positions", positions, { help: "Ce que la personne a annoncé en séance et ce qu'elle a réellement voté. Les votes viennent des scrutins publics de l'Assemblée." })}
       ${block("Ses mots", wordsBlock(view.words, { distinctive: "le ou la distingue", common: "" }))}
+      ${sessionBlock(view, isFeminine(person) ? "elle" : "il")}
       ${block(state.themeId ? `Ses interventions sur « ${themeLabel(state.themeId)} »` : "Ses interventions", renderExcerptList(view.excerpts, { showSpeaker: false }), {
         help: "Paragraphes entiers tirés du compte rendu officiel, avec le débat d'origine. Un extrait n'est rattaché à un thème que si le débat, le texte examiné ou plusieurs mots-clés concordent.",
       })}
@@ -2132,6 +2245,7 @@ function renderPartyPanel() {
         help: "Position majoritaire du groupe, calculée à partir des votes de ses membres.",
       })}
       ${block("Ses mots", wordsBlock(view.words, { distinctive: "distingue le groupe", common: "du groupe" }))}
+      ${sessionBlock(view, "groupe")}
       ${block("Ses principaux orateurs", speakers)}
       ${isScientific() ? block("Profil de langage", renderPartyLanguageProfile(languageRow)) : ""}
     </div>`;
@@ -2346,6 +2460,7 @@ function renderAssemblyPanel() {
         { help: "Le gouvernement et les présidents de séance apparaissent si la case « Afficher le gouvernement et les autres intervenants » est cochée." },
       )}
       ${block("Les thèmes les plus débattus", barList(themeRows(view.themes), { limit: 12 }), { help: "Nombre d'interventions rattachées à chaque thème. Cliquez pour ouvrir le thème." })}
+      ${risingBlock(view.rising)}
       ${block("Les mots de l'hémicycle", `<div class="panel-control">${ngramSelect()}</div>${barList(phraseRows(rowsForNgram(view.words?.common), false))}`)}
     </div>`;
 }

@@ -32,6 +32,11 @@ and one dated speech index:
 
     <output_dir>/speeches.jsonl
 
+Interruptions and stage directions are not part of that text. They are written
+aside, one JSON object per line:
+
+    <output_dir>/asides.jsonl
+
 Stage directions (Applaudissements, Mêmes mouvements, Mme X applaudit, ...)
 are wrapped in <italique>(...)</italique> in the schema. We drop any
 <italique> whose stripped content is parenthesised, plus a regex backup for
@@ -55,12 +60,15 @@ import unicodedata
 from collections import defaultdict
 from xml.etree import ElementTree as ET
 
+from asides import eligible_favorite, is_presidential, last_sentence, normalize_line, other_bench, reaction_kind
+
 NS = {"an": "http://schemas.assemblee-nationale.fr/referentiel"}
 
 INTERRUPTION_PREFIX = "INTERRUPTION"
 ELLIPSIS = "…"
 SPEAKER_CORPUS_DIR = "by_speaker"
 SPEECH_INDEX_NAME = "speeches.jsonl"
+ASIDES_INDEX_NAME = "asides.jsonl"
 FRENCH_MONTHS = {
     "janvier": 1,
     "fevrier": 2,
@@ -174,6 +182,17 @@ def _flatten_texte(texte_elem: ET.Element) -> str:
 
     walk(texte_elem)
     return "".join(parts)
+
+
+def _stage_directions(texte: ET.Element) -> list[str]:
+    found: list[str] = []
+    for node in texte.iter():
+        if _local(node.tag) != "italique":
+            continue
+        inner = "".join(node.itertext()).strip()
+        if inner.startswith("(") and inner.endswith(")"):
+            found.append(inner[1:-1].strip())
+    return found
 
 
 def _clean(text: str) -> str:
@@ -528,6 +547,75 @@ def write_speech_files(
     return written
 
 
+def collect_asides(root: ET.Element, meta: dict[str, str]) -> list[dict]:
+    """Interruptions and room reactions, kept out of the speech text."""
+    date = normalize_session_date(meta)
+    if not date:
+        return []
+    session_uid = meta.get("uid", "")
+    rows: list[dict] = []
+    for para, context in iter_paragraphs_with_context(root):
+        orateur = para.find("an:orateurs/an:orateur", NS)
+        if orateur is None:
+            continue
+        nom = orateur.find("an:nom", NS)
+        if nom is None or not (nom.text or "").strip():
+            continue
+        speaker = nom.text.strip()
+        if is_presidential(speaker):
+            continue
+        texte = para.find("an:texte", NS)
+        if texte is None:
+            continue
+        cleaned = _remove_ellipsis(_clean(_flatten_texte(texte))).strip()
+        if not cleaned:
+            continue
+        debate = debate_topic(context) or context.get("point_title", "")
+        base = {
+            "speaker": speaker,
+            "speaker_slug": _safe_filename(speaker),
+            "role": _resolve_role(orateur),
+            "acteur_id": para.attrib.get("id_acteur", ""),
+            "date": date,
+            "session_uid": session_uid,
+            "debate_topic": debate,
+        }
+        if para.attrib.get("code_grammaire", "").startswith(INTERRUPTION_PREFIX):
+            norm = normalize_line(cleaned)
+            rows.append({
+                **base,
+                "record": "interruption",
+                "quote": cleaned,
+                "norm": norm,
+                "words": len(norm.split()),
+                "keep": int(eligible_favorite(speaker, cleaned)),
+            })
+        for detail in _stage_directions(texte):
+            kind = reaction_kind(detail)
+            quote = last_sentence(cleaned)
+            if not kind or not quote:
+                continue
+            rows.append({
+                **base,
+                "record": "reaction",
+                "kind": kind,
+                "quote": quote,
+                "norm": normalize_line(quote),
+                "detail": detail,
+                "other_bench": int(other_bench(detail)),
+            })
+    return rows
+
+
+def write_asides_jsonl(records: list[dict], out_dir: str) -> str:
+    path = os.path.join(out_dir, ASIDES_INDEX_NAME)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
+
+
 def write_speeches_jsonl(records: list[dict[str, str]], out_dir: str) -> str:
     path = os.path.join(out_dir, SPEECH_INDEX_NAME)
     os.makedirs(out_dir, exist_ok=True)
@@ -580,8 +668,11 @@ def process_glob(input_glob: str, out_dir: str) -> list[str]:
     all_written: list[str] = []
     speaker_texts: dict[str, list[str]] = {}
     speech_records: list[dict[str, str]] = []
+    aside_records: list[dict] = []
     for xml_path in paths:
         segments, meta = extract_speeches(xml_path)
+        tree = ET.parse(xml_path)
+        aside_records.extend(collect_asides(tree.getroot(), meta))
         written = write_speech_files(segments, out_dir, xml_path, meta)
         all_written.extend(os.path.join(out_dir, f"{record['speech_id']}.txt") for record in written)
         speech_records.extend(written)
@@ -592,9 +683,12 @@ def process_glob(input_glob: str, out_dir: str) -> list[str]:
     speaker_corpora = write_speaker_corpora(speaker_texts, out_dir)
     all_written.extend(speaker_corpora)
     index_path = write_speeches_jsonl(speech_records, out_dir)
+    asides_path = write_asides_jsonl(aside_records, out_dir)
     all_written.append(index_path)
+    all_written.append(asides_path)
     print(f"[ok] wrote {len(speaker_corpora)} speaker corpus file(s)")
     print(f"[ok] wrote {len(speech_records)} speech index row(s) to {index_path}")
+    print(f"[ok] wrote {len(aside_records)} aside row(s) to {asides_path}")
     return all_written
 
 

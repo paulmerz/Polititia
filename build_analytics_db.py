@@ -23,6 +23,7 @@ from datetime import date
 from pathlib import Path
 
 from analyze_project_ngrams import surface_content_tokens
+from asides import STYLE_FIELDS, find_mentions, style_counts, surname_index
 from lexical_stats import DEFAULT_ALPHA0
 from ngram_distribution import ngrams
 from reference_data import DEFAULT_OPEN_DATA_DIR, ReferenceData
@@ -88,6 +89,9 @@ class Builder:
         self.sids: dict[str, int] = {}
         # (pid, party, month, sitting, content tokens)
         self.speech_rows: list[tuple[int, str, str, str, list[str]]] = []
+        self.person_style: dict[tuple[int, str], Counter[str]] = defaultdict(Counter)
+        self.party_style: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+        self.global_style: dict[str, Counter[str]] = defaultdict(Counter)
 
     def add_speeches(self, raw_speeches: list[dict], resolver: SpeakerResolver) -> None:
         politicians: list[tuple] = []
@@ -110,8 +114,91 @@ class Builder:
                 len((raw.get("normalized_text") or "").split()), len(tokens),
             ))
             self.speech_rows.append((pid, identity.party_at_speech, month, raw.get("session_uid") or raw["date"], tokens))
+            self._add_style(pid, identity.party_at_speech, month, raw.get("text") or "")
         self.db.executemany("INSERT INTO politicians VALUES (?, ?, ?, ?, ?)", politicians)
         self.db.executemany("INSERT INTO speeches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", speeches)
+        self._flush_style()
+
+    def _add_style(self, pid: int, party: str, month: str, text: str) -> None:
+        counts = style_counts(text)
+        if counts["words"] <= 0:
+            return
+        for bucket, key in (
+            (self.person_style, (pid, month)),
+            (self.party_style, (party, month)),
+            (self.global_style, month),
+        ):
+            current = bucket[key]
+            for field in STYLE_FIELDS:
+                current[field] += counts[field]
+
+    def _flush_style(self) -> None:
+        def values(counts: Counter[str]) -> tuple[int, ...]:
+            return tuple(int(counts[field]) for field in STYLE_FIELDS)
+
+        self.db.executemany(
+            "INSERT INTO person_style_month VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ((*key, *values(counts)) for key, counts in self.person_style.items()),
+        )
+        self.db.executemany(
+            "INSERT INTO party_style_month VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ((*key, *values(counts)) for key, counts in self.party_style.items()),
+        )
+        self.db.executemany(
+            "INSERT INTO global_style_month VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ((month, *values(counts)) for month, counts in self.global_style.items()),
+        )
+
+    def _ensure_politician(self, identity) -> int:
+        pid = self.pids.get(identity.politician_id)
+        if pid is not None:
+            return pid
+        pid = self.pids[identity.politician_id] = len(self.pids) + 1
+        self.db.execute(
+            "INSERT INTO politicians VALUES (?, ?, ?, ?, ?)",
+            (pid, identity.politician_id, identity.name, identity.party, identity.acteur_id),
+        )
+        return pid
+
+    def add_asides(self, rows: list[dict], resolver: SpeakerResolver) -> None:
+        interruptions: list[tuple] = []
+        reactions: list[tuple] = []
+        for row in rows:
+            if not row.get("date"):
+                continue
+            identity = resolver.resolve(row)
+            pid = self._ensure_politician(identity) if identity is not None else None
+            party = identity.party_at_speech if identity is not None else ""
+            if row.get("record") == "interruption":
+                interruptions.append((
+                    len(interruptions) + 1, pid, party, row["date"], row.get("session_uid") or "",
+                    row.get("debate_topic") or "", row.get("quote") or "", row.get("norm") or "",
+                    int(row.get("words") or 0), int(row.get("keep") or 0),
+                ))
+            elif row.get("record") == "reaction" and pid is not None:
+                reactions.append((
+                    len(reactions) + 1, pid, party, row["date"], row.get("session_uid") or "",
+                    row.get("debate_topic") or "", row.get("kind") or "", row.get("quote") or "",
+                    row.get("norm") or "", row.get("detail") or "", int(row.get("other_bench") or 0),
+                ))
+        self.db.executemany("INSERT INTO interruptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", interruptions)
+        self.db.executemany("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", reactions)
+
+    def add_mentions(self, raw_speeches: list[dict], resolver: SpeakerResolver) -> None:
+        index = surname_index([(pid, name) for pid, name in self.db.execute("SELECT pid, name FROM politicians")])
+        if not index:
+            return
+        rows = []
+        for raw in raw_speeches:
+            identity = resolver.resolve(raw)
+            if identity is None or not raw.get("date"):
+                continue
+            pid = self.pids.get(identity.politician_id)
+            if pid is None:
+                continue
+            for target, quote in find_mentions(raw.get("text") or "", index, pid):
+                rows.append((pid, target, raw["date"], raw.get("session_uid") or "", quote))
+        self.db.executemany("INSERT INTO mentions VALUES (?, ?, ?, ?, ?)", rows)
 
     def add_ngrams(self) -> dict[int, int]:
         """One pass per n-gram size keeps memory bounded on the full corpus."""
@@ -317,6 +404,7 @@ def build(
     stances: list[dict] | None = None,
     min_ngram_count: int = MIN_NGRAM_COUNT,
     lexicon: Path = DEFAULT_LEXICON,
+    asides: list[dict] | None = None,
 ) -> dict[str, int]:
     from analyze_votes import vote_theme_matcher
 
@@ -327,6 +415,8 @@ def build(
     db.executescript("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;" + SCHEMA)
     builder = Builder(db, min_ngram_count)
     builder.add_speeches(raw_speeches, resolver)
+    builder.add_asides(asides or [], resolver)
+    builder.add_mentions(raw_speeches, resolver)
     corpus_totals = builder.add_ngrams()
     builder.add_themes(attributions)
     vote_count = builder.add_votes(reference, vote_theme_matcher())
@@ -353,6 +443,7 @@ def main() -> None:
         load_jsonl(args.stances),
         args.min_ngram_count,
         args.lexicon,
+        load_jsonl(args.speeches.with_name("asides.jsonl")),
     )
     print(
         f"Wrote {args.out}: {counts['politicians']} politicians, {counts['speeches']} speeches, "

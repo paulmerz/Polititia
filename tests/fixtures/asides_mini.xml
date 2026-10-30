@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<compteRendu xmlns="http://schemas.assemblee-nationale.fr/referentiel">
+  <uid>CRTESTASIDES001</uid>
+  <metadonnees>
+    <dateSeance>20240313150000000</dateSeance>
+    <dateSeanceJour>mercredi 13 mars 2024</dateSeanceJour>
+    <numSeance>2</numSeance>
+    <legislature>17</legislature>
+    <session>Session de test</session>
+  </metadonnees>
+  <contenu>
+    <point nivpoint="1" code_grammaire="DISC_ARTICLES_1_1" valeur="1100">
+      <texte>Droit à l'aide à mourir</texte>
+      <paragraphe code_grammaire="PAROLE_GENERIQUE" id_acteur="PA795000">
+        <orateurs>
+          <orateur>
+            <nom>Mme Mathilde Panot LFI NFP</nom>
+            <qualite>députée</qualite>
+          </orateur>
+        </orateurs>
+        <texte>Nous défendons les soins et il peut rester. Monsieur Wauquiez, nous devons tenir et ce n'est pas un abandon. <italique>(Rires sur divers bancs.)</italique></texte>
+      </paragraphe>
+      <paragraphe code_grammaire="INTERRUPTION_1_10" id_acteur="PA795000">
+        <orateurs>
+          <orateur>
+            <nom>Mme Mathilde Panot LFI NFP</nom>
+            <qualite>députée</qualite>
+          </orateur>
+        </orateurs>
+        <texte>C'est une blague !</texte>
+      </paragraphe>
+      <paragraphe code_grammaire="INTERRUPTION_1_10">
+        <orateurs>
+          <orateur>
+            <nom>Mme la présidente</nom>
+            <qualite/>
+          </orateur>
+        </orateurs>
+        <texte>Veuillez conclure, madame la députée.</texte>
+      </paragraphe>
+      <paragraphe code_grammaire="INTERRUPTION_1_10" id_acteur="PA267785">
+        <orateurs>
+          <orateur>
+            <nom>M. Laurent Wauquiez DR</nom>
+            <qualite>député</qualite>
+          </orateur>
+        </orateurs>
+        <texte>Monsieur le président, je demande la parole.</texte>
+      </paragraphe>
+      <paragraphe code_grammaire="INTERRUPTION_1_10">
+        <orateurs>
+          <orateur>
+            <nom>Un député du groupe LFI-NFP</nom>
+            <qualite/>
+          </orateur>
+        </orateurs>
+        <texte>Ce n'est pas sérieux.</texte>
+      </paragraphe>
+    </point>
+  </contenu>
+</compteRendu>

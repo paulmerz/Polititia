@@ -1,6 +1,20 @@
 import { existsSync, statSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { dirichletLogOdds, MIN_COUNT, type LogOddsRow } from "./lexical.ts";
+import {
+  perHundred,
+  perMember,
+  perThousand,
+  previousWindow,
+  risingPhrases,
+  selectFavorites,
+  selectReactions,
+  wordingSentence,
+  MIN_RISE_COUNT,
+  type CountedLine,
+  type StyleCounts,
+  type WordingSubject,
+} from "./flavor.ts";
 
 // Everything a visitor can filter by period is computed here from the monthly
 // aggregates of analytics.sqlite (see build_analytics_db.py).
@@ -102,6 +116,7 @@ export class Analytics {
   readonly themeIds: Map<string, ThemeCatalogEntry>;
   // Databases built before the sittings column keep working, unfiltered.
   private readonly hasSittings: boolean;
+  private readonly hasFlavor: boolean;
   private cache = new Map<string, unknown>();
   private voteGroups = new Map<number, { majority: Record<string, string>; counts: Record<string, GroupCounts> }>();
 
@@ -124,6 +139,12 @@ export class Analytics {
     this.themeIds = new Map(this.meta.themes.map((theme) => [theme.id, theme]));
     const columns = this.db.prepare("PRAGMA table_info(person_ngram_month)").all() as Array<{ name: string }>;
     this.hasSittings = columns.some((column) => column.name === "sittings");
+    const tables = new Set(
+      (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((row) => row.name),
+    );
+    this.hasFlavor = ["interruptions", "reactions", "person_style_month", "global_style_month", "mentions"].every((name) =>
+      tables.has(name),
+    );
   }
 
   close(): void {
@@ -563,6 +584,7 @@ export class Analytics {
           ),
           (row) => String(row.theme),
         ).map(({ key, ...rest }) => ({ theme: key, ...rest })),
+        flavor: this.personFlavor(person.pid, period, /^(mme|mlle)\b/i.test(person.name.trim()) ? "elle" : "il"),
       };
     });
   }
@@ -759,6 +781,7 @@ export class Analytics {
         stances: this.aggregateStances(this.stancesFor("s.party = ? AND s.date BETWEEN ? AND ?", [partyId, period.firstDay, period.lastDay]), (row) =>
           String(row.theme),
         ).map(({ key, ...rest }) => ({ theme: key, ...rest })),
+        flavor: this.partyFlavor(partyId, period),
       };
     });
   }
@@ -949,8 +972,283 @@ export class Analytics {
         parties,
         themes,
         words: { common },
+        rising: this.rising(period),
       };
     });
+  }
+
+  // -- interruptions, reactions, wording, rising words ----------------------
+
+  private emptyStyle(): StyleCounts {
+    return { words: 0, negation: 0, obligation: 0, possibility: 0, je: 0, nous: 0, vous: 0 };
+  }
+
+  private styleSums(table: "person_style_month" | "party_style_month" | "global_style_month", where: string, params: SQLInputValue[]): StyleCounts {
+    if (!this.hasFlavor) {
+      return this.emptyStyle();
+    }
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(words), 0) AS words, COALESCE(SUM(negation), 0) AS negation,
+                COALESCE(SUM(obligation), 0) AS obligation, COALESCE(SUM(possibility), 0) AS possibility,
+                COALESCE(SUM(je), 0) AS je, COALESCE(SUM(nous), 0) AS nous, COALESCE(SUM(vous), 0) AS vous
+         FROM ${table} WHERE ${where}`,
+      )
+      .get(...params) as StyleCounts;
+    return {
+      words: Number(row.words),
+      negation: Number(row.negation),
+      obligation: Number(row.obligation),
+      possibility: Number(row.possibility),
+      je: Number(row.je),
+      nous: Number(row.nous),
+      vous: Number(row.vous),
+    };
+  }
+
+  private wordingView(style: StyleCounts, chamber: StyleCounts, subject: WordingSubject) {
+    const rate = (count: number) => perThousand(count, style.words);
+    return {
+      words: style.words,
+      perThousand: {
+        negation: rate(style.negation),
+        obligation: rate(style.obligation),
+        possibility: rate(style.possibility),
+        je: rate(style.je),
+        nous: rate(style.nous),
+        vous: rate(style.vous),
+      },
+      sentence: wordingSentence(style, chamber, subject),
+    };
+  }
+
+  private interruptionVolume(scope: "pid" | "party", id: number | string, period: Period) {
+    const first = period.firstDay;
+    const last = period.lastDay;
+    const column = scope === "pid" ? "pid" : "party";
+    const row = this.db
+      .prepare(
+        `WITH present AS (
+           SELECT session_uid FROM speeches WHERE ${column} = ? AND date BETWEEN ? AND ?
+           UNION
+           SELECT session_uid FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ?
+         )
+         SELECT
+           (SELECT COUNT(*) FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ?) AS count,
+           (SELECT COUNT(*) FROM (
+              SELECT pid FROM speeches WHERE ${column} = ? AND date BETWEEN ? AND ? AND pid IS NOT NULL
+              UNION
+              SELECT pid FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ? AND pid IS NOT NULL
+            )) AS members,
+           (SELECT COUNT(*) FROM speeches
+            WHERE ${column} != ? AND date BETWEEN ? AND ? AND session_uid IN (SELECT session_uid FROM present)) AS others`,
+      )
+      .get(id, first, last, id, first, last, id, first, last, id, first, last, id, first, last, id, first, last) as {
+      count: number;
+      members: number;
+      others: number;
+    };
+    return { count: Number(row.count), members: Number(row.members), others: Number(row.others) };
+  }
+
+  private favoriteLines(where: string, params: SQLInputValue[], restWhere: string, restParams: SQLInputValue[]) {
+    const rows = this.db
+      .prepare(
+        `SELECT norm, quote, date, session_uid AS sessionUid, debate_title AS debate
+         FROM interruptions WHERE keep = 1 AND ${where}`,
+      )
+      .all(...params) as Array<{ norm: string; quote: string; date: string; sessionUid: string; debate: string }>;
+    const grouped = new Map<string, CountedLine & { sessions: Set<string> }>();
+    for (const row of rows) {
+      const current = grouped.get(row.norm);
+      if (!current) {
+        grouped.set(row.norm, {
+          norm: row.norm,
+          quote: row.quote,
+          count: 1,
+          sittings: 0,
+          rest: 0,
+          date: row.date,
+          sessionUid: row.sessionUid,
+          debate: row.debate,
+          sessions: new Set([row.sessionUid]),
+        });
+        continue;
+      }
+      current.count += 1;
+      current.sessions.add(row.sessionUid);
+      if (row.date >= current.date) {
+        current.date = row.date;
+        current.quote = row.quote;
+        current.sessionUid = row.sessionUid;
+        current.debate = row.debate;
+      }
+    }
+    const restRows = this.db
+      .prepare(`SELECT norm, COUNT(*) AS n FROM interruptions WHERE keep = 1 AND ${restWhere} GROUP BY norm`)
+      .all(...restParams) as Array<{ norm: string; n: number }>;
+    const rest = new Map(restRows.map((row) => [row.norm, Number(row.n)]));
+    const restTotal = [...rest.values()].reduce((sum, count) => sum + count, 0);
+    const lines = [...grouped.values()].map((line) => ({ ...line, sittings: line.sessions.size, rest: rest.get(line.norm) || 0 }));
+    const ownTotal = lines.reduce((sum, line) => sum + line.count, 0);
+    return selectFavorites(lines, ownTotal, restTotal).map((line) => ({
+      quote: line.quote,
+      count: line.count,
+      sittings: line.sittings,
+      rest: line.rest,
+      date: line.date,
+      debate: line.debate,
+      url: reportUrl(line.sessionUid),
+    }));
+  }
+
+  private reactionLines(where: string, params: SQLInputValue[], kind: string, otherBenchOnly: boolean) {
+    const rows = this.db
+      .prepare(
+        `SELECT norm, quote, detail, date, session_uid AS sessionUid, debate_title AS debate
+         FROM reactions WHERE kind = ? AND ${where}${otherBenchOnly ? " AND other_bench = 1" : ""}`,
+      )
+      .all(kind, ...params) as Array<{ norm: string; quote: string; detail: string; date: string; sessionUid: string; debate: string }>;
+    const grouped = new Map<string, { quote: string; detail: string; count: number; date: string; sessionUid: string; debate: string; sessions: Set<string> }>();
+    for (const row of rows) {
+      const current = grouped.get(row.norm);
+      if (!current) {
+        grouped.set(row.norm, { ...row, count: 1, sessions: new Set([row.sessionUid]) });
+        continue;
+      }
+      current.count += 1;
+      current.sessions.add(row.sessionUid);
+      if (row.date >= current.date) {
+        current.quote = row.quote;
+        current.detail = row.detail;
+        current.date = row.date;
+        current.sessionUid = row.sessionUid;
+        current.debate = row.debate;
+      }
+    }
+    return selectReactions(
+      [...grouped.values()].map((row) => ({
+        quote: row.quote,
+        detail: row.detail,
+        count: row.count,
+        sittings: row.sessions.size,
+        date: row.date,
+        debate: row.debate,
+        url: reportUrl(row.sessionUid),
+      })),
+    );
+  }
+
+  private namedPeople(pid: number, period: Period) {
+    const rows = this.db
+      .prepare(
+        `SELECT p.pid AS target, p.id AS id, p.name AS name, COUNT(*) AS count, COUNT(DISTINCT m.session_uid) AS sittings
+         FROM mentions m JOIN politicians p ON p.pid = m.target_pid
+         WHERE m.pid = ? AND m.date BETWEEN ? AND ?
+         GROUP BY m.target_pid
+         HAVING count >= 3 AND sittings >= 3
+         ORDER BY count DESC, name
+         LIMIT 5`,
+      )
+      .all(pid, period.firstDay, period.lastDay) as Array<{ target: number; id: string; name: string; count: number; sittings: number }>;
+    const quoteOf = this.db.prepare(
+      `SELECT quote, date, session_uid AS sessionUid FROM mentions
+       WHERE pid = ? AND target_pid = ? AND date BETWEEN ? AND ? ORDER BY date DESC LIMIT 1`,
+    );
+    return rows.map((row) => {
+      const sample = quoteOf.get(pid, row.target, period.firstDay, period.lastDay) as { quote: string; date: string; sessionUid: string };
+      return {
+        id: row.id,
+        name: row.name,
+        count: Number(row.count),
+        sittings: Number(row.sittings),
+        quote: sample?.quote || "",
+        date: sample?.date || "",
+        url: reportUrl(sample?.sessionUid || ""),
+      };
+    });
+  }
+
+  private personFlavor(pid: number, period: Period, subject: WordingSubject) {
+    if (!this.hasFlavor) {
+      return null;
+    }
+    const volume = this.interruptionVolume("pid", pid, period);
+    const days = [period.firstDay, period.lastDay];
+    return {
+      interruptions: {
+        count: volume.count,
+        perHundred: perHundred(volume.count, volume.others),
+        favorites: this.favoriteLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "IFNULL(pid, -1) != ? AND date BETWEEN ? AND ?", [pid, ...days]),
+      },
+      reactions: {
+        laughs: this.reactionLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "rire", false),
+        applause: this.reactionLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "applaudissement", true),
+      },
+      wording: this.wordingView(
+        this.styleSums("person_style_month", "pid = ? AND month BETWEEN ? AND ?", [pid, period.from, period.to]),
+        this.styleSums("global_style_month", "month BETWEEN ? AND ?", [period.from, period.to]),
+        subject,
+      ),
+      named: this.namedPeople(pid, period),
+    };
+  }
+
+  private partyFlavor(party: string, period: Period) {
+    if (!this.hasFlavor) {
+      return null;
+    }
+    const volume = this.interruptionVolume("party", party, period);
+    const days = [period.firstDay, period.lastDay];
+    return {
+      interruptions: {
+        count: volume.count,
+        perMember: perMember(volume.count, volume.members),
+        perHundred: perHundred(volume.count, volume.others),
+        favorites: this.favoriteLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "party != ? AND date BETWEEN ? AND ?", [party, ...days]),
+      },
+      reactions: {
+        laughs: this.reactionLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "rire", false),
+        applause: this.reactionLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "applaudissement", true),
+      },
+      wording: this.wordingView(
+        this.styleSums("party_style_month", "party = ? AND month BETWEEN ? AND ?", [party, period.from, period.to]),
+        this.styleSums("global_style_month", "month BETWEEN ? AND ?", [period.from, period.to]),
+        "groupe",
+      ),
+    };
+  }
+
+  private rising(period: Period) {
+    const firstMonth = (this.meta.firstDate || period.from).slice(0, 7);
+    const window = previousWindow(period.from, period.to, firstMonth);
+    if (!window) {
+      return { available: false, previous: null, phrases: [] as Array<{ ngram: string; now: number; previous: number; lift: number }> };
+    }
+    const totalOf = (from: string, to: string) =>
+      Number(
+        (this.db.prepare("SELECT COALESCE(SUM(total), 0) AS n FROM global_totals WHERE n = 2 AND month BETWEEN ? AND ?").get(from, to) as { n: number }).n,
+      );
+    const rows = this.db
+      .prepare(
+        `SELECT ng.text AS ngram,
+                SUM(CASE WHEN g.month BETWEEN ? AND ? THEN g.count ELSE 0 END) AS now,
+                SUM(CASE WHEN g.month BETWEEN ? AND ? THEN g.count ELSE 0 END) AS previous
+         FROM ngrams ng JOIN global_ngram_month g ON g.gid = ng.gid
+         WHERE ng.n = 2 AND g.month BETWEEN ? AND ?
+         GROUP BY ng.gid
+         HAVING now >= ?`,
+      )
+      .all(period.from, period.to, window.from, window.to, window.from, period.to, MIN_RISE_COUNT) as Array<{ ngram: string; now: number; previous: number }>;
+    return {
+      available: true,
+      previous: window,
+      phrases: risingPhrases(
+        rows.map((row) => ({ ngram: row.ngram, now: Number(row.now), previous: Number(row.previous) })),
+        totalOf(period.from, period.to),
+        totalOf(window.from, window.to),
+      ),
+    };
   }
 }
 

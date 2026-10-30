@@ -141,3 +141,32 @@ test("assembly view: chamber sizes follow the period", () => {
   assert.equal(all.words.common["2"][0].ngram, "projet loi");
   assert.equal(june.words.common["1"][0].ngram, "sécurité");
 });
+
+test("interruptions, reactions and wording stay counts, not labels", () => {
+  const person = analytics.politician(ALICES[0], analytics.period());
+  assert.ok(person?.flavor);
+  assert.equal(person.flavor.interruptions.count, 4);
+  assert.equal(person.flavor.interruptions.favorites[0].quote, "C'est une blague !");
+  assert.equal(person.flavor.interruptions.favorites[0].count, 4);
+  assert.equal(person.flavor.interruptions.favorites[0].sittings, 4);
+  assert.equal(person.flavor.reactions.laughs[0].quote, "Nous refusons ce texte.");
+  assert.equal(person.flavor.reactions.laughs[0].detail, "Rires sur divers bancs.");
+  assert.equal(person.flavor.named[0].id, BOB);
+  assert.equal(person.flavor.named[0].count, 3);
+  assert.match(person.flavor.wording.sentence, /obligations/);
+  assert.equal(analytics.politician(ALICES[0], analytics.period("2025-01", "2025-01"))?.flavor?.interruptions.favorites.length, 0);
+
+  const party = analytics.party("LFI_NFP", analytics.period());
+  assert.equal(party?.flavor?.interruptions.count, 4);
+  assert.equal(party?.flavor?.interruptions.perMember, 4 / 12);
+  assert.equal(party?.flavor?.interruptions.favorites[0].quote, "C'est une blague !");
+});
+
+test("a rising phrase needs a full previous window", () => {
+  const march = analytics.assembly(analytics.period("2025-03", "2025-03"));
+  assert.equal(march.rising.available, true);
+  assert.equal(march.rising.previous?.from, "2025-02");
+  assert.equal(march.rising.phrases[0].ngram, "pouvoir achat");
+  assert.ok(march.rising.phrases[0].lift > 1.5);
+  assert.equal(analytics.assembly(analytics.period()).rising.available, false);
+});

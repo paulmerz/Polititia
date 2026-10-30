@@ -45,6 +45,7 @@ class BuildTests(unittest.TestCase):
                 SpeakerResolver(reference, out_dir / "by_speaker"),
                 min_ngram_count=1,
                 lexicon=LEXICON_PATH,
+                asides=load_jsonl(out_dir / "asides.jsonl"),
             )
             db = sqlite3.connect(db_path)
             self.assertGreater(counts["speeches"], 0)
@@ -80,6 +81,15 @@ class BuildTests(unittest.TestCase):
             self.assertEqual(themes["social"]["type"], "domain")
             attributed = db.execute("SELECT COUNT(DISTINCT theme) FROM theme_attributions").fetchone()[0]
             self.assertGreater(attributed, 0)
+            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM interruptions WHERE keep = 1").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM interruptions WHERE quote LIKE '%conclure%'").fetchone()[0], 0)
+            self.assertEqual(
+                db.execute("SELECT keep FROM interruptions WHERE quote LIKE '%demande la parole%'").fetchone()[0],
+                0,
+            )
+            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM reactions WHERE kind = 'rire'").fetchone()[0], 1)
+            self.assertGreater(db.execute("SELECT COALESCE(SUM(words), 0) FROM global_style_month").fetchone()[0], 0)
+            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM mentions").fetchone()[0], 1)
             db.close()
 
 

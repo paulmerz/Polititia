@@ -2109,6 +2109,16 @@ button.party-pill {
   line-height: 1.45;
 }
 
+.quote-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aside-detail {
+  color: var(--muted, #5c6570);
+}
+
 .stance-quote p {
   margin: 0 0 4px;
 }

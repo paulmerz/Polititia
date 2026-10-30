@@ -59,3 +59,59 @@ CREATE TABLE stances (
   method TEXT NOT NULL, quote TEXT NOT NULL, PRIMARY KEY (theme, sid)
 ) WITHOUT ROWID;
 CREATE INDEX stances_sid ON stances (sid);
+-- Interruptions are not speeches. keep = 1 is a short named line eligible to
+-- become a "favorite" once it also clears the repetition bar in the server.
+CREATE TABLE interruptions (
+  iid INTEGER PRIMARY KEY,
+  pid INTEGER,
+  party TEXT NOT NULL,
+  date TEXT NOT NULL,
+  session_uid TEXT NOT NULL,
+  debate_title TEXT NOT NULL,
+  quote TEXT NOT NULL,
+  norm TEXT NOT NULL,
+  words INTEGER NOT NULL,
+  keep INTEGER NOT NULL
+);
+CREATE INDEX interruptions_pid_date ON interruptions (pid, date);
+CREATE INDEX interruptions_party_date ON interruptions (party, date);
+CREATE TABLE reactions (
+  rid INTEGER PRIMARY KEY,
+  pid INTEGER NOT NULL,
+  party TEXT NOT NULL,
+  date TEXT NOT NULL,
+  session_uid TEXT NOT NULL,
+  debate_title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  quote TEXT NOT NULL,
+  norm TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  other_bench INTEGER NOT NULL
+);
+CREATE INDEX reactions_pid_date ON reactions (pid, date);
+CREATE INDEX reactions_party_date ON reactions (party, date);
+CREATE TABLE person_style_month (
+  pid INTEGER, month TEXT,
+  words INTEGER NOT NULL, negation INTEGER NOT NULL, obligation INTEGER NOT NULL, possibility INTEGER NOT NULL,
+  je INTEGER NOT NULL, nous INTEGER NOT NULL, vous INTEGER NOT NULL,
+  PRIMARY KEY (pid, month)
+) WITHOUT ROWID;
+CREATE TABLE party_style_month (
+  party TEXT, month TEXT,
+  words INTEGER NOT NULL, negation INTEGER NOT NULL, obligation INTEGER NOT NULL, possibility INTEGER NOT NULL,
+  je INTEGER NOT NULL, nous INTEGER NOT NULL, vous INTEGER NOT NULL,
+  PRIMARY KEY (party, month)
+) WITHOUT ROWID;
+CREATE TABLE global_style_month (
+  month TEXT PRIMARY KEY,
+  words INTEGER NOT NULL, negation INTEGER NOT NULL, obligation INTEGER NOT NULL, possibility INTEGER NOT NULL,
+  je INTEGER NOT NULL, nous INTEGER NOT NULL, vous INTEGER NOT NULL
+);
+CREATE TABLE mentions (
+  pid INTEGER NOT NULL,
+  target_pid INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  session_uid TEXT NOT NULL,
+  quote TEXT NOT NULL
+);
+CREATE INDEX mentions_pid_date ON mentions (pid, date);

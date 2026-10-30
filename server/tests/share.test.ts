@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeQuery } from "../src/communes.ts";
-import { phraseNote, signaturePhrase } from "../src/share.ts";
-import { BOB } from "./analytics-fixture.ts";
-import { startTestApp } from "./helpers.ts";
+import { buildCard, phraseNote, signaturePhrase } from "../src/share.ts";
+import { Analytics } from "../src/analytics.ts";
+import { ALICES, BOB } from "./analytics-fixture.ts";
+import { analyticsFixturePath, startTestApp } from "./helpers.ts";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47];
 
@@ -120,4 +121,13 @@ test("the card phrase can be stated plainly", () => {
   assert.equal(phraseNote({ ngram: "x", count: 17, rest: 126, ratio: 1061 }), "17 fois, contre 126 pour tous les autres orateurs réunis", "a ratio above 100 reads as a bug");
   assert.equal(phraseNote({ ngram: "x", count: 5, rest: 0, ratio: null }), "5 fois, et par aucun autre orateur");
   assert.equal(phraseNote({ ngram: "x", count: 12, rest: 606, ratio: 32 }), "32 fois plus souvent que le reste de l'Assemblée");
+});
+
+test("the share card prefers a recurring interruption", () => {
+  const analytics = new Analytics(analyticsFixturePath());
+  const card = buildCard("depute", ALICES[0], analytics, null);
+  assert.match(card?.quote?.text || "", /blague/);
+  assert.match(card?.quote?.label || "", /interruption/i);
+  assert.match(card?.quote?.note || "", /4 fois/);
+  analytics.close();
 });

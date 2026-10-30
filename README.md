@@ -30,7 +30,8 @@ uv run python scripts/build_communes.py
 
 - `extract_speeches.py` writes the dated speech index
   `extracted_texts/project_full/speeches.jsonl` (agenda item, bill number,
-  article, `acteur_id`) and one file per speaker.
+  article, `acteur_id`) and one file per speaker. Interruptions and stage
+  directions are kept out of that text and written to `asides.jsonl`.
 - `analyze_themes.py` attributes speeches to the curated themes of
   `themes/lexicon.json`: first by the bill being debated and its committee,
   then by keyword density (never a single keyword). Output:
@@ -47,6 +48,9 @@ uv run python scripts/build_communes.py
   the number of distinct sittings: a distinctive phrase must come from at
   least 3 sittings, and its "×N" ratio is only shown with at least 10 uses by
   the speaker and 20 by everyone else (otherwise the raw counts are shown).
+  The same file stores interruptions, room reactions, wording rates (negation,
+  obligation, possibility, pronouns) and named colleagues, read from
+  `asides.jsonl` when that file sits next to the speech index.
 - `dashboard/build_dashboard_data.py` writes the small first-load bundle
   `dashboard/data/dashboard-data.json` (people, groups, style markers, and
   each deputy's constituency from AMO).
