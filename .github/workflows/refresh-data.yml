@@ -1,0 +1,126 @@
+# Rebuilds the analysis database on a GitHub-hosted runner (16 GB of RAM) and
+# publishes it on the "data" release. The Render build downloads that release;
+# this service has 512 MB and cannot run the pipeline itself.
+#
+# Monday 04:00 UTC, or by hand from the Actions tab. The job only runs on main.
+# After the release is updated, a commit of .github/data-stamp makes Render
+# redeploy. Set the RENDER_DEPLOY_HOOK_URL secret to deploy without that commit.
+
+name: Refresh data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Stay on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "This workflow publishes the production database and only runs from main."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra topics
+
+      - name: Download the Assemblée nationale archives
+        run: |
+          set -euo pipefail
+          uv run python scripts/download_assemblee_data.py
+          uv run python scripts/download_open_data.py
+
+      - name: Extract speeches and asides
+        run: |
+          set -euo pipefail
+          uv run python extract_speeches.py "data/raw/xml/compteRendu/*.xml" extracted_texts/project_full
+          test -s extracted_texts/project_full/asides.jsonl
+
+      - name: Themes, stances and the analytics database
+        run: |
+          set -euo pipefail
+          uv run python analyze_themes.py
+          uv run python analyze_stances.py
+          uv run python build_analytics_db.py
+          uv run python dashboard/build_dashboard_data.py
+
+      - name: Refuse a database that is too small to publish
+        run: |
+          set -euo pipefail
+          cat > /tmp/check_release.py << 'PY'
+          import sqlite3
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          con = sqlite3.connect("analysis_outputs/analytics.sqlite")
+          def count(table):
+              return con.execute(f"select count(*) from {table}").fetchone()[0]
+
+          checks = {
+              "speeches": (count("speeches"), 50000),
+              "politicians": (count("politicians"), 600),
+              "votes": (count("votes"), 5000),
+              "interruptions": (count("interruptions"), 1000),
+              "reactions": (count("reactions"), 100),
+          }
+          lines = [f"refreshed_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"]
+          failed = False
+          for name, (got, minimum) in checks.items():
+              print(f"{name}: {got} (minimum {minimum})")
+              lines.append(f"{name}: {got}")
+              if got < minimum:
+                  failed = True
+          Path(".github/data-stamp").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          if failed:
+              sys.exit("Refusing to publish: the new database is smaller than the current corpus.")
+          PY
+          uv run python /tmp/check_release.py
+
+      - name: Pack the release assets
+        run: |
+          set -euo pipefail
+          gzip -c analysis_outputs/analytics.sqlite > analytics.sqlite.gz
+          gzip -c dashboard/data/dashboard-data.json > dashboard-data.json.gz
+          gzip -t analytics.sqlite.gz dashboard-data.json.gz
+
+      - name: Publish the data release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload data analytics.sqlite.gz dashboard-data.json.gz --clobber
+          curl -fL --retry 5 --retry-delay 5 -o /dev/null -r 0-1023 \
+            "https://github.com/${{ github.repository }}/releases/download/data/analytics.sqlite.gz"
+
+      - name: Ask Render to deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/data-stamp
+          git commit -m "Publie la base d'analyse reconstruite."
+          git push origin HEAD
