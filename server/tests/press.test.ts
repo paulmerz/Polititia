@@ -58,7 +58,10 @@ test("only comparable announcements count, and a filed correction is reported", 
   const release = pressRelease(figures, "https://polititia.example", "2026-11-17");
   assert.match(release, new RegExp(`${agreeing} sur ${compared}`));
   assert.match(release, /utm_source=presse&utm_medium=email&utm_campaign=communique/);
-  assert.match(release, /\[À compléter/);
+  assert.match(release, /info@maj\.digital/);
+  assert.match(release, /MAJ Holding Sàrl/);
+  assert.match(release, /Arianna Bianchini/);
+  assert.doesNotMatch(release, /\[À compléter/);
   const note = gapsNote(figures, gaps, "https://polititia.example");
   assert.match(note, /s'est abstenu/);
   assert.match(note, /23 jours après l'annonce/);

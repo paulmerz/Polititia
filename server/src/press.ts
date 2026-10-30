@@ -190,9 +190,9 @@ Les données sont publiques (comptes rendus et scrutins de l'Assemblée national
 - La méthode : ${site}/methode
 - Qui sommes-nous : ${site}/a-propos
 
-**Contact presse :** [À compléter : nom, téléphone, email]
+**Contact presse :** info@maj.digital
 
-**À propos de Polititia :** [À compléter : deux lignes sur qui porte le projet et son indépendance]
+**À propos de Polititia :** Polititia est porté par Paul Merz, au sein de MAJ Holding Sàrl, à Genève. Le projet est indépendant de tout parti. L'analyse a été menée bénévolement par des étudiants de l'Université de la Suisse italienne : Arianna Bianchini en a dirigé les travaux, avec Tze Qing Ginnie Lee et Cedric Borgers, dans l'équipe de Lonneke van der Plas. L'infrastructure et une partie du développement sont financées par MAJ Holding Sàrl.
 `;
 }
 
