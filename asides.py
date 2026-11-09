@@ -70,7 +70,20 @@ NON_INSCRITS_RE = re.compile(r"\bnon[- ]inscrits?\b", re.I)
 EVERY_BENCH_RE = re.compile(r"\bsur tous les bancs\b", re.I)
 # "sur divers bancs", with no group named: at least one other camp.
 UNNAMED_BENCHES_RE = re.compile(r"\bsur (?:divers|de nombreux) bancs\b(?!\s+d(?:u|es)\s+groupes?)", re.I)
-DIRECTION_PART_RE = re.compile(r"\s+[–—]\s+")
+# « – » and « ; » separate reactions, with or without spaces (« –Exclamations »).
+DIRECTION_PART_RE = re.compile(r"\s*[–—;]\s*")
+REACTION_WORD_RE = re.compile(
+    r"(?P<applause_noun>\bapplaudissements?\b)"
+    r"|(?P<applause_verb>\bapplaudi(?:t|ssent|r|ssant)\b)"
+    r"|(?P<other_noun>\b(?:exclamations?|protestations?|murmures?|rires?|sourires?|huées?|brouhaha)\b)"
+    r"|(?P<other_verb>\b(?:huent|hue|protestent|proteste|s[’']exclament|s[’']exclame|désignent|désigne|pointent|interpellent|scandent"
+    r"|quittent|se tournent|se tourne|se tournant|tournés?|tournées?)\b)"
+    r"|(?P<target>\b(?:vers|en direction d|à l[’']adresse d|à l[’']intention d)\w*)",
+    re.I,
+)
+APPLAUSE_WORDS = {"applause_noun", "applause_verb"}
+NOUN_WORDS = {"applause_noun", "other_noun"}
+BENCHES_RE = re.compile(r"\b(?:bancs?|groupes?)\b", re.I)
 
 
 def normalize_line(text: str) -> str:
@@ -305,26 +318,82 @@ class Applause:
     unnamed_benches: bool
 
 
+def _groups_in(text: str) -> set[str]:
+    groups = {GROUP_CODES[label] for label in GROUP_LABEL_RE.findall(text)}
+    if NON_INSCRITS_RE.search(text):
+        groups.add(NON_INSCRITS)
+    return groups
+
+
+def _applause_scopes(part: str) -> list[str]:
+    """The pieces of one stage direction that say who applauds.
+
+    « Applaudissements » takes the benches that follow it (shared with the next
+    noun in « Applaudissements et exclamations sur les bancs du groupe RN »);
+    « applaudissent » takes its subject, before it, and what follows it up to
+    the next reaction. Whatever another reaction or a direction covers
+    (« huent les députés du groupe RN », « vers les bancs du groupe RN ») is
+    left out, and so is ironic applause.
+    """
+    words = list(REACTION_WORD_RE.finditer(part))
+    ends = [words[index + 1].start() if index + 1 < len(words) else len(part) for index in range(len(words))]
+    scopes: list[str] = []
+    subject_start = 0
+    for index, word in enumerate(words):
+        kind = word.lastgroup
+        if kind not in APPLAUSE_WORDS:
+            continue
+        segment = part[word.start() : ends[index]]
+        if kind == "applause_noun":
+            last = index
+            while not BENCHES_RE.search(segment) and last + 1 < len(words) and words[last + 1].lastgroup in NOUN_WORDS:
+                last += 1
+                segment = part[word.start() : ends[last]]
+            if "ironi" not in segment.lower():
+                scopes.append(segment)
+            continue
+        # The subject: the text before the verb, without what another
+        # reaction or a direction covers.
+        pieces: list[str] = []
+        cursor = subject_start
+        for position in range(index):
+            previous = words[position]
+            if previous.start() < subject_start or previous.lastgroup in APPLAUSE_WORDS:
+                continue
+            pieces.append(part[cursor : previous.start()])
+            cursor = max(cursor, ends[position])
+        pieces.append(part[cursor : word.start()])
+        if "ironi" not in segment.lower():
+            scopes.append(" ".join([*pieces, segment]))
+        subject_start = ends[index]
+    return scopes
+
+
 def applause(direction: str) -> Applause | None:
     """The applause in a stage direction, and the groups it comes from.
 
     « Applaudissements sur les bancs du groupe RN. – Protestations sur les bancs
-    du groupe LFI-NFP » keeps the first part only. A deputy applauding alone
-    (« M. Marc Pena applaudit ») is not attributed to a group.
+    du groupe LFI-NFP » keeps RN only; so does « Les députés du groupe RN
+    applaudissent et huent les députés du groupe LFI-NFP ». A deputy applauding
+    alone (« M. Marc Pena applaudit ») is not attributed to a group.
     """
-    parts = [part.strip(" .") for part in DIRECTION_PART_RE.split(direction) if "applaud" in part.lower()]
-    if not parts:
+    parts: list[str] = []
+    scopes: list[str] = []
+    for part in DIRECTION_PART_RE.split(direction):
+        found = _applause_scopes(part.strip(" ."))
+        if found:
+            parts.append(part.strip(" ."))
+            scopes.extend(found)
+    if not scopes:
         return None
     groups: set[str] = set()
-    for part in parts:
-        groups.update(GROUP_CODES[label] for label in GROUP_LABEL_RE.findall(part))
-        if NON_INSCRITS_RE.search(part):
-            groups.add(NON_INSCRITS)
+    for scope in scopes:
+        groups |= _groups_in(scope)
     return Applause(
         detail=" – ".join(parts) + ".",
         groups=tuple(sorted(groups)),
-        every_bench=any(EVERY_BENCH_RE.search(part) for part in parts),
-        unnamed_benches=any(UNNAMED_BENCHES_RE.search(part) for part in parts),
+        every_bench=any(EVERY_BENCH_RE.search(scope) for scope in scopes),
+        unnamed_benches=any(UNNAMED_BENCHES_RE.search(scope) for scope in scopes),
     )
 
 

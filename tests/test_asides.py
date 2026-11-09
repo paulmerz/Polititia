@@ -42,6 +42,34 @@ class AsideRuleTests(unittest.TestCase):
         self.assertTrue(applause("Applaudissements sur divers bancs.").unnamed_benches)
         self.assertFalse(applause("Applaudissements sur de nombreux bancs du groupe EPR.").unnamed_benches)
 
+    def test_only_the_applauding_groups_count(self) -> None:
+        def groups(direction: str) -> tuple[str, ...] | None:
+            found = applause(direction)
+            return found.groups if found else None
+
+        # Mathilde Panot, 29 octobre 2026: RN and UDR are booed, not applauding.
+        self.assertEqual(
+            groups("Les députés du groupe LFI-NFP se lèvent, applaudissent l’oratrice et huent les députés des groupes RN et UDR."),
+            ("LFI_NFP",),
+        )
+        self.assertIsNone(groups("Applaudissements ironiques sur quelques bancs du groupe RN."))
+        self.assertEqual(
+            groups("Applaudissements sur les bancs du groupe LFI-NFP – « Bravo ! » et applaudissements ironiques sur quelques bancs des groupes RN et UDR."),
+            ("LFI_NFP",),
+        )
+        self.assertEqual(groups("Applaudissements sur les bancs du groupe RN et UDR. –Exclamations sur les bancs du groupe LFI-NFP."), ("RN", "UDR"))
+        self.assertEqual(groups("Applaudissements sur les bancs du groupe LFI-NFP. Exclamations sur les bancs du groupe RN."), ("LFI_NFP",))
+        self.assertEqual(groups("Exclamations sur les bancs du groupe RN et applaudissements sur les bancs du groupe LFI-NFP."), ("LFI_NFP",))
+        self.assertEqual(groups("Applaudissements et exclamations sur les bancs du groupe RN."), ("RN",))
+        self.assertEqual(groups("Applaudissements sur les bancs du groupe LFI-NFP. – L’orateur se tourne vers les bancs du groupe RN."), ("LFI_NFP",))
+        self.assertEqual(groups("Applaudissements sur les bancs du groupe LFI-NFP, tournés vers les bancs du groupe RN."), ("LFI_NFP",))
+        self.assertEqual(
+            groups("Les députés des groupes EPR, SOC et GDR se tournent vers les tribunes et applaudissent."),
+            ("EPR", "GDR", "SOC"),
+        )
+        self.assertEqual(groups("Les députés du groupe DR applaudissent, ainsi que plusieurs députés du groupe EPR."), ("DR", "EPR"))
+        self.assertTrue(applause("Sur tous les bancs, les députés, dont beaucoup se sont levés, applaudissent longuement.").every_bench)
+
     def test_applause_from_an_ally_stays_in_camp(self) -> None:
         self.assertEqual(other_camps(["EcoS", "GDR", "LFI_NFP"], False, False, "LFI_NFP"), 0)
         self.assertEqual(other_camps(["DR", "LFI_NFP"], False, False, "LFI_NFP"), 1)
