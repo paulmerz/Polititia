@@ -48,12 +48,15 @@ uv run python scripts/build_communes.py
   the number of distinct sittings: a distinctive phrase must come from at
   least 3 sittings, and its "×N" ratio is only shown with at least 10 uses by
   the speaker and 20 by everyone else (otherwise the raw counts are shown).
-  The same file stores interruptions, applause (with the applauding groups and
-  how many camps other than the speaker's they span; camps are the June 2024
-  alliances, see `asides.CAMPS`), wording rates (negation, obligation,
-  possibility, pronouns) and named colleagues, read from `asides.jsonl` when
-  that file sits next to the speech index. A database built before applause
-  carried camps still serves, without the applause section.
+  The same file stores interruptions, applause and protests (`reactions.kind`
+  is `applaudissement` or `protestation`: protests, exclamations and boos aimed
+  at the speaker, with the reacting groups and how many camps other than the
+  speaker's they span; camps are the June 2024 alliances, see `asides.CAMPS`),
+  wording rates (negation, obligation, possibility, pronouns) and named
+  colleagues, read from `asides.jsonl` when that file sits next to the speech
+  index. A database built before applause carried camps still serves, without
+  the applause section; one built before protests were read serves without the
+  « chahutés » ranking.
 - `dashboard/build_dashboard_data.py` writes the small first-load bundle
   `dashboard/data/dashboard-data.json` (people, groups, style markers, and
   each deputy's constituency from AMO).
@@ -301,6 +304,14 @@ Four tabs: **Thèmes**, **Député**, **Groupe**, **Assemblée** (plus **Style**
 in the detailed mode). The period selector (whole legislature, last 12 or 3
 months, parliamentary sessions, custom months) applies everywhere, including
 seat sizes, and the state is kept in the URL so any view can be shared.
+
+The **Assemblée** tab ends with a « Palmarès de l'hémicycle » (`palmares` in
+`/api/assembly`, ordered in `server/src/palmares.ts`): the deputies who
+interrupt the most, the most applauded by another camp (camp by camp), the
+most protested at by another camp (« chahutés »), the most applauded by their
+own camp only, and the groups by the share of their applause given to another
+camp. Deputies present in at least 10 sittings, as deputies (a spell in the
+government is not counted), are ranked per sitting or in all.
 
 The search box also takes a commune or a postal code and lists the deputies
 of its constituencies (the welcome card and the deputy picker have the same

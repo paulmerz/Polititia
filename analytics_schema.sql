@@ -75,9 +75,10 @@ CREATE TABLE interruptions (
 );
 CREATE INDEX interruptions_pid_date ON interruptions (pid, date);
 CREATE INDEX interruptions_party_date ON interruptions (party, date);
--- Applause after a sentence. groups lists the applauding groups (codes);
--- other_camps counts the June 2024 alliances, other than the speaker's, among
--- them (0 for a minister). See asides.CAMPS.
+-- Reactions after a sentence: kind is 'applaudissement' or 'protestation'
+-- (protests, exclamations and boos aimed at the speaker). groups lists the
+-- reacting groups (codes); other_camps counts the June 2024 alliances, other
+-- than the speaker's, among them (0 for a minister). See asides.CAMPS.
 CREATE TABLE reactions (
   rid INTEGER PRIMARY KEY,
   pid INTEGER NOT NULL,

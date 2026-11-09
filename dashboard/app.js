@@ -70,6 +70,7 @@ const state = {
   showOthers: false,
   seatMetric: "words",
   ngram: "auto",
+  palmaresOrder: "perSitting",
   markerCategory: null,
   languageMetric: "LD",
   period: { preset: "all", from: "", to: "" },
@@ -2564,9 +2565,118 @@ function renderAssemblyPanel() {
         { help: "Le gouvernement et les présidents de séance apparaissent si la case « Afficher le gouvernement et les autres intervenants » est cochée." },
       )}
       ${block("Les thèmes les plus débattus", barList(themeRows(view.themes), { limit: 12 }), { help: "Nombre d'interventions rattachées à chaque thème. Cliquez pour ouvrir le thème." })}
+      ${palmaresBlock(view.palmares)}
       ${risingBlock(view.rising)}
       ${block("Les mots de l'hémicycle", `<div class="panel-control">${ngramSelect()}</div>${barList(phraseRows(rowsForNgram(view.words?.common), false))}`)}
     </div>`;
+}
+
+// ---------------------------------------------------------------- palmarès
+
+const CAMP_LABELS = {
+  NFP: "Nouveau Front populaire",
+  LIOT: "LIOT",
+  Ensemble: "Ensemble",
+  DR: "Droite républicaine",
+  "RN-UDR": "RN et UDR",
+};
+const PALMARES_ORDERS = [
+  ["perSitting", "Par séance"],
+  ["total", "Au total"],
+];
+const PALMARES_HELP =
+  "Les députés présents dans au moins 10 séances sur la période, en tant que députés : ce qu'ils ont dit ou fait comme membres du gouvernement n'est pas compté. Une séance de présence est une séance où ils ont parlé ou interrompu (la présence elle-même n'est pas publique). « Par séance » rapporte chaque nombre à ces séances, « Au total » le prend tel quel : un député très présent peut être premier au total sans l'être par séance.";
+const CAMP_HELP =
+  "Les camps sont les alliances électorales de juin 2024 (NFP : LFI, socialistes, écologistes, GDR ; Ensemble : EPR, Démocrates, Horizons ; RN et UDR) ; DR et LIOT forment chacun le leur, les non-inscrits ne sont pas classés.";
+
+function palmaresRows(list, singular, pluralForm) {
+  const byTotal = state.palmaresOrder === "total";
+  return (list?.[byTotal ? "total" : "perSitting"] || []).map((row, index) => ({
+    label: `${index + 1}. ${row.name}`,
+    detail: partyLabel(row.party),
+    value: byTotal ? row.count : row.perSitting,
+    // "0,14" and "0,09" would both read "0,1".
+    display: byTotal ? fmtInt(row.count) : `${row.perSitting < 1 ? fmtFixed(row.perSitting, 2) : fmtRate(row.perSitting)} / séance`,
+    title: `${row.name} : ${plural(row.count, singular, pluralForm)} en ${plural(row.sittings, "séance", "séances")}`,
+    color: partyColor(row.party),
+    data: { "select-politician": row.id },
+  }));
+}
+
+function palmaresList(title, help, rows, empty = "Personne sur cette période.") {
+  return `<h4 class="sub-title">${escapeHtml(title)}${infoTip(help)}</h4>${barList(rows, { empty })}`;
+}
+
+function palmaresBlock(palmares) {
+  if (!palmares) {
+    return "";
+  }
+  const toggle = `
+    <div class="segmented palmares-order" role="group" aria-label="Classer les députés">
+      ${PALMARES_ORDERS.map(([value, label]) => {
+        const active = state.palmaresOrder === value;
+        return `<button type="button" data-palmares-order="${value}" class="${active ? "is-active" : ""}" aria-pressed="${active}">${escapeHtml(label)}</button>`;
+      }).join("")}
+    </div>`;
+  const camps = (palmares.crossCamp || [])
+    .map(
+      (camp) => `
+        <p class="palmares-camp">${escapeHtml(CAMP_LABELS[camp.camp] || camp.camp)}</p>
+        ${barList(palmaresRows(camp, "applaudissement", "applaudissements"), { empty: "Aucun applaudissement venu d'un autre camp." })}`,
+    )
+    .join("");
+  const givers = (palmares.givers || []).map((row) => ({
+    label: partyLabel(row.party),
+    detail: `${fmtInt(row.toOtherCamps)} sur ${fmtInt(row.given)}`,
+    value: row.share,
+    display: fmtPct(row.share),
+    title: `${partyLabel(row.party)} : ${plural(row.given, "applaudissement", "applaudissements")} à des députés, dont ${fmtInt(row.toOtherCamps)} à un autre camp et ${fmtInt(row.toOtherGroups)} à un autre groupe, alliés compris`,
+    color: partyColor(row.party),
+    data: { "select-party": row.party },
+  }));
+  const body = `
+    <div class="palmares-head">
+      ${toggle}
+      ${note(`${plural(palmares.deputies, "député classé", "députés classés")} : ceux présents dans au moins ${palmares.minSittings} séances.`)}
+    </div>
+    ${palmaresList(
+      "Ceux qui interrompent le plus",
+      "Les interruptions notées comme telles au compte rendu, lancées depuis les bancs pendant qu'un autre orateur a la parole.",
+      palmaresRows(palmares.interruptions, "interruption", "interruptions"),
+    )}
+    ${
+      palmares.crossCamp
+        ? `<h4 class="sub-title">Les plus applaudis par un autre camp${infoTip(
+            `Les applaudissements que le compte rendu attribue à au moins un groupe d'un autre camp que celui de l'orateur. ${CAMP_HELP} Un groupe seul dans son camp est applaudi « par un autre camp » dès qu'un autre groupe l'applaudit : c'est pourquoi le classement est donné camp par camp.`,
+          )}</h4>${camps}`
+        : ""
+    }
+    ${
+      palmares.protests
+        ? palmaresList(
+            "Les plus chahutés par un autre camp",
+            "Les protestations, exclamations et huées que le compte rendu attribue à au moins un groupe d'un autre camp, juste après une phrase du député. Celles qui visent quelqu'un d'autre (« à l'adresse des députés du groupe… ») ne sont pas comptées.",
+            palmaresRows(palmares.protests, "protestation", "protestations"),
+          )
+        : ""
+    }
+    ${
+      palmares.ownCamp
+        ? palmaresList(
+            "Les plus applaudis par leur seul camp",
+            "Les applaudissements venus uniquement de groupes du camp de l'orateur (son groupe et ses alliés de juin 2024). Ils mesurent le soutien d'un camp aux siens en séance plus que l'accueil fait à l'orateur au-delà.",
+            palmaresRows(palmares.ownCamp, "applaudissement", "applaudissements"),
+          )
+        : ""
+    }
+    ${
+      palmares.givers
+        ? `<h4 class="sub-title">Les groupes qui applaudissent le plus les autres camps${infoTip(
+            `Part des applaudissements d'un groupe adressés à des députés d'un autre camp (ce classement ne dépend pas du choix « Par séance » ou « Au total »). ${CAMP_HELP} DR et LIOT, seuls dans leur camp, comptent donc tous leurs applaudissements aux autres groupes. Le survol d'une barre donne aussi la part adressée à un autre groupe, alliés compris.`,
+          )}</h4>${barList(givers, { empty: "Trop peu d'applaudissements sur cette période." })}`
+        : ""
+    }`;
+  return block("Palmarès de l'hémicycle", body, { help: PALMARES_HELP, id: "palmares" });
 }
 
 // ---------------------------------------------------------------- language style (detailed mode)
@@ -2952,6 +3062,12 @@ document.body.addEventListener("click", (event) => {
   const partyButton = target.closest("[data-select-party]");
   if (partyButton) {
     selectParty(partyButton.dataset.selectParty);
+    return;
+  }
+  const palmaresButton = target.closest("[data-palmares-order]");
+  if (palmaresButton) {
+    state.palmaresOrder = palmaresButton.dataset.palmaresOrder === "total" ? "total" : "perSitting";
+    render();
     return;
   }
   const seatButton = target.closest("[data-seat-metric]");

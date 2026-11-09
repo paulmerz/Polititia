@@ -14,6 +14,7 @@ from asides import (
     last_sentence,
     mention_index,
     other_camps,
+    protest,
     sentence_spans,
     split_name,
     style_counts,
@@ -69,6 +70,28 @@ class AsideRuleTests(unittest.TestCase):
         )
         self.assertEqual(groups("Les députés du groupe DR applaudissent, ainsi que plusieurs députés du groupe EPR."), ("DR", "EPR"))
         self.assertTrue(applause("Sur tous les bancs, les députés, dont beaucoup se sont levés, applaudissent longuement.").every_bench)
+
+    def test_protests_keep_the_benches_that_protest_at_the_speaker(self) -> None:
+        def groups(direction: str) -> tuple[str, ...] | None:
+            found = protest(direction)
+            return found.groups if found else None
+
+        self.assertEqual(groups("Applaudissements sur les bancs des groupes RN et UDR. – Protestations sur les bancs du groupe LFI-NFP."), ("LFI_NFP",))
+        self.assertEqual(groups("Exclamations sur les bancs des groupes EPR et HOR. – Huées sur plusieurs bancs du groupe RN"), ("EPR", "HOR", "RN"))
+        self.assertEqual(groups("Applaudissements et exclamations sur les bancs du groupe RN."), ("RN",))
+        self.assertEqual(groups("Les députés du groupe DR protestent, ainsi que plusieurs députés du groupe EPR."), ("DR", "EPR"))
+        self.assertEqual(groups("Les députés du groupe RN huent l’oratrice."), ("RN",))
+        self.assertIsNone(groups("Applaudissements sur les bancs du groupe LFI-NFP."))
+        self.assertIsNone(groups("Rires et murmures sur les bancs du groupe RN."))
+        # Aimed at other deputies, not at the speaker.
+        self.assertIsNone(groups("Les députés du groupe LFI-NFP se lèvent, applaudissent l’oratrice et huent les députés des groupes RN et UDR."))
+        self.assertIsNone(groups("Huées sur plusieurs bancs des groupes UDR et RN à l’adresse des députés du groupe LFI-NFP."))
+        self.assertEqual(groups("Exclamations sur les bancs du groupe RN à l’adresse de l’orateur."), ("RN",))
+        self.assertEqual(protest("Protestations sur divers bancs.").unnamed_benches, True)
+        self.assertEqual(
+            protest("Applaudissements sur les bancs du groupe SOC. – Vives protestations sur les bancs du groupe RN.").detail,
+            "Vives protestations sur les bancs du groupe RN.",
+        )
 
     def test_applause_from_an_ally_stays_in_camp(self) -> None:
         self.assertEqual(other_camps(["EcoS", "GDR", "LFI_NFP"], False, False, "LFI_NFP"), 0)
@@ -151,7 +174,7 @@ class AsideExtractTests(unittest.TestCase):
     def test_applause_follows_the_sentence_it_answers(self) -> None:
         segments, meta = extract_speeches(str(FIXTURE))
         rows = collect_asides(ET.parse(FIXTURE).getroot(), meta)
-        applauded = [row for row in rows if row["record"] == "reaction"]
+        applauded = [row for row in rows if row["record"] == "reaction" and row["kind"] == "applaudissement"]
         self.assertEqual(
             [(row["quote"], row["groups"]) for row in applauded],
             [
@@ -160,6 +183,11 @@ class AsideExtractTests(unittest.TestCase):
             ],
         )
         self.assertEqual(applauded[1]["detail"], "Applaudissements sur les bancs des groupes LFI-NFP et DR.")
+        protested = [row for row in rows if row["record"] == "reaction" and row["kind"] == "protestation"]
+        self.assertEqual(
+            [(row["quote"], row["groups"], row["detail"]) for row in protested],
+            [("Monsieur Wauquiez, nous devons tenir comme l'a dit M. Bayrou.", ["RN"], "Protestations sur les bancs du groupe RN.")],
+        )
 
     def test_process_glob_writes_asides(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

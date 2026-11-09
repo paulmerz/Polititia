@@ -191,6 +191,33 @@ test("interruptions, applause and wording stay counts, placed among the others",
   );
 });
 
+test("palmarès: deputies ranked per sitting and in all, as deputies only", () => {
+  const palmares = analytics.assembly(analytics.period()).palmares;
+  assert.ok(palmares);
+  // Only Alice 0 and Bob are present in 10 sittings.
+  assert.equal(palmares.deputies, 2);
+  const ids = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
+  // Bob interrupted once more as a minister: not counted, nor that sitting.
+  const bob = palmares.interruptions.total.find((row) => row.id === BOB);
+  assert.deepEqual([bob?.count, bob?.sittings], [10, 13]);
+  assert.deepEqual(ids(palmares.interruptions.perSitting), [BOB, ALICES[0]]);
+  assert.equal(palmares.interruptions.perSitting[1].perSitting, 10 / 14);
+  // Applause from another camp, camp by camp; a camp with no applause is empty.
+  assert.deepEqual(
+    palmares.crossCamp?.map((row) => [row.camp, ids(row.total)]),
+    [["NFP", [ALICES[0]]], ["LIOT", []], ["Ensemble", []], ["DR", []], ["RN-UDR", []]],
+  );
+  assert.equal(palmares.crossCamp?.[0].total[0].count, 3);
+  // Applauded by their own camp only: Bob twice, Alice once (by SOC).
+  assert.deepEqual(palmares.ownCamp?.total.map((row) => [row.id, row.count]), [[BOB, 2], [ALICES[0], 1]]);
+  // Protests from another camp; the RN's own exclamations are not counted.
+  assert.deepEqual(palmares.protests?.total.map((row) => [row.id, row.count]), [[BOB, 2], [ALICES[0], 1]]);
+  // Protest rows never count as applause.
+  assert.equal(analytics.politician(ALICES[0], analytics.period())?.flavor?.applause?.count, 3);
+  // No group gave enough applause to be ranked in this small corpus.
+  assert.deepEqual(palmares.givers, []);
+});
+
 test("a wording rate stands out only at the edges of the chamber", () => {
   const chamber = { words: 100000, negation: 1000, obligation: 300, possibility: 300, je: 500, nous: 500, vous: 800 };
   const pools = Object.fromEntries(

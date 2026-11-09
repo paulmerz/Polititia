@@ -1,4 +1,4 @@
-"""Interruptions, applause, wording rates and named colleagues.
+"""Interruptions, applause, protests, wording rates and named colleagues.
 
 Interruptions and stage directions are kept out of the speech text. What is
 shown later is a count or a repeated line, with the same bar for every deputy.
@@ -75,15 +75,24 @@ DIRECTION_PART_RE = re.compile(r"\s*[–—;]\s*")
 REACTION_WORD_RE = re.compile(
     r"(?P<applause_noun>\bapplaudissements?\b)"
     r"|(?P<applause_verb>\bapplaudi(?:t|ssent|r|ssant)\b)"
-    r"|(?P<other_noun>\b(?:exclamations?|protestations?|murmures?|rires?|sourires?|huées?|brouhaha)\b)"
-    r"|(?P<other_verb>\b(?:huent|hue|protestent|proteste|s[’']exclament|s[’']exclame|désignent|désigne|pointent|interpellent|scandent"
+    r"|(?P<protest_noun>\b(?:exclamations?|protestations?|huées?)\b)"
+    r"|(?P<other_noun>\b(?:murmures?|rires?|sourires?|brouhaha)\b)"
+    r"|(?P<protest_verb>\b(?:huent|hue|protestent|proteste|protester|protestant|s[’']exclament|s[’']exclame|s[’']exclamer|s[’']exclamant)\b)"
+    r"|(?P<other_verb>\b(?:désignent|désigne|pointent|interpellent|scandent"
     r"|quittent|se tournent|se tourne|se tournant|tournés?|tournées?)\b)"
     r"|(?P<target>\b(?:vers|en direction d|à l[’']adresse d|à l[’']intention d)\w*)",
     re.I,
 )
-APPLAUSE_WORDS = {"applause_noun", "applause_verb"}
-NOUN_WORDS = {"applause_noun", "other_noun"}
+APPLAUSE_WORDS = ("applause_noun", "applause_verb")
+# Protests, exclamations and boos: what the benches throw at the speaker.
+PROTEST_WORDS = ("protest_noun", "protest_verb")
+NOUN_WORDS = {"applause_noun", "protest_noun", "other_noun"}
 BENCHES_RE = re.compile(r"\b(?:bancs?|groupes?)\b", re.I)
+# « huent les députés du groupe RN » is aimed at them; « ainsi que plusieurs
+# députés du groupe EPR » joins the subject.
+JOINED_RE = re.compile(r"^[\s,]*(?:ainsi que|de même que|comme|avec)\b", re.I)
+AIMED_AT_OTHERS_RE = re.compile(r"\b(?:bancs?|groupes?|députés?|ministres?|gouvernement|présidente?)\b", re.I)
+AT_SPEAKER_RE = re.compile(r"\borat(?:eur|rice)\b", re.I)
 
 
 def normalize_line(text: str) -> str:
@@ -307,11 +316,11 @@ def find_mentions(text: str, index: MentionIndex, speaker_pid: int) -> list[tupl
     return list(hits.items())
 
 
-# -- applause -----------------------------------------------------------------
+# -- applause and protests ----------------------------------------------------
 
 
 @dataclass(frozen=True)
-class Applause:
+class Reaction:
     detail: str
     groups: tuple[str, ...]
     every_bench: bool
@@ -325,30 +334,45 @@ def _groups_in(text: str) -> set[str]:
     return groups
 
 
-def _applause_scopes(part: str) -> list[str]:
-    """The pieces of one stage direction that say who applauds.
+def _aimed_elsewhere(part: str, words: list[re.Match], ends: list[int], last: int) -> bool:
+    """« Huées … à l'adresse des députés du groupe LFI-NFP »: not at the speaker."""
+    following = last + 1
+    if following >= len(words) or words[following].lastgroup != "target":
+        return False
+    return not AT_SPEAKER_RE.search(part[words[following].start() : ends[following]])
 
-    « Applaudissements » takes the benches that follow it (shared with the next
-    noun in « Applaudissements et exclamations sur les bancs du groupe RN »);
-    « applaudissent » takes its subject, before it, and what follows it up to
-    the next reaction. Whatever another reaction or a direction covers
-    (« huent les députés du groupe RN », « vers les bancs du groupe RN ») is
-    left out, and so is ironic applause.
+
+def _scopes(part: str, kinds: tuple[str, str]) -> list[str]:
+    """The pieces of one stage direction that say who reacts, for one reaction.
+
+    kinds is (noun, verb): APPLAUSE_WORDS or PROTEST_WORDS. The noun
+    (« Applaudissements ») takes the benches that follow it, shared with the
+    next noun in « Applaudissements et exclamations sur les bancs du groupe
+    RN »; the verb (« applaudissent ») takes its subject, before it, and what
+    follows it up to the next reaction. Whatever another reaction or a
+    direction covers (« huent les députés du groupe RN », « vers les bancs du
+    groupe RN ») is left out, and so is ironic applause. A protest aimed at
+    someone else (« huent les députés du groupe RN », « à l'adresse des
+    ministres ») is dropped.
     """
+    noun, verb = kinds
+    protest = kinds == PROTEST_WORDS
     words = list(REACTION_WORD_RE.finditer(part))
     ends = [words[index + 1].start() if index + 1 < len(words) else len(part) for index in range(len(words))]
     scopes: list[str] = []
     subject_start = 0
     for index, word in enumerate(words):
         kind = word.lastgroup
-        if kind not in APPLAUSE_WORDS:
+        if kind not in kinds:
             continue
         segment = part[word.start() : ends[index]]
-        if kind == "applause_noun":
+        if kind == noun:
             last = index
             while not BENCHES_RE.search(segment) and last + 1 < len(words) and words[last + 1].lastgroup in NOUN_WORDS:
                 last += 1
                 segment = part[word.start() : ends[last]]
+            if protest and _aimed_elsewhere(part, words, ends, last):
+                continue
             if "ironi" not in segment.lower():
                 scopes.append(segment)
             continue
@@ -358,29 +382,31 @@ def _applause_scopes(part: str) -> list[str]:
         cursor = subject_start
         for position in range(index):
             previous = words[position]
-            if previous.start() < subject_start or previous.lastgroup in APPLAUSE_WORDS:
+            if previous.start() < subject_start or previous.lastgroup in kinds:
                 continue
             pieces.append(part[cursor : previous.start()])
             cursor = max(cursor, ends[position])
         pieces.append(part[cursor : word.start()])
+        subject_start = ends[index]
+        if protest:
+            target = part[word.end() : ends[index]]
+            joined = JOINED_RE.match(target)
+            if _aimed_elsewhere(part, words, ends, index) or (
+                not joined and AIMED_AT_OTHERS_RE.search(target) and not AT_SPEAKER_RE.search(target)
+            ):
+                continue
+            if not joined:
+                segment = word.group(0)
         if "ironi" not in segment.lower():
             scopes.append(" ".join([*pieces, segment]))
-        subject_start = ends[index]
     return scopes
 
 
-def applause(direction: str) -> Applause | None:
-    """The applause in a stage direction, and the groups it comes from.
-
-    « Applaudissements sur les bancs du groupe RN. – Protestations sur les bancs
-    du groupe LFI-NFP » keeps RN only; so does « Les députés du groupe RN
-    applaudissent et huent les députés du groupe LFI-NFP ». A deputy applauding
-    alone (« M. Marc Pena applaudit ») is not attributed to a group.
-    """
+def _reaction(direction: str, kinds: tuple[str, str]) -> Reaction | None:
     parts: list[str] = []
     scopes: list[str] = []
     for part in DIRECTION_PART_RE.split(direction):
-        found = _applause_scopes(part.strip(" ."))
+        found = _scopes(part.strip(" ."), kinds)
         if found:
             parts.append(part.strip(" ."))
             scopes.extend(found)
@@ -389,7 +415,7 @@ def applause(direction: str) -> Applause | None:
     groups: set[str] = set()
     for scope in scopes:
         groups |= _groups_in(scope)
-    return Applause(
+    return Reaction(
         detail=" – ".join(parts) + ".",
         groups=tuple(sorted(groups)),
         every_bench=any(EVERY_BENCH_RE.search(scope) for scope in scopes),
@@ -397,8 +423,30 @@ def applause(direction: str) -> Applause | None:
     )
 
 
+def applause(direction: str) -> Reaction | None:
+    """The applause in a stage direction, and the groups it comes from.
+
+    « Applaudissements sur les bancs du groupe RN. – Protestations sur les bancs
+    du groupe LFI-NFP » keeps RN only; so does « Les députés du groupe RN
+    applaudissent et huent les députés du groupe LFI-NFP ». A deputy applauding
+    alone (« M. Marc Pena applaudit ») is not attributed to a group.
+    """
+    return _reaction(direction, APPLAUSE_WORDS)
+
+
+def protest(direction: str) -> Reaction | None:
+    """The protests, exclamations and boos in a stage direction, and the groups they come from.
+
+    « Applaudissements sur les bancs du groupe RN. – Protestations sur les bancs
+    du groupe LFI-NFP » keeps LFI-NFP. Boos aimed at other deputies (« Les
+    députés du groupe LFI-NFP huent les députés du groupe RN », « Huées … à
+    l'adresse des députés du groupe RN ») are not counted against the speaker.
+    """
+    return _reaction(direction, PROTEST_WORDS)
+
+
 def other_camps(groups: list[str] | tuple[str, ...], every_bench: bool, unnamed_benches: bool, party: str) -> int:
-    """How many camps other than the speaker's applauded. Ministers have no camp here."""
+    """How many camps other than the speaker's applauded (or protested). Ministers have no camp here."""
     own = CAMPS.get(party)
     if own is None:
         return 0

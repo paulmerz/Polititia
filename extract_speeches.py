@@ -60,7 +60,7 @@ import unicodedata
 from collections import defaultdict
 from xml.etree import ElementTree as ET
 
-from asides import applause, eligible_favorite, is_presidential, last_sentence, normalize_line
+from asides import applause, eligible_favorite, is_presidential, last_sentence, normalize_line, protest
 
 NS = {"an": "http://schemas.assemblee-nationale.fr/referentiel"}
 
@@ -563,6 +563,11 @@ def write_speech_files(
     return written
 
 
+# Reactions kept per sentence: applause, and protests (exclamations and boos
+# included). The kind is stored with each row.
+REACTION_KINDS = {"applaudissement": applause, "protestation": protest}
+
+
 def collect_asides(root: ET.Element, meta: dict[str, str]) -> list[dict]:
     """Interruptions and room reactions, kept out of the speech text."""
     date = normalize_session_date(meta)
@@ -606,26 +611,29 @@ def collect_asides(root: ET.Element, meta: dict[str, str]) -> list[dict]:
                 "words": len(norm.split()),
                 "keep": int(eligible_favorite(speaker, cleaned)),
             })
-        applauded: set[str] = set()
+        answered: dict[str, set[str]] = {kind: set() for kind in REACTION_KINDS}
         for before, direction in _stage_directions(texte):
-            found = applause(direction)
-            # The sentence just before the applause, not the paragraph's last one.
+            # The sentence just before the reaction, not the paragraph's last one.
             quote = last_sentence(_remove_ellipsis(_clean(before)))
             norm = normalize_line(quote)
-            if found is None or not norm or norm in applauded:
+            if not norm:
                 continue
-            applauded.add(norm)
-            rows.append({
-                **base,
-                "record": "reaction",
-                "kind": "applaudissement",
-                "quote": quote,
-                "norm": norm,
-                "detail": found.detail,
-                "groups": list(found.groups),
-                "every_bench": int(found.every_bench),
-                "unnamed_benches": int(found.unnamed_benches),
-            })
+            for kind, read in REACTION_KINDS.items():
+                found = read(direction)
+                if found is None or norm in answered[kind]:
+                    continue
+                answered[kind].add(norm)
+                rows.append({
+                    **base,
+                    "record": "reaction",
+                    "kind": kind,
+                    "quote": quote,
+                    "norm": norm,
+                    "detail": found.detail,
+                    "groups": list(found.groups),
+                    "every_bench": int(found.every_bench),
+                    "unnamed_benches": int(found.unnamed_benches),
+                })
     return rows
 
 
