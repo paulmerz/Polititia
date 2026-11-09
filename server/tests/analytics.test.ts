@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Analytics, PeriodError } from "../src/analytics.ts";
+import { median, rankAmong, wordingStandouts, WORDING_KEYS } from "../src/flavor.ts";
 import { ALICES, BOB, CARLA } from "./analytics-fixture.ts";
 import { analyticsFixturePath } from "./helpers.ts";
 
@@ -142,24 +143,69 @@ test("assembly view: chamber sizes follow the period", () => {
   assert.equal(june.words.common["1"][0].ngram, "sécurité");
 });
 
-test("interruptions, reactions and wording stay counts, not labels", () => {
+test("interruptions, applause and wording stay counts, placed among the others", () => {
   const person = analytics.politician(ALICES[0], analytics.period());
   assert.ok(person?.flavor);
-  assert.equal(person.flavor.interruptions.count, 4);
-  assert.equal(person.flavor.interruptions.favorites[0].quote, "C'est une blague !");
-  assert.equal(person.flavor.interruptions.favorites[0].count, 4);
-  assert.equal(person.flavor.interruptions.favorites[0].sittings, 4);
-  assert.equal(person.flavor.reactions.laughs[0].quote, "Nous refusons ce texte.");
-  assert.equal(person.flavor.reactions.laughs[0].detail, "Rires sur divers bancs.");
+  const interruptions = person.flavor.interruptions;
+  assert.equal(interruptions.count, 10);
+  // 4 sittings with a speech, 10 with an interruption.
+  assert.equal(interruptions.sittings, 14);
+  assert.equal(interruptions.perSitting, 10 / 14);
+  // Bob interrupts 10 times in 13 sittings: more often than Alice.
+  assert.deepEqual(interruptions.rank, { higher: 1, lower: 0, pool: 2 });
+  assert.equal(interruptions.favorites[0].quote, "C'est une blague !");
+  assert.equal(interruptions.favorites[0].count, 4);
+  assert.equal(interruptions.favorites[0].sittings, 4);
+
+  const applause = person.flavor.applause;
+  assert.ok(applause);
+  // Applause from an ally (SOC) is not counted; "Bravo !" is counted, not quoted.
+  assert.equal(applause.count, 3);
+  assert.deepEqual(applause.rank, { higher: 0, lower: 1, pool: 2 });
+  assert.deepEqual(
+    applause.moments.map((row) => row.quote),
+    ["Nous tiendrons bon jusqu'au bout.", "Nous refusons ce texte injuste et brutal."],
+  );
+  assert.equal(applause.moments[0].detail, "Applaudissements sur tous les bancs.");
+  assert.equal("name" in applause.moments[0], false);
+
   assert.equal(person.flavor.named[0].id, BOB);
   assert.equal(person.flavor.named[0].count, 3);
   assert.match(person.flavor.wording.sentence, /obligations/);
+  // One deputy with enough words is no basis for a comparison.
+  assert.deepEqual(person.flavor.wording.standouts, []);
   assert.equal(analytics.politician(ALICES[0], analytics.period("2025-01", "2025-01"))?.flavor?.interruptions.favorites.length, 0);
+  // Carla is in the government: never ranked.
+  assert.equal(analytics.politician(CARLA, analytics.period())?.flavor?.interruptions.rank, null);
 
   const party = analytics.party("LFI_NFP", analytics.period());
-  assert.equal(party?.flavor?.interruptions.count, 4);
-  assert.equal(party?.flavor?.interruptions.perMember, 4 / 12);
+  assert.equal(party?.flavor?.interruptions.count, 10);
+  assert.equal(party?.flavor?.interruptions.perMember, 10 / 12);
+  assert.deepEqual(party?.flavor?.interruptions.rank, { higher: 1, lower: 0, pool: 2 });
   assert.equal(party?.flavor?.interruptions.favorites[0].quote, "C'est une blague !");
+  assert.equal(party?.flavor?.applause?.count, 3);
+  assert.equal(party?.flavor?.applause?.moments[0].name, "M. Alice 0");
+  assert.deepEqual(
+    party?.flavor?.wording.standouts.map((row) => row.key),
+    ["obligation", "nous", "possibility"],
+  );
+});
+
+test("a wording rate stands out only at the edges of the chamber", () => {
+  const chamber = { words: 100000, negation: 1000, obligation: 300, possibility: 300, je: 500, nous: 500, vous: 800 };
+  const pools = Object.fromEntries(
+    WORDING_KEYS.map((key) => [key, Array.from({ length: 30 }, (_, index) => 5 + index * 0.2)]),
+  ) as Record<(typeof WORDING_KEYS)[number], number[]>;
+  // 12 négations per 1 000 words is above the pool's top decile; 5 « vous » is at its bottom.
+  const style = { words: 2000, negation: 24, obligation: 14, possibility: 14, je: 14, nous: 14, vous: 10 };
+  assert.deepEqual(
+    wordingStandouts(style, chamber, pools).map((row) => row.key),
+    ["vous", "negation"],
+  );
+  assert.deepEqual(wordingStandouts({ ...style, words: 900 }, chamber, pools), []);
+  assert.deepEqual(rankAmong(2, [1, 2, 3, 4]), { higher: 2, lower: 1, pool: 4 });
+  assert.equal(rankAmong(2, [2]), null);
+  assert.equal(median([3, 1, 2, 10]), 2.5);
 });
 
 test("a rising phrase needs a full previous window", () => {

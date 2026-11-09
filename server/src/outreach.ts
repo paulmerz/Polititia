@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Analytics } from "./analytics.ts";
 import type { DashboardBundle } from "./data.ts";
+import { percentText } from "./percent.ts";
 import { headlineForm, signaturePhrase } from "./share.ts";
 
 // Launch material built from the corpus: one mail-merge row per sitting
@@ -64,7 +65,7 @@ export function fmtInt(value: number): string {
 }
 
 function fmtPct(share: number): string {
-  return `${fmtInt(share * 100)} %`;
+  return percentText(share);
 }
 
 function fmtRatio(ratio: number): string {

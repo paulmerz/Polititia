@@ -110,9 +110,23 @@ function fmtCompact(value) {
   return Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
 }
 
+// 99,65 % is not "100 %" and 0,3 % is not "0 %": a share that is not whole
+// keeps up to two more decimals rather than look whole (as server/src/percent.ts).
 function fmtPct(value, digits = 0) {
   const pct = Number(value || 0) * 100;
-  return `${pct.toLocaleString("fr-FR", { maximumFractionDigits: digits, minimumFractionDigits: 0 })}\u202f%`;
+  const round = (number, places) => Math.round(number * 10 ** places) / 10 ** places;
+  const looksWhole = (shown) => (pct < 100 && shown >= 100) || (pct > 0 && shown <= 0);
+  let places = digits;
+  while (places < digits + 2 && looksWhole(round(pct, places))) {
+    places += 1;
+  }
+  let shown = round(pct, places);
+  if (pct < 100 && shown >= 100) {
+    shown = 100 - 10 ** -places;
+  } else if (pct > 0 && shown <= 0) {
+    shown = 10 ** -places;
+  }
+  return `${shown.toLocaleString("fr-FR", { maximumFractionDigits: places, minimumFractionDigits: 0 })}\u202f%`;
 }
 
 function fmtDate(iso) {
@@ -1858,8 +1872,15 @@ function votesBlock(person, view) {
     state.themeId && votes.themeVotes !== null && votes.themeVotes !== undefined
       ? note(`Dont ${plural(votes.themeVotes, "vote", "votes")} sur des textes du thème « ${themeLabel(state.themeId)} ».`)
       : "";
+  const apart = loyalty !== null ? votes.comparable - votes.withGroup : 0;
+  const apartLine = apart
+    ? note(
+        `A voté autrement que son groupe ${plural(apart, "fois", "fois")} sur ${plural(votes.comparable, "vote", "votes")} où le groupe avait une position majoritaire.`,
+      )
+    : "";
   return `
     ${statGrid(items)}
+    ${apartLine}
     ${themeLine}
     ${
       votes.keyVotesHeld && !isMinister
@@ -1976,7 +1997,7 @@ function fmtFixed(value, digits = 1) {
   return Number(value || 0).toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-function asideQuotes(rows) {
+function asideQuotes(rows, meta) {
   if (!rows?.length) {
     return "";
   }
@@ -1987,7 +2008,7 @@ function asideQuotes(rows) {
           <p>« ${escapeHtml(row.quote)} »${row.detail ? ` <span class="aside-detail">(${escapeHtml(row.detail)})</span>` : ""}</p>
           <footer>
             ${row.id ? `<button class="excerpt-speaker" type="button" data-select-politician="${escapeHtml(row.id)}">${escapeHtml(row.name)}</button>` : ""}
-            <span>${escapeHtml(fmtDate(row.date))}${row.debate ? ` · débat « ${escapeHtml(row.debate)} »` : ""} · ${plural(row.count, "fois", "fois")}, ${plural(row.sittings, "séance", "séances")}</span>
+            <span>${escapeHtml(meta(row))}</span>
             ${row.url ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">Compte rendu ↗</a>` : ""}
           </footer>
         </blockquote>`,
@@ -1995,34 +2016,107 @@ function asideQuotes(rows) {
     .join("")}</div>`;
 }
 
-function interruptionNote(interruptions, who) {
-  if (!interruptions?.count) {
+const debateSuffix = (row) => (row.debate ? ` · débat « ${row.debate} »` : "");
+const repeatedMeta = (row) =>
+  `${plural(row.count, "fois", "fois")} en ${plural(row.sittings, "séance", "séances")}, la dernière le ${fmtDate(row.date)}${debateSuffix(row)}`;
+const namedMeta = (row) => `${plural(row.count, "fois", "fois")} en ${plural(row.sittings, "séance", "séances")} · dernier exemple le ${fmtDate(row.date)}`;
+const momentMeta = (row) => `${fmtDate(row.date)}${debateSuffix(row)}`;
+
+// "plus que 97 % des députés" or, below the middle, "moins que 87 % des députés".
+function rankShare(rank, more, less) {
+  if (!rank?.pool) {
     return "";
   }
-  const presence = who === "elle" ? "elle est présente" : who === "il" ? "il est présent" : "ses membres sont présents";
-  const parts = [plural(interruptions.count, "interruption", "interruptions")];
-  if (interruptions.perMember != null) {
-    parts.push(`soit ${fmtFixed(interruptions.perMember)} par membre`);
-  }
-  if (interruptions.perHundred != null) {
-    parts.push(`soit ${fmtFixed(interruptions.perHundred)} pour 100 discours des autres`);
-  }
-  return `${parts.join(", ")}, sur les séances où ${presence}.`;
+  return rank.lower >= rank.higher
+    ? `${more} <strong>${fmtPct(rank.lower / rank.pool)}</strong> des députés`
+    : `${less} <strong>${fmtPct(rank.higher / rank.pool)}</strong> des députés`;
 }
 
-function wordingNote(wording) {
-  if (!wording || wording.words < 200) {
+function groupPlace(rank, first) {
+  if (!rank?.pool) {
     return "";
   }
-  const rate = wording.perThousand || {};
+  return rank.higher === 0 ? first : `${rank.higher + 1}<sup>e</sup> groupe sur ${rank.pool}`;
+}
+
+// French keeps the singular below 2: "1,5 interruption".
+function unitOf(value, singular, pluralForm) {
+  return Number(value) >= 2 ? pluralForm : singular;
+}
+
+// "0,8" but "236": a decimal says nothing on a large number.
+function fmtRate(value) {
+  return Number(value) >= 10 ? fmtInt(Math.round(Number(value))) : fmtFixed(value);
+}
+
+function interruptionSentence(interruptions, who) {
+  if (who === "groupe") {
+    if (interruptions.perMember == null) {
+      return "";
+    }
+    const place = groupPlace(interruptions.rank, "le groupe qui interrompt le plus");
+    return `<strong>${fmtRate(interruptions.perMember)}</strong> ${unitOf(interruptions.perMember, "interruption", "interruptions")} par membre${place ? ` : ${place}` : ""}.`;
+  }
+  if (!interruptions.sittings) {
+    return "";
+  }
+  const rate = `<strong>${fmtRate(interruptions.perSitting)}</strong> ${unitOf(interruptions.perSitting, "interruption", "interruptions")} par séance`;
+  const rank = rankShare(interruptions.rank, "plus que", "moins que");
+  if (!rank) {
+    return `${rate} (${escapeHtml(plural(interruptions.count, "interruption", "interruptions"))} en ${escapeHtml(plural(interruptions.sittings, "séance", "séances"))}).`;
+  }
+  return `${rate} : ${rank}${interruptions.median != null ? ` (médiane : ${fmtFixed(interruptions.median)})` : ""}.`;
+}
+
+function applauseSentence(applause, who) {
+  if (who === "groupe") {
+    if (applause.perMember == null) {
+      return "";
+    }
+    const place = groupPlace(applause.rank, "le groupe le plus applaudi au-delà de son camp");
+    return `<strong>${escapeHtml(plural(applause.count, "fois", "fois"))}</strong>, soit ${fmtRate(applause.perMember)} par membre${place ? ` : ${place}` : ""}.`;
+  }
+  if (!applause.sittings) {
+    return "";
+  }
+  if (!applause.count) {
+    const alike = applause.rank?.pool ? `, comme ${fmtPct((applause.rank.pool - applause.rank.higher) / applause.rank.pool)} des députés` : "";
+    return `Aucun applaudissement venu d'un autre camp sur la période${alike}.`;
+  }
+  // The rank compares rates per sitting; the sentence keeps the plain count.
+  const rank = rankShare(applause.rank, "plus souvent que", "moins souvent que");
+  return `<strong>${escapeHtml(plural(applause.count, "fois", "fois"))}</strong> sur la période${rank ? ` : ${rank}` : ""}.`;
+}
+
+const WORDING_LABELS = {
+  negation: "Négations (« ne … pas »)",
+  obligation: "Obligations (« doit », « il faut »)",
+  possibility: "Possibilités (« peut »)",
+  je: "« je »",
+  nous: "« nous »",
+  vous: "« vous »",
+};
+
+function wordingNote(wording, who) {
+  const standouts = wording?.standouts || [];
+  if (!wording || (!wording.sentence && !standouts.length)) {
+    return "";
+  }
+  const items = standouts.map((row) => {
+    const more = row.ratio > 1;
+    const compare =
+      who === "groupe"
+        ? `${fmtFixed(more ? row.ratio : 1 / row.ratio)} fois ${more ? "plus" : "moins"} que l'hémicycle`
+        : `parmi les 10 % de députés qui en emploient le ${more ? "plus" : "moins"}`;
+    return `<li><strong>${escapeHtml(WORDING_LABELS[row.key] || row.key)}</strong> : ${fmtFixed(row.rate)} pour 1 000 mots, ${compare} (hémicycle : ${fmtFixed(row.chamber)}).</li>`;
+  });
   return `
     ${wording.sentence ? `<p class="lead-sentence">${escapeHtml(wording.sentence)}</p>` : ""}
-    ${note(`Pour 1 000 mots : ${fmtFixed(rate.negation)} négations, ${fmtFixed(rate.obligation)} obligations (« doit », « il faut »), ${fmtFixed(rate.possibility)} possibilités (« peut »).`)}
-    ${note(`« nous » ${fmtFixed(rate.nous)}, « je » ${fmtFixed(rate.je)}, « vous » ${fmtFixed(rate.vous)}, pour 1 000 mots.`)}`;
+    ${items.length ? `<ul class="wording-list">${items.join("")}</ul>` : ""}`;
 }
 
 const SESSION_HELP =
-  "Les interruptions favorites sont les répliques courtes reprises au moins 3 fois, dans 3 séances, et plus souvent que par le reste de l'hémicycle. Le taux compte toutes les interruptions, rapportées aux discours des autres sur les séances où la personne est là. Les rires et les applaudissements d'un autre banc sont les didascalies du compte rendu, quand elles reviennent au moins deux fois. « Qui il nomme » compte les « monsieur » ou « madame » suivis du nom d'un autre député. Les taux pour 1 000 mots décrivent la formulation, pas un caractère.";
+  "Interruptions : les apartés notés comme tels au compte rendu, rapportés aux séances où la personne a parlé ou interrompu (la présence elle-même n'est pas publique) et comparés aux députés présents dans au moins 10 séances. Une réplique fétiche revient au moins 3 fois, dans 3 séances, et plus souvent que dans le reste de l'hémicycle. Applaudissements : ceux que le compte rendu attribue à des groupes d'un autre camp, comparés de la même façon ; seules les phrases d'au moins six mots sont citées. Les camps sont les alliances électorales de juin 2024 (NFP : LFI, socialistes, écologistes, GDR ; Ensemble : EPR, Démocrates, Horizons ; RN et UDR), DR, LIOT et les non-inscrits formant chacun le leur. « Qui il nomme » : « monsieur », « madame » ou le prénom, suivis du nom d'un autre député. Formulation : taux pour 1 000 mots, affichés quand ils sont parmi les 10 % les plus hauts ou les plus bas des députés ; ils décrivent une façon de parler, pas un caractère.";
 
 function sessionBlock(view, who) {
   const flavor = view?.flavor;
@@ -2031,26 +2125,36 @@ function sessionBlock(view, who) {
   }
   const interruptions = flavor.interruptions || {};
   const favorites = interruptions.favorites || [];
-  const reactions = [...(flavor.reactions?.laughs || []), ...(flavor.reactions?.applause || [])];
+  const applause = flavor.applause;
+  const moments = applause?.moments || [];
   const named = flavor.named || [];
-  const wording = wordingNote(flavor.wording);
-  if (!interruptions.count && !favorites.length && !reactions.length && !named.length && !wording) {
+  const wording = wordingNote(flavor.wording, who);
+  const interruptionLine = interruptionSentence(interruptions, who);
+  const applauseLine = applause ? applauseSentence(applause, who) : "";
+  if (!interruptionLine && !favorites.length && !applauseLine && !named.length && !wording) {
     return "";
   }
   const namesTitle = who === "elle" ? "Qui elle nomme" : who === "groupe" ? "Qui le groupe nomme" : "Qui il nomme";
   const formTitle = who === "elle" ? "Comment elle formule" : who === "groupe" ? "Comment le groupe formule" : "Comment il formule";
+  const applauseTitle = who === "elle" ? "Applaudie au-delà de son camp" : "Applaudi au-delà de son camp";
   return block(
     "En séance",
     `
       ${
-        interruptions.count || favorites.length
-          ? `<h4 class="sub-title">Ses interruptions favorites</h4>
-             ${interruptionNote(interruptions, who) ? note(interruptionNote(interruptions, who)) : ""}
-             ${favorites.length ? asideQuotes(favorites) : note("Aucune réplique reprise au moins 3 fois, dans 3 séances, et plus souvent que par le reste de l'hémicycle.")}`
+        interruptionLine || favorites.length
+          ? `<h4 class="sub-title">Ses interruptions</h4>
+             ${interruptionLine ? `<p class="rank-sentence">${interruptionLine}</p>` : ""}
+             ${favorites.length ? asideQuotes(favorites, repeatedMeta) : note("Pas de réplique fétiche sur la période.")}`
           : ""
       }
-      ${reactions.length ? `<h4 class="sub-title">Ce qui fait réagir la salle</h4>${asideQuotes(reactions)}` : ""}
-      ${named.length ? `<h4 class="sub-title">${namesTitle}</h4>${asideQuotes(named)}` : ""}
+      ${
+        applauseLine || moments.length
+          ? `<h4 class="sub-title">${applauseTitle}</h4>
+             ${applauseLine ? `<p class="rank-sentence">${applauseLine}</p>` : ""}
+             ${asideQuotes(moments, momentMeta)}`
+          : ""
+      }
+      ${named.length ? `<h4 class="sub-title">${namesTitle}</h4>${asideQuotes(named, namedMeta)}` : ""}
       ${wording ? `<h4 class="sub-title">${formTitle}</h4>${wording}` : ""}`,
     { help: SESSION_HELP },
   );

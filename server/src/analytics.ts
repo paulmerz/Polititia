@@ -2,17 +2,25 @@ import { existsSync, statSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { dirichletLogOdds, MIN_COUNT, type LogOddsRow } from "./lexical.ts";
 import {
-  perHundred,
+  median,
   perMember,
   perThousand,
   previousWindow,
+  rankAmong,
   risingPhrases,
   selectFavorites,
-  selectReactions,
+  selectMoments,
   wordingSentence,
+  wordingStandouts,
+  MENTION_MIN_COUNT,
+  MENTION_MIN_SITTINGS,
   MIN_RISE_COUNT,
+  RANK_MIN_SITTINGS,
+  WORDING_KEYS,
+  WORDING_MIN_WORDS,
   type CountedLine,
   type StyleCounts,
+  type WordingKey,
   type WordingSubject,
 } from "./flavor.ts";
 
@@ -36,6 +44,7 @@ const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,200}$/;
 // Groups that are not parliamentary groups: government members and people
 // heard in the chamber without a deputy mandate.
 const NON_DEPUTY_PARTIES = new Set(["GOUV", "UNLABELED"]);
+const NON_INSCRITS = "NI";
 const CACHE_LIMIT = 400;
 
 export type ThemeCatalogEntry = { id: string; label: string; type: string; parent: string | null; committee: string };
@@ -72,6 +81,18 @@ type VoteRow = {
 };
 
 type GroupCounts = { pour: number; contre: number; abstention: number; members?: number };
+
+type ChamberEntry = { sittings: number; interruptions: number; applause: number; style: StyleCounts };
+type GroupEntry = { members: number; interruptions: number; applause: number };
+type Chamber = {
+  people: Map<number, ChamberEntry>;
+  // Deputies present often enough to be ranked.
+  ranked: Set<number>;
+  interruptionRates: number[];
+  applauseRates: number[];
+  wordingPools: Record<WordingKey, number[]>;
+  groups: Map<string, GroupEntry>;
+};
 
 export function reportUrl(sessionUid: string): string {
   return sessionUid ? `${REPORT_URL}${encodeURIComponent(sessionUid)}` : "";
@@ -117,6 +138,8 @@ export class Analytics {
   // Databases built before the sittings column keep working, unfiltered.
   private readonly hasSittings: boolean;
   private readonly hasFlavor: boolean;
+  // Databases built before applause was tied to camps have no applause section.
+  private readonly hasApplause: boolean;
   private cache = new Map<string, unknown>();
   private voteGroups = new Map<number, { majority: Record<string, string>; counts: Record<string, GroupCounts> }>();
 
@@ -145,6 +168,9 @@ export class Analytics {
     this.hasFlavor = ["interruptions", "reactions", "person_style_month", "global_style_month", "mentions"].every((name) =>
       tables.has(name),
     );
+    this.hasApplause =
+      this.hasFlavor &&
+      (this.db.prepare("PRAGMA table_info(reactions)").all() as Array<{ name: string }>).some((column) => column.name === "other_camps");
   }
 
   close(): void {
@@ -977,7 +1003,7 @@ export class Analytics {
     });
   }
 
-  // -- interruptions, reactions, wording, rising words ----------------------
+  // -- interruptions, applause, wording, rising words -----------------------
 
   private emptyStyle(): StyleCounts {
     return { words: 0, negation: 0, obligation: 0, possibility: 0, je: 0, nous: 0, vous: 0 };
@@ -995,6 +1021,10 @@ export class Analytics {
          FROM ${table} WHERE ${where}`,
       )
       .get(...params) as StyleCounts;
+    return this.styleOf(row);
+  }
+
+  private styleOf(row: StyleCounts): StyleCounts {
     return {
       words: Number(row.words),
       negation: Number(row.negation),
@@ -1006,49 +1036,143 @@ export class Analytics {
     };
   }
 
-  private wordingView(style: StyleCounts, chamber: StyleCounts, subject: WordingSubject) {
-    const rate = (count: number) => perThousand(count, style.words);
+  private wordingView(style: StyleCounts, chamber: StyleCounts, subject: WordingSubject, pools: Record<WordingKey, number[]> | null) {
     return {
       words: style.words,
-      perThousand: {
-        negation: rate(style.negation),
-        obligation: rate(style.obligation),
-        possibility: rate(style.possibility),
-        je: rate(style.je),
-        nous: rate(style.nous),
-        vous: rate(style.vous),
-      },
       sentence: wordingSentence(style, chamber, subject),
+      standouts: wordingStandouts(style, chamber, pools),
     };
   }
 
-  private interruptionVolume(scope: "pid" | "party", id: number | string, period: Period) {
-    const first = period.firstDay;
-    const last = period.lastDay;
-    const column = scope === "pid" ? "pid" : "party";
-    const row = this.db
-      .prepare(
-        `WITH present AS (
-           SELECT session_uid FROM speeches WHERE ${column} = ? AND date BETWEEN ? AND ?
+  // Every deputy and group over the period, so that one can be placed among
+  // the others. Deputies are ranked once present in RANK_MIN_SITTINGS sittings
+  // (a sitting where they spoke or interrupted: attendance itself is not public).
+  private chamber(period: Period): Chamber {
+    return this.cached(`chamber:${period.from}:${period.to}`, () => {
+      const days = [period.firstDay, period.lastDay];
+      const deputies = new Set(
+        (this.db.prepare("SELECT pid, party FROM politicians").all() as Array<{ pid: number; party: string }>)
+          .filter((row) => !NON_DEPUTY_PARTIES.has(row.party))
+          .map((row) => Number(row.pid)),
+      );
+      const people = new Map<number, ChamberEntry>();
+      const entry = (pid: number) => {
+        let found = people.get(pid);
+        if (!found) {
+          found = { sittings: 0, interruptions: 0, applause: 0, style: this.emptyStyle() };
+          people.set(pid, found);
+        }
+        return found;
+      };
+      const counts = (sql: string, params: SQLInputValue[]) => this.db.prepare(sql).all(...params) as Array<{ key: number | string; n: number }>;
+      for (const row of counts(
+        `SELECT pid AS key, COUNT(DISTINCT session_uid) AS n FROM (
+           SELECT pid, session_uid FROM speeches WHERE date BETWEEN ? AND ?
+           UNION ALL
+           SELECT pid, session_uid FROM interruptions WHERE pid IS NOT NULL AND date BETWEEN ? AND ?
+         ) GROUP BY pid`,
+        [...days, ...days],
+      )) {
+        entry(Number(row.key)).sittings = Number(row.n);
+      }
+      for (const row of counts("SELECT pid AS key, COUNT(*) AS n FROM interruptions WHERE pid IS NOT NULL AND date BETWEEN ? AND ? GROUP BY pid", days)) {
+        entry(Number(row.key)).interruptions = Number(row.n);
+      }
+      if (this.hasApplause) {
+        for (const row of counts("SELECT pid AS key, COUNT(*) AS n FROM reactions WHERE other_camps >= 1 AND date BETWEEN ? AND ? GROUP BY pid", days)) {
+          entry(Number(row.key)).applause = Number(row.n);
+        }
+      }
+      const styles = this.db
+        .prepare(
+          `SELECT pid, SUM(words) AS words, SUM(negation) AS negation, SUM(obligation) AS obligation, SUM(possibility) AS possibility,
+                  SUM(je) AS je, SUM(nous) AS nous, SUM(vous) AS vous
+           FROM person_style_month WHERE month BETWEEN ? AND ? GROUP BY pid`,
+        )
+        .all(period.from, period.to) as Array<StyleCounts & { pid: number }>;
+      for (const row of styles) {
+        entry(Number(row.pid)).style = this.styleOf(row);
+      }
+
+      const ranked = new Set<number>();
+      const interruptionRates: number[] = [];
+      const applauseRates: number[] = [];
+      const wordingPools = Object.fromEntries(WORDING_KEYS.map((key) => [key, [] as number[]])) as Record<WordingKey, number[]>;
+      for (const [pid, row] of people) {
+        if (!deputies.has(pid)) {
+          continue;
+        }
+        if (row.sittings >= RANK_MIN_SITTINGS) {
+          ranked.add(pid);
+          interruptionRates.push(row.interruptions / row.sittings);
+          applauseRates.push(row.applause / row.sittings);
+        }
+        if (row.style.words >= WORDING_MIN_WORDS) {
+          for (const key of WORDING_KEYS) {
+            wordingPools[key].push(perThousand(row.style[key], row.style.words));
+          }
+        }
+      }
+
+      const groups = new Map<string, GroupEntry>();
+      const group = (party: string) => {
+        let found = groups.get(party);
+        if (!found) {
+          found = { members: 0, interruptions: 0, applause: 0 };
+          groups.set(party, found);
+        }
+        return found;
+      };
+      for (const row of counts(
+        `SELECT party AS key, COUNT(DISTINCT pid) AS n FROM (
+           SELECT party, pid FROM speeches WHERE date BETWEEN ? AND ?
            UNION
-           SELECT session_uid FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ?
-         )
-         SELECT
-           (SELECT COUNT(*) FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ?) AS count,
-           (SELECT COUNT(*) FROM (
-              SELECT pid FROM speeches WHERE ${column} = ? AND date BETWEEN ? AND ? AND pid IS NOT NULL
-              UNION
-              SELECT pid FROM interruptions WHERE ${column} = ? AND date BETWEEN ? AND ? AND pid IS NOT NULL
-            )) AS members,
-           (SELECT COUNT(*) FROM speeches
-            WHERE ${column} != ? AND date BETWEEN ? AND ? AND session_uid IN (SELECT session_uid FROM present)) AS others`,
-      )
-      .get(id, first, last, id, first, last, id, first, last, id, first, last, id, first, last, id, first, last) as {
-      count: number;
-      members: number;
-      others: number;
+           SELECT party, pid FROM interruptions WHERE pid IS NOT NULL AND date BETWEEN ? AND ?
+         ) GROUP BY party`,
+        [...days, ...days],
+      )) {
+        group(String(row.key)).members = Number(row.n);
+      }
+      for (const row of counts("SELECT party AS key, COUNT(*) AS n FROM interruptions WHERE date BETWEEN ? AND ? GROUP BY party", days)) {
+        group(String(row.key)).interruptions = Number(row.n);
+      }
+      if (this.hasApplause) {
+        for (const row of counts("SELECT party AS key, COUNT(*) AS n FROM reactions WHERE other_camps >= 1 AND date BETWEEN ? AND ? GROUP BY party", days)) {
+          group(String(row.key)).applause = Number(row.n);
+        }
+      }
+      for (const party of [...groups.keys()]) {
+        if (!party || NON_DEPUTY_PARTIES.has(party) || !groups.get(party)?.members) {
+          groups.delete(party);
+        }
+      }
+      return { people, ranked, interruptionRates, applauseRates, wordingPools, groups };
+    });
+  }
+
+  private personRate(chamber: Chamber, pid: number, count: number, pool: number[]) {
+    const sittings = chamber.people.get(pid)?.sittings || 0;
+    const perSitting = sittings ? count / sittings : null;
+    return {
+      count,
+      sittings,
+      perSitting,
+      median: median(pool),
+      rank: perSitting !== null && chamber.ranked.has(pid) ? rankAmong(perSitting, pool) : null,
     };
-    return { count: Number(row.count), members: Number(row.members), others: Number(row.others) };
+  }
+
+  private groupRate(chamber: Chamber, party: string, field: "interruptions" | "applause") {
+    const own = chamber.groups.get(party);
+    const count = own ? own[field] : 0;
+    const share = own ? perMember(count, own.members) : null;
+    // Non-inscrits are not a group: they are not ranked among the groups.
+    const pool = [...chamber.groups].filter(([code]) => code !== NON_INSCRITS).map(([, row]) => row[field] / row.members);
+    return {
+      count,
+      perMember: share,
+      rank: share !== null && party !== NON_INSCRITS ? rankAmong(share, pool) : null,
+    };
   }
 
   private favoriteLines(where: string, params: SQLInputValue[], restWhere: string, restParams: SQLInputValue[]) {
@@ -1102,41 +1226,37 @@ export class Analytics {
     }));
   }
 
-  private reactionLines(where: string, params: SQLInputValue[], kind: string, otherBenchOnly: boolean) {
+  // Applauded sentences, the applause coming from the most camps first.
+  private applauseMoments(where: string, params: SQLInputValue[], period: Period, withNames: boolean) {
+    if (!this.hasApplause) {
+      return [];
+    }
     const rows = this.db
       .prepare(
-        `SELECT norm, quote, detail, date, session_uid AS sessionUid, debate_title AS debate
-         FROM reactions WHERE kind = ? AND ${where}${otherBenchOnly ? " AND other_bench = 1" : ""}`,
+        `SELECT r.quote, r.norm, r.detail, r.date, r.session_uid AS sessionUid, r.debate_title AS debate, p.id, p.name
+         FROM reactions r JOIN politicians p ON p.pid = r.pid
+         WHERE r.other_camps >= 1 AND ${where} AND r.date BETWEEN ? AND ?
+         ORDER BY r.other_camps DESC, r.date DESC
+         LIMIT 60`,
       )
-      .all(kind, ...params) as Array<{ norm: string; quote: string; detail: string; date: string; sessionUid: string; debate: string }>;
-    const grouped = new Map<string, { quote: string; detail: string; count: number; date: string; sessionUid: string; debate: string; sessions: Set<string> }>();
-    for (const row of rows) {
-      const current = grouped.get(row.norm);
-      if (!current) {
-        grouped.set(row.norm, { ...row, count: 1, sessions: new Set([row.sessionUid]) });
-        continue;
-      }
-      current.count += 1;
-      current.sessions.add(row.sessionUid);
-      if (row.date >= current.date) {
-        current.quote = row.quote;
-        current.detail = row.detail;
-        current.date = row.date;
-        current.sessionUid = row.sessionUid;
-        current.debate = row.debate;
-      }
-    }
-    return selectReactions(
-      [...grouped.values()].map((row) => ({
-        quote: row.quote,
-        detail: row.detail,
-        count: row.count,
-        sittings: row.sessions.size,
-        date: row.date,
-        debate: row.debate,
-        url: reportUrl(row.sessionUid),
-      })),
-    );
+      .all(...params, period.firstDay, period.lastDay) as Array<{
+      quote: string;
+      norm: string;
+      detail: string;
+      date: string;
+      sessionUid: string;
+      debate: string;
+      id: string;
+      name: string;
+    }>;
+    return selectMoments(rows).map((row) => ({
+      quote: row.quote,
+      detail: row.detail,
+      date: row.date,
+      debate: row.debate,
+      url: reportUrl(row.sessionUid),
+      ...(withNames ? { id: row.id, name: row.name } : {}),
+    }));
   }
 
   private namedPeople(pid: number, period: Period) {
@@ -1146,11 +1266,17 @@ export class Analytics {
          FROM mentions m JOIN politicians p ON p.pid = m.target_pid
          WHERE m.pid = ? AND m.date BETWEEN ? AND ?
          GROUP BY m.target_pid
-         HAVING count >= 3 AND sittings >= 3
+         HAVING count >= ? AND sittings >= ?
          ORDER BY count DESC, name
          LIMIT 5`,
       )
-      .all(pid, period.firstDay, period.lastDay) as Array<{ target: number; id: string; name: string; count: number; sittings: number }>;
+      .all(pid, period.firstDay, period.lastDay, MENTION_MIN_COUNT, MENTION_MIN_SITTINGS) as Array<{
+      target: number;
+      id: string;
+      name: string;
+      count: number;
+      sittings: number;
+    }>;
     const quoteOf = this.db.prepare(
       `SELECT quote, date, session_uid AS sessionUid FROM mentions
        WHERE pid = ? AND target_pid = ? AND date BETWEEN ? AND ? ORDER BY date DESC LIMIT 1`,
@@ -1173,22 +1299,25 @@ export class Analytics {
     if (!this.hasFlavor) {
       return null;
     }
-    const volume = this.interruptionVolume("pid", pid, period);
+    const chamber = this.chamber(period);
+    const own = chamber.people.get(pid);
     const days = [period.firstDay, period.lastDay];
     return {
       interruptions: {
-        count: volume.count,
-        perHundred: perHundred(volume.count, volume.others),
+        ...this.personRate(chamber, pid, own?.interruptions || 0, chamber.interruptionRates),
         favorites: this.favoriteLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "IFNULL(pid, -1) != ? AND date BETWEEN ? AND ?", [pid, ...days]),
       },
-      reactions: {
-        laughs: this.reactionLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "rire", false),
-        applause: this.reactionLines("pid = ? AND date BETWEEN ? AND ?", [pid, ...days], "applaudissement", true),
-      },
+      applause: this.hasApplause
+        ? {
+            ...this.personRate(chamber, pid, own?.applause || 0, chamber.applauseRates),
+            moments: this.applauseMoments("r.pid = ?", [pid], period, false),
+          }
+        : null,
       wording: this.wordingView(
-        this.styleSums("person_style_month", "pid = ? AND month BETWEEN ? AND ?", [pid, period.from, period.to]),
+        own?.style || this.emptyStyle(),
         this.styleSums("global_style_month", "month BETWEEN ? AND ?", [period.from, period.to]),
         subject,
+        chamber.wordingPools,
       ),
       named: this.namedPeople(pid, period),
     };
@@ -1198,23 +1327,24 @@ export class Analytics {
     if (!this.hasFlavor) {
       return null;
     }
-    const volume = this.interruptionVolume("party", party, period);
+    const chamber = this.chamber(period);
     const days = [period.firstDay, period.lastDay];
     return {
       interruptions: {
-        count: volume.count,
-        perMember: perMember(volume.count, volume.members),
-        perHundred: perHundred(volume.count, volume.others),
+        ...this.groupRate(chamber, party, "interruptions"),
         favorites: this.favoriteLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "party != ? AND date BETWEEN ? AND ?", [party, ...days]),
       },
-      reactions: {
-        laughs: this.reactionLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "rire", false),
-        applause: this.reactionLines("party = ? AND date BETWEEN ? AND ?", [party, ...days], "applaudissement", true),
-      },
+      applause: this.hasApplause
+        ? {
+            ...this.groupRate(chamber, party, "applause"),
+            moments: this.applauseMoments("r.party = ?", [party], period, true),
+          }
+        : null,
       wording: this.wordingView(
         this.styleSums("party_style_month", "party = ? AND month BETWEEN ? AND ?", [party, period.from, period.to]),
         this.styleSums("global_style_month", "month BETWEEN ? AND ?", [period.from, period.to]),
         "groupe",
+        null,
       ),
     };
   }

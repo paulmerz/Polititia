@@ -2119,6 +2119,17 @@ button.party-pill {
   color: var(--muted, #5c6570);
 }
 
+.wording-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.wording-list li + li {
+  margin-top: 4px;
+}
+
 .stance-quote p {
   margin: 0 0 4px;
 }

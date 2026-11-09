@@ -48,9 +48,12 @@ uv run python scripts/build_communes.py
   the number of distinct sittings: a distinctive phrase must come from at
   least 3 sittings, and its "×N" ratio is only shown with at least 10 uses by
   the speaker and 20 by everyone else (otherwise the raw counts are shown).
-  The same file stores interruptions, room reactions, wording rates (negation,
-  obligation, possibility, pronouns) and named colleagues, read from
-  `asides.jsonl` when that file sits next to the speech index.
+  The same file stores interruptions, applause (with the applauding groups and
+  how many camps other than the speaker's they span; camps are the June 2024
+  alliances, see `asides.CAMPS`), wording rates (negation, obligation,
+  possibility, pronouns) and named colleagues, read from `asides.jsonl` when
+  that file sits next to the speech index. A database built before applause
+  carried camps still serves, without the applause section.
 - `dashboard/build_dashboard_data.py` writes the small first-load bundle
   `dashboard/data/dashboard-data.json` (people, groups, style markers, and
   each deputy's constituency from AMO).

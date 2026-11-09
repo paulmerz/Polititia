@@ -257,9 +257,18 @@ export function buildAnalyticsFixture(): string {
       1,
     );
   }
-  const insertReaction = db.prepare("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  insertReaction.run(1, 1, "LFI_NFP", "2025-03-10", "SES-A1", "Budget", "rire", "Nous refusons ce texte.", "nous refusons ce texte", "Rires sur divers bancs.", 1);
-  insertReaction.run(2, 1, "LFI_NFP", "2025-03-11", "SES-A2", "Budget", "rire", "Nous refusons ce texte.", "nous refusons ce texte", "Rires sur divers bancs.", 1);
+  // Alice 0 interrupts in six more sittings (not favorites), so that she and
+  // Bob are both present in enough sittings to be ranked.
+  for (let index = 4; index < 10; index += 1) {
+    insertInterruption.run(15 + index, 1, "LFI_NFP", "2025-02-10", `SES-A${index}`, "Budget", `Réplique ${index}`, `replique ${index}`, 2, 0);
+  }
+  const insertReaction = db.prepare("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const applause = (rid: number, date: string, session: string, quote: string, norm: string, detail: string, groups: string, camps: number) =>
+    insertReaction.run(rid, 1, "LFI_NFP", date, session, "Budget", "applaudissement", quote, norm, detail, groups, camps);
+  applause(1, "2025-03-10", "SES-A1", "Nous refusons ce texte injuste et brutal.", "nous refusons ce texte injuste et brutal", "Applaudissements sur les bancs des groupes LFI-NFP et DR.", "DR,LFI_NFP", 1);
+  applause(2, "2025-03-11", "SES-A2", "Nous tiendrons bon jusqu'au bout.", "nous tiendrons bon jusqu au bout", "Applaudissements sur tous les bancs.", "", 5);
+  applause(3, "2025-03-12", "SES-A3", "Bravo !", "bravo", "Applaudissements sur les bancs du groupe EPR.", "EPR", 1);
+  applause(4, "2025-03-12", "SES-A3", "Merci à nos amis socialistes.", "merci à nos amis socialistes", "Applaudissements sur les bancs du groupe SOC.", "SOC", 0);
   db.prepare("INSERT INTO person_style_month VALUES (1, '2025-03', 3000, 30, 40, 4, 10, 40, 8)").run();
   db.prepare("INSERT INTO party_style_month VALUES ('LFI_NFP', '2025-03', 3000, 30, 40, 4, 10, 40, 8)").run();
   db.prepare("INSERT INTO global_style_month VALUES ('2025-03', 23000, 200, 60, 80, 100, 80, 40)").run();

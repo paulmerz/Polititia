@@ -7,13 +7,16 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from asides import (
+    applause,
     eligible_favorite,
+    excerpt_around,
     find_mentions,
-    other_bench,
-    reaction_kind,
+    last_sentence,
+    mention_index,
+    other_camps,
+    sentence_spans,
+    split_name,
     style_counts,
-    surname_index,
-    surname_key,
 )
 from extract_speeches import collect_asides, extract_speeches, process_glob
 
@@ -29,12 +32,23 @@ class AsideRuleTests(unittest.TestCase):
         self.assertFalse(eligible_favorite("M. Laurent Wauquiez DR", "Monsieur le président, je demande la parole."))
         self.assertFalse(eligible_favorite("Mme Mathilde Panot LFI NFP", "Oui."))
 
-    def test_reaction_kind_and_other_benches(self) -> None:
-        self.assertEqual(reaction_kind("Rires et applaudissements"), "rire")
-        self.assertEqual(reaction_kind("Applaudissements sur les bancs du groupe RN."), "applaudissement")
-        self.assertFalse(other_bench("Applaudissements sur les bancs du groupe RN."))
-        self.assertTrue(other_bench("Rires sur divers bancs."))
-        self.assertTrue(other_bench("Applaudissements sur les bancs des groupes RN et EPR."))
+    def test_applause_keeps_its_groups_and_drops_the_protests(self) -> None:
+        found = applause("Applaudissements sur les bancs des groupes RN et UDR. – Protestations sur les bancs du groupe LFI-NFP.")
+        self.assertEqual(found.groups, ("RN", "UDR"))
+        self.assertEqual(found.detail, "Applaudissements sur les bancs des groupes RN et UDR.")
+        self.assertIsNone(applause("Rires sur divers bancs."))
+        self.assertEqual(applause("M. Marc Pena applaudit.").groups, ())
+        self.assertTrue(applause("Applaudissements sur tous les bancs.").every_bench)
+        self.assertTrue(applause("Applaudissements sur divers bancs.").unnamed_benches)
+        self.assertFalse(applause("Applaudissements sur de nombreux bancs du groupe EPR.").unnamed_benches)
+
+    def test_applause_from_an_ally_stays_in_camp(self) -> None:
+        self.assertEqual(other_camps(["EcoS", "GDR", "LFI_NFP"], False, False, "LFI_NFP"), 0)
+        self.assertEqual(other_camps(["DR", "LFI_NFP"], False, False, "LFI_NFP"), 1)
+        self.assertEqual(other_camps(["DR", "EPR", "RN"], False, False, "SOC"), 3)
+        self.assertEqual(other_camps([], True, False, "RN"), 5)
+        self.assertEqual(other_camps([], False, True, "RN"), 1)
+        self.assertEqual(other_camps(["RN"], False, False, "GOUV"), 0)
 
     def test_wording_counts_obligation_possibility_and_skips_peut_etre(self) -> None:
         counts = style_counts("Nous devons tenir. Il peut rester. Ce n'est pas un abandon. Peut-être demain. Je vous le dis.")
@@ -45,12 +59,54 @@ class AsideRuleTests(unittest.TestCase):
         self.assertGreaterEqual(counts["vous"], 1)
         self.assertGreaterEqual(counts["nous"], 1)
 
-    def test_a_shared_surname_is_not_a_mention(self) -> None:
-        self.assertEqual(surname_key("M. Laurent Wauquiez"), "wauquiez")
-        index = surname_index([(1, "M. Laurent Wauquiez"), (2, "Mme Alice Wauquiez"), (3, "Mme Mathilde Panot")])
-        self.assertEqual(index, {"panot": 3})
-        self.assertEqual(find_mentions("Monsieur Wauquiez, nous devons tenir.", {"wauquiez": 7}, 3), [(7, "Monsieur Wauquiez, nous devons tenir.")])
-        self.assertEqual(find_mentions("Monsieur Wauquiez, nous devons tenir.", {"wauquiez": 3}, 3), [])
+    def test_an_abbreviation_does_not_end_a_sentence(self) -> None:
+        text = "Ce budget est pire que celui de M. Barnier. Pire budget, même tarif : la censure."
+        self.assertEqual(len(sentence_spans(text)), 2)
+        start = text.index("Barnier")
+        self.assertEqual(excerpt_around(text, start, start + 7), "Ce budget est pire que celui de M. Barnier.")
+        self.assertEqual(last_sentence("Il l’a dit à J.-L. Mélenchon. « Nous voterons contre. »"), "« Nous voterons contre. »")
+
+    def test_a_long_sentence_is_cut_around_the_name(self) -> None:
+        text = "Nos collègues ont donné des descriptions " + "très longues, " * 30 + "et nous ne sommes pas invités chez Mme Chikirou, hélas."
+        start = text.index("Chikirou")
+        quote = excerpt_around(text, start, start + 8)
+        self.assertIn("Mme Chikirou", quote)
+        self.assertTrue(quote.startswith("…"))
+        self.assertLessEqual(len(quote), 245)
+        tail = last_sentence("Une phrase " + "vraiment longue " * 30 + "qui finit ici.")
+        self.assertTrue(tail.startswith("…") and tail.endswith("qui finit ici."))
+
+    def test_names_need_the_right_civility_or_first_name(self) -> None:
+        self.assertEqual(split_name("Mme Sandrine Dogor-Such"), ("Mme", "Sandrine", "Dogor-Such"))
+        self.assertEqual(split_name("M. Charles de Courson"), ("M.", "Charles", "de Courson"))
+        index = mention_index([
+            (1, "M.", "Laurent", "Wauquiez"),
+            (2, "Mme", "Marine", "Le Pen"),
+            (3, "Mme", "Mathilde", "Panot"),
+            (4, "M.", "Jean", "Martin"),
+            (5, "Mme", "Pascale", "Martin"),
+            (6, "Mme", "Sandrine", "Dogor-Such"),
+        ])
+        self.assertEqual(find_mentions("Monsieur Wauquiez, nous devons tenir.", index, 3), [(1, "Monsieur Wauquiez, nous devons tenir.")])
+        self.assertEqual(find_mentions("Le groupe présidé par Laurent Wauquiez.", index, 3), [(1, "Le groupe présidé par Laurent Wauquiez.")])
+        self.assertEqual(find_mentions("Monsieur Wauquiez, nous devons tenir.", index, 1), [])
+        self.assertEqual(
+            find_mentions("Le Front national de Jean-Marie Le Pen le voulait. Le groupe de Mme Le Pen a voté pour.", index, 3),
+            [(2, "Le groupe de Mme Le Pen a voté pour.")],
+        )
+        self.assertEqual(find_mentions("M. Le Pen le voulait.", index, 3), [])
+        sentence = "Comme l’a dit Mme Martin, puis M. Martin."
+        self.assertEqual(find_mentions(sentence, index, 3), [(5, sentence), (4, sentence)])
+        self.assertEqual(find_mentions("Merci, madame Dogor-Such.", index, 3), [(6, "Merci, madame Dogor-Such.")])
+
+    def test_a_shared_surname_needs_the_first_name(self) -> None:
+        index = mention_index([(1, "M.", "Laurent", "Wauquiez"), (2, "M.", "Alain", "Wauquiez")])
+        self.assertEqual(find_mentions("Monsieur Wauquiez, nous devons tenir.", index, 9), [])
+        self.assertEqual(find_mentions("Alain Wauquiez a raison.", index, 9), [(2, "Alain Wauquiez a raison.")])
+
+    def test_a_collective_speaker_is_never_named(self) -> None:
+        index = mention_index([(1, "", *split_name("Les députés du groupe")[1:])])
+        self.assertEqual(find_mentions("Les députés du groupe RN applaudissent.", index, 9), [])
 
 
 class AsideExtractTests(unittest.TestCase):
@@ -63,10 +119,19 @@ class AsideExtractTests(unittest.TestCase):
         self.assertIn(("interruption", "Monsieur le président, je demande la parole.", 0, None), kinds)
         self.assertIn(("interruption", "Ce n'est pas sérieux.", 0, None), kinds)
         self.assertFalse(any("conclure" in row["quote"] for row in rows))
-        laugh = next(row for row in rows if row["record"] == "reaction")
-        self.assertEqual(laugh["kind"], "rire")
-        self.assertEqual(laugh["other_bench"], 1)
-        self.assertIn("Wauquiez", laugh["quote"])
+
+    def test_applause_follows_the_sentence_it_answers(self) -> None:
+        segments, meta = extract_speeches(str(FIXTURE))
+        rows = collect_asides(ET.parse(FIXTURE).getroot(), meta)
+        applauded = [row for row in rows if row["record"] == "reaction"]
+        self.assertEqual(
+            [(row["quote"], row["groups"]) for row in applauded],
+            [
+                ("Nous défendons les soins et il peut rester.", ["LFI_NFP"]),
+                ("Monsieur Wauquiez, nous devons tenir comme l'a dit M. Bayrou.", ["DR", "LFI_NFP"]),
+            ],
+        )
+        self.assertEqual(applauded[1]["detail"], "Applaudissements sur les bancs des groupes LFI-NFP et DR.")
 
     def test_process_glob_writes_asides(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,6 +142,7 @@ class AsideExtractTests(unittest.TestCase):
             self.assertEqual(len(speeches), 1)
             self.assertNotIn("blague", speeches[0]["text"].lower())
             self.assertNotIn("Rires", speeches[0]["text"])
+            self.assertNotIn("Applaudissements", speeches[0]["text"])
 
 
 if __name__ == "__main__":

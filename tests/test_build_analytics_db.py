@@ -87,7 +87,11 @@ class BuildTests(unittest.TestCase):
                 db.execute("SELECT keep FROM interruptions WHERE quote LIKE '%demande la parole%'").fetchone()[0],
                 0,
             )
-            self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM reactions WHERE kind = 'rire'").fetchone()[0], 1)
+            self.assertEqual(
+                db.execute("SELECT groups, other_camps FROM reactions WHERE quote LIKE 'Monsieur Wauquiez%'").fetchone(),
+                ("DR,LFI_NFP", 1),
+            )
+            self.assertEqual(db.execute("SELECT other_camps FROM reactions WHERE quote LIKE 'Nous défendons%'").fetchone()[0], 0)
             self.assertGreater(db.execute("SELECT COALESCE(SUM(words), 0) FROM global_style_month").fetchone()[0], 0)
             self.assertGreaterEqual(db.execute("SELECT COUNT(*) FROM mentions").fetchone()[0], 1)
             db.close()

@@ -60,7 +60,7 @@ import unicodedata
 from collections import defaultdict
 from xml.etree import ElementTree as ET
 
-from asides import eligible_favorite, is_presidential, last_sentence, normalize_line, other_bench, reaction_kind
+from asides import applause, eligible_favorite, is_presidential, last_sentence, normalize_line
 
 NS = {"an": "http://schemas.assemblee-nationale.fr/referentiel"}
 
@@ -184,14 +184,30 @@ def _flatten_texte(texte_elem: ET.Element) -> str:
     return "".join(parts)
 
 
-def _stage_directions(texte: ET.Element) -> list[str]:
-    found: list[str] = []
-    for node in texte.iter():
-        if _local(node.tag) != "italique":
-            continue
-        inner = "".join(node.itertext()).strip()
-        if inner.startswith("(") and inner.endswith(")"):
-            found.append(inner[1:-1].strip())
+def _stage_directions(texte: ET.Element) -> list[tuple[str, str]]:
+    """Each parenthesised stage direction, with the paragraph text that comes before it."""
+    parts: list[str] = []
+    found: list[tuple[str, str]] = []
+
+    def walk(node: ET.Element) -> None:
+        if node.text:
+            parts.append(node.text)
+        for child in node:
+            local = _local(child.tag)
+            if local == "br":
+                parts.append("\n")
+            elif local == "italique":
+                inner = "".join(child.itertext()).strip()
+                if inner.startswith("(") and inner.endswith(")"):
+                    found.append(("".join(parts), inner[1:-1].strip()))
+                else:
+                    walk(child)
+            else:
+                walk(child)
+            if child.tail:
+                parts.append(child.tail)
+
+    walk(texte)
     return found
 
 
@@ -590,19 +606,25 @@ def collect_asides(root: ET.Element, meta: dict[str, str]) -> list[dict]:
                 "words": len(norm.split()),
                 "keep": int(eligible_favorite(speaker, cleaned)),
             })
-        for detail in _stage_directions(texte):
-            kind = reaction_kind(detail)
-            quote = last_sentence(cleaned)
-            if not kind or not quote:
+        applauded: set[str] = set()
+        for before, direction in _stage_directions(texte):
+            found = applause(direction)
+            # The sentence just before the applause, not the paragraph's last one.
+            quote = last_sentence(_remove_ellipsis(_clean(before)))
+            norm = normalize_line(quote)
+            if found is None or not norm or norm in applauded:
                 continue
+            applauded.add(norm)
             rows.append({
                 **base,
                 "record": "reaction",
-                "kind": kind,
+                "kind": "applaudissement",
                 "quote": quote,
-                "norm": normalize_line(quote),
-                "detail": detail,
-                "other_bench": int(other_bench(detail)),
+                "norm": norm,
+                "detail": found.detail,
+                "groups": list(found.groups),
+                "every_bench": int(found.every_bench),
+                "unnamed_benches": int(found.unnamed_benches),
             })
     return rows
 

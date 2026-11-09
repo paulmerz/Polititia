@@ -3,6 +3,7 @@ import path from "node:path";
 import { reportUrl, voteUrl, type Analytics } from "./analytics.ts";
 import type { DashboardBundle } from "./data.ts";
 import { fmtDay, fmtInt, plural, withoutCivility, withUtm } from "./outreach.ts";
+import { percentText } from "./percent.ts";
 
 // The national press release and, for the journalist offered the exclusive,
 // the list of deputies who voted otherwise than they announced. Every figure
@@ -187,7 +188,7 @@ export function announcedVotes(analytics: Analytics, bundle: DashboardBundle, sc
 }
 
 function pct(part: number, whole: number): string {
-  return whole ? `${Math.round((100 * part) / whole)} %` : "—";
+  return whole ? percentText(part / whole) : "—";
 }
 
 function millions(value: number): string {

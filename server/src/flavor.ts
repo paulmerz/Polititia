@@ -4,13 +4,23 @@
 export const FAVORITE_MIN_COUNT = 3;
 export const FAVORITE_MIN_SITTINGS = 3;
 export const FAVORITE_SHARE = 2;
-export const REACTION_MIN_COUNT = 2;
-export const REACTION_MIN_SITTINGS = 2;
 export const MENTION_MIN_COUNT = 3;
 export const MENTION_MIN_SITTINGS = 3;
-export const WORDING_MIN_WORDS = 200;
+// Below this, a rate per 1 000 words moves too much with one speech.
+export const WORDING_MIN_WORDS = 1000;
+// A deputy is ranked against the others once present in this many sittings.
+export const RANK_MIN_SITTINGS = 10;
+// A wording rate is shown when it is among the 10 % highest or lowest of the
+// deputies, or, for a group, a quarter away from the chamber.
+export const WORDING_DECILE = 0.1;
+export const WORDING_GROUP_RATIO = 1.25;
+// « Il s'en fout ! » can be applauded, but says little quoted alone.
+export const MOMENT_MIN_WORDS = 6;
 export const MIN_RISE_COUNT = 15;
 export const MIN_RISE_LIFT = 1.5;
+
+export const WORDING_KEYS = ["negation", "obligation", "possibility", "je", "nous", "vous"] as const;
+export type WordingKey = (typeof WORDING_KEYS)[number];
 
 const RISING_STOP = new Set([
   "amendement",
@@ -56,18 +66,80 @@ export function perThousand(count: number, words: number): number {
   return words > 0 ? (count * 1000) / words : 0;
 }
 
-export function perHundred(count: number, otherSpeeches: number): number | null {
-  if (otherSpeeches <= 0) {
-    return null;
-  }
-  return (count * 100) / otherSpeeches;
-}
-
 export function perMember(count: number, members: number): number | null {
   if (members <= 0) {
     return null;
   }
   return count / members;
+}
+
+export type Rank = { higher: number; lower: number; pool: number };
+
+// Where `value` sits among `pool`: how many are strictly above and below it.
+export function rankAmong(value: number, pool: number[]): Rank | null {
+  if (pool.length < 2) {
+    return null;
+  }
+  let higher = 0;
+  let lower = 0;
+  for (const other of pool) {
+    if (other > value) {
+      higher += 1;
+    } else if (other < value) {
+      lower += 1;
+    }
+  }
+  return { higher, lower, pool: pool.length };
+}
+
+export function median(values: number[]): number | null {
+  if (!values.length) {
+    return null;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function quantile(sorted: number[], share: number): number {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(share * (sorted.length - 1))))];
+}
+
+export type WordingStandout = { key: WordingKey; rate: number; chamber: number; ratio: number };
+
+// Rates worth a line: among the deputies' top or bottom decile (people), or a
+// quarter away from the chamber (groups). Largest gaps first.
+export function wordingStandouts(
+  style: StyleCounts,
+  chamber: StyleCounts,
+  pools: Record<WordingKey, number[]> | null,
+): WordingStandout[] {
+  if (style.words < WORDING_MIN_WORDS || chamber.words <= 0) {
+    return [];
+  }
+  const found: WordingStandout[] = [];
+  for (const key of WORDING_KEYS) {
+    const rate = perThousand(style[key], style.words);
+    const reference = perThousand(chamber[key], chamber.words);
+    if (reference <= 0) {
+      continue;
+    }
+    const ratio = rate / reference;
+    let stands: boolean;
+    if (pools) {
+      const sorted = [...pools[key]].sort((a, b) => a - b);
+      if (sorted.length < 20) {
+        continue;
+      }
+      stands = rate >= quantile(sorted, 1 - WORDING_DECILE) || rate <= quantile(sorted, WORDING_DECILE);
+    } else {
+      stands = ratio >= WORDING_GROUP_RATIO || ratio <= 1 / WORDING_GROUP_RATIO;
+    }
+    if (stands && ratio !== 1) {
+      found.push({ key, rate, chamber: reference, ratio });
+    }
+  }
+  return found.sort((a, b) => Math.abs(Math.log(b.ratio || 1e-6)) - Math.abs(Math.log(a.ratio || 1e-6))).slice(0, 3);
 }
 
 export function selectFavorites(lines: CountedLine[], personTotal: number, restTotal: number, limit = 5): CountedLine[] {
@@ -88,11 +160,22 @@ export function selectFavorites(lines: CountedLine[], personTotal: number, restT
     .slice(0, limit);
 }
 
-export function selectReactions<T extends { count: number; sittings: number }>(rows: T[], limit = 3): T[] {
-  return rows
-    .filter((row) => row.count >= REACTION_MIN_COUNT && row.sittings >= REACTION_MIN_SITTINGS)
-    .sort((a, b) => b.count - a.count || b.sittings - a.sittings)
-    .slice(0, limit);
+// The applauded sentences worth quoting: long enough to say something, each
+// once, the widest applause first (rows arrive sorted that way).
+export function selectMoments<T extends { norm: string }>(rows: T[], limit = 3): T[] {
+  const seen = new Set<string>();
+  const kept: T[] = [];
+  for (const row of rows) {
+    if (row.norm.split(" ").filter(Boolean).length < MOMENT_MIN_WORDS || seen.has(row.norm)) {
+      continue;
+    }
+    seen.add(row.norm);
+    kept.push(row);
+    if (kept.length >= limit) {
+      break;
+    }
+  }
+  return kept;
 }
 
 export function wordingSentence(style: StyleCounts, chamber: StyleCounts, subject: WordingSubject): string {

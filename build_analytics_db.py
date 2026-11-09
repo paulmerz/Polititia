@@ -23,7 +23,7 @@ from datetime import date
 from pathlib import Path
 
 from analyze_project_ngrams import surface_content_tokens
-from asides import STYLE_FIELDS, find_mentions, style_counts, surname_index
+from asides import STYLE_FIELDS, find_mentions, mention_index, other_camps, split_name, style_counts
 from lexical_stats import DEFAULT_ALPHA0
 from ngram_distribution import ngrams
 from reference_data import DEFAULT_OPEN_DATA_DIR, ReferenceData
@@ -176,17 +176,32 @@ class Builder:
                     int(row.get("words") or 0), int(row.get("keep") or 0),
                 ))
             elif row.get("record") == "reaction" and pid is not None:
+                groups = list(row.get("groups") or [])
+                camps = other_camps(groups, bool(row.get("every_bench")), bool(row.get("unnamed_benches")), party)
                 reactions.append((
                     len(reactions) + 1, pid, party, row["date"], row.get("session_uid") or "",
                     row.get("debate_topic") or "", row.get("kind") or "", row.get("quote") or "",
-                    row.get("norm") or "", row.get("detail") or "", int(row.get("other_bench") or 0),
+                    row.get("norm") or "", row.get("detail") or "", ",".join(groups), camps,
                 ))
         self.db.executemany("INSERT INTO interruptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", interruptions)
-        self.db.executemany("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", reactions)
+        self.db.executemany("INSERT INTO reactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", reactions)
 
     def add_mentions(self, raw_speeches: list[dict], resolver: SpeakerResolver) -> None:
-        index = surname_index([(pid, name) for pid, name in self.db.execute("SELECT pid, name FROM politicians")])
-        if not index:
+        # With the AMO reference, only actual people can be named, once each: a
+        # speaker the report left without an id (« M Michel Barnier », « Les
+        # députés du groupe ») would make the real name ambiguous.
+        with_reference = bool(resolver.reference and resolver.reference.actors)
+        people = []
+        seen_actors: set[str] = set()
+        for pid, name, acteur_id in self.db.execute("SELECT pid, name, acteur_id FROM politicians ORDER BY pid"):
+            actor = resolver.reference.actor(acteur_id) if with_reference and acteur_id else None
+            if actor is not None and actor.last_name and acteur_id not in seen_actors:
+                seen_actors.add(acteur_id)
+                people.append((pid, actor.civility, actor.first_name, actor.last_name))
+            elif not with_reference:
+                people.append((pid, *split_name(name)))
+        index = mention_index(people)
+        if not index.by_civility and not index.by_full_name:
             return
         rows = []
         for raw in raw_speeches:
