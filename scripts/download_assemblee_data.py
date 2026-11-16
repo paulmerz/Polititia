@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
-import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
+
+try:
+    from scripts._fetch import download_zip  # python -m scripts.download_assemblee_data
+except ModuleNotFoundError:
+    from _fetch import download_zip  # python scripts/download_assemblee_data.py
 
 
 DEFAULT_URL = (
@@ -59,24 +61,8 @@ def download(url: str, archive: Path, force: bool) -> None:
         print(f"[skip] archive already exists: {archive}")
         return
 
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        dir=archive.parent,
-        prefix=f".{archive.name}.",
-        suffix=".download",
-        delete=False,
-    ) as tmp:
-        tmp_path = Path(tmp.name)
-
-    try:
-        print(f"[download] {url}")
-        with urllib.request.urlopen(url) as response, tmp_path.open("wb") as handle:
-            shutil.copyfileobj(response, handle)
-        tmp_path.replace(archive)
-        print(f"[ok] wrote {archive}")
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    # Checks the size, resumes a cut transfer and validates the ZIP before writing.
+    download_zip(url, archive)
 
 
 def safe_extract(archive: Path, extract_dir: Path, force: bool) -> None:
