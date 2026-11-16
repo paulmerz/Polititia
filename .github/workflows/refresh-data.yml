@@ -4,7 +4,8 @@
 #
 # Monday 04:00 UTC, or by hand from the Actions tab. The job only runs on main.
 # After the release is updated, a commit of .github/data-stamp makes Render
-# redeploy. Set the RENDER_DEPLOY_HOOK_URL secret to deploy without that commit.
+# redeploy. Set the RENDER_DEPLOY_HOOK_URL secret of the "production"
+# environment to deploy without that commit.
 
 name: Refresh data
 
@@ -23,6 +24,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 180
     steps:
       - name: Stay on main
@@ -121,6 +123,18 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/data-stamp
-          git commit -m "Publie la base d'analyse reconstruite."
-          git push origin HEAD
+          stamp="$(mktemp)"
+          cp .github/data-stamp "$stamp"
+          for attempt in 1 2 3 4 5; do
+            git fetch --depth=1 origin main
+            git reset --hard FETCH_HEAD
+            cp "$stamp" .github/data-stamp
+            git add .github/data-stamp
+            git commit -m "Publie la base d'analyse reconstruite."
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "Could not push .github/data-stamp to main." >&2
+          exit 1
