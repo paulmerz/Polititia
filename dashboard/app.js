@@ -2407,7 +2407,7 @@ function renderSeriesChart(view, parties) {
     return note("Période trop courte pour afficher une évolution mois par mois.");
   }
   const lines = parties.map((party) => {
-    const byMonth = new Map((view.series?.[party] || []).map((row) => [row.month, row.speechCount]));
+    const byMonth = new Map((view.series?.[party] || []).map((row) => [row.month, row.share]));
     return { party, values: months.map((month) => Number(byMonth.get(month) || 0)) };
   });
   const width = 640;
@@ -2415,15 +2415,16 @@ function renderSeriesChart(view, parties) {
   const pad = { top: 14, right: 12, bottom: 34, left: 44 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
-  const max = Math.max(1, ...lines.flatMap((line) => line.values));
+  const max = Math.max(0.01, ...lines.flatMap((line) => line.values));
+  const axisDigits = max < 0.1 ? 1 : 0;
   const xAt = (index) => pad.left + (index / (months.length - 1)) * innerW;
   const yAt = (value) => pad.top + innerH - (value / max) * innerH;
   const grid = [0, 0.5, 1]
     .map((fraction) => {
-      const value = Math.round(max * fraction);
+      const value = max * fraction;
       const y = yAt(value);
       return `<line class="topic-chart-grid" x1="${pad.left}" x2="${width - pad.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>
-        <text class="topic-chart-axis" x="6" y="${(y + 4).toFixed(1)}">${fmtInt(value)}</text>`;
+        <text class="topic-chart-axis" x="6" y="${(y + 4).toFixed(1)}">${fmtPct(value, axisDigits)}</text>`;
     })
     .join("");
   const step = Math.ceil(months.length / 6);
@@ -2441,7 +2442,7 @@ function renderSeriesChart(view, parties) {
     })
     .join("");
   return `
-    <svg class="topic-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Interventions par mois et par groupe">${grid}${paths}${labels}</svg>
+    <svg class="topic-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Part des interventions de chaque groupe consacrées à ce thème, mois par mois">${grid}${paths}${labels}</svg>
     <div class="topic-legend">
       ${lines.map((line) => `<span class="topic-legend-item"><span class="swatch" data-style="background:${partyColor(line.party)}"></span>${escapeHtml(partyLabel(line.party))}</span>`).join("")}
     </div>`;
@@ -2470,7 +2471,7 @@ function renderThemePanel() {
   }
   const stats = view.stats || {};
   const ownership = (view.ownership || []).filter((row) => partyVisible(row.party));
-  const chartParties = [...ownership].sort((a, b) => b.speechCount - a.speechCount).slice(0, 5).map((row) => row.party);
+  const chartParties = [...ownership].sort((a, b) => b.share - a.share).slice(0, 5).map((row) => row.party);
   const stances = (view.stances || []).filter((stance) => partyVisible(stance.party));
   return `
     <div class="detail-body fiche">
@@ -2497,7 +2498,7 @@ function renderThemePanel() {
         ),
         { help: "Part des interventions de chaque groupe consacrées à ce thème. Le badge ×N indique que le groupe y consacre N fois plus de temps de parole que la moyenne de l'Assemblée." },
       )}
-      ${block("Évolution mois par mois", renderSeriesChart(view, chartParties), { help: "Nombre d'interventions sur ce thème chaque mois, pour les groupes qui en parlent le plus." })}
+      ${block("Évolution mois par mois", renderSeriesChart(view, chartParties), { help: "Chaque mois, part des interventions du groupe consacrées à ce thème, pour les cinq groupes qui en parlent le plus." })}
       ${block("Comment les groupes ont voté", voteList(view.keyVotes, { groups: true, empty: "Aucun vote clé sur ce thème pendant la période." }, 4), {
         help: "Votes clés liés aux textes de ce thème, avec la position majoritaire de chaque groupe (calculée à partir des votes de ses membres).",
       })}
