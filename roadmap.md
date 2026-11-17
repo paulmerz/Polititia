@@ -244,7 +244,7 @@ Les cas 62 et 63 ont été ajoutés après la première version (§ 4.2.1).
 
 | Idée | Ce qui est gardé | Ce qui change | Verdict |
 | --- | --- | --- | --- |
-| Éclairer ce qui est dit par des études scientifiques et par la concordance de sources journalistiques, toutes citées, y compris celles qui contredisent, sans commentaire ni prise de position | Citer plutôt que juger ; montrer toutes les sources, y compris les démentis | Les affirmations éclairées sont choisies par une règle publique, indépendante de leur contenu. Les sources sont classées par nature, jamais comptées : cinq articles qui reprennent une même enquête ne sont qu'une source. Seules les synthèses scientifiques comptent, pas une étude isolée. Quand le désaccord tient à une définition (arme ou composant, licence ou livraison), chaque source est citée avec sa propre définition. Travail éditorial humain, piloté sur une dizaine de cas. | 🟠 R17 |
+| Éclairer ce qui est dit par des études scientifiques et par la concordance de sources journalistiques, toutes citées, y compris celles qui contredisent, sans commentaire ni prise de position | Citer plutôt que juger ; montrer toutes les sources, y compris les démentis | Les affirmations éclairées sont choisies par une règle publique, indépendante de leur contenu. Les sources sont classées par nature, jamais comptées : cinq articles qui reprennent une même enquête ne sont qu'une source. Seules les synthèses scientifiques comptent, pas une étude isolée. La presse vient d'un panel de médias de toutes sensibilités, fixé à l'avance sur des critères de qualité, sans étiquette gauche ou droite. Quand les sources n'emploient pas les mêmes termes (arme ou composant, licence ou livraison), une alerte le signale en citant les mots de chacune et la définition officielle s'il y en a une. Travail éditorial humain, piloté sur une dizaine de cas. | 🟠 R17 |
 | Catégoriser les textes et montrer par période, en camembert, les sujets qui occupent le gouvernement et les parlementaires | La vue par période, la distinction entre gouvernement et parlementaires, la lecture en un coup d'œil | Quatre angles plutôt qu'un : ce qui est déposé, inscrit à l'ordre du jour, débattu, et demandé au gouvernement. Des barres triées plutôt qu'un camembert à 29 parts ; un anneau à 6 parts plus « autres » seulement pour l'accueil et les cartes de partage. Le budget est montré à part. | 🟢 R18 |
 
 ### 4.3 Livrer : les 18 cas retenus
@@ -419,10 +419,18 @@ Garde-fous :
   1. données officielles primaires, par exemple le rapport annuel du gouvernement au Parlement sur les exportations d'armement, ou les réponses des ministres aux questions écrites ;
   2. évaluations institutionnelles : Cour des comptes, autorités indépendantes ;
   3. synthèses scientifiques : méta-analyses, expertises collectives (Inserm, GIEC…), statistiques publiques ;
-  4. enquêtes journalistiques, avec leur source d'origine, les reprises étant regroupées sous elle ;
+  4. articles des médias du panel (ci-dessous), avec leur source d'origine, les reprises étant regroupées sous elle ;
   5. réponse de la personne ou du ministère concerné.
+- **Un panel de médias fixé à l'avance**, et non choisi affirmation par affirmation :
+  - une dizaine de médias retenus sur des critères vérifiables : charte de déontologie publiée, politique de correction et médiateur, certification Journalism Trust Initiative (RSF), code IFCN ou EFCSN pour les cellules de vérification ;
+  - le comité pluraliste s'assure que les grandes sensibilités éditoriales y sont représentées ; la composition et les critères sont publiés sur la page Méthode et revus au plus une fois par an ;
+  - pour chaque éclairage, tout le panel est interrogé, et tout ce qui est trouvé est affiché. Un média qui n'a rien publié est mentionné (« pas d'article trouvé »), sans que l'on fabrique de contrepoint pour équilibrer ;
+  - aucune étiquette « gauche » ou « droite » n'est affichée : chaque média contesterait sa case, l'axe gauche-droite écrase d'autres sensibilités, et étiqueter ferait d'un fait une opinion de camp. Le lecteur compare lui-même. Des faits sur chaque média (propriétaire, charte) peuvent être liés depuis la page Méthode.
 - Ni verdict, ni comptage, ni code couleur. Chaque source est datée.
-- Quand le désaccord tient à une définition, chaque source est citée avec ses propres mots, sans reformulation.
+- **Alerte « termes différents »** : quand les sources n'emploient pas les mêmes mots pour la même chose, une mention le signale.
+  - Elle est rédigée comme un constat (« Les sources n'emploient pas les mêmes termes »), suivi des mots exacts de chacune entre guillemets (par exemple « armes » et « composants »). Elle ne dit jamais que « le désaccord porte sur la définition » : ce serait une interprétation, qui pourrait minimiser une vraie contradiction.
+  - Quand une définition officielle existe, elle est citée et liée : le Code de la défense pour les matériels de guerre, le règlement européen pour les biens à double usage.
+  - Elle est posée par un humain, éventuellement sur suggestion d'une IA, avec la même règle pour tous les camps.
 - Compteur public des éclairages par groupe et pour le gouvernement, rapporté au temps de parole.
 - Relecture par le comité pluraliste avant publication ; droit de réponse (R13).
 - Si une IA aide à trouver des sources, la charte du § 7 s'applique ; le choix final reste humain.
@@ -620,7 +628,7 @@ Prérequis : charte IA publiée (§ 7), comité de relecture constitué, échant
 **R17. Éclairages sourcés, sans verdict.** **L**, travail éditorial continu
 - Bloc « Éclairages » sous l'intervention concernée, et sur la fiche texte.
 - D'abord un pilote d'une dizaine de cas, aux conditions du § 5.4. La sélection n'est pas automatisée.
-- *Fait quand* : la règle de sélection, la hiérarchie des sources et le compteur par groupe sont publiés sur la page Méthode ; chaque éclairage a été relu par le comité et proposé en droit de réponse.
+- *Fait quand* : la règle de sélection, la hiérarchie des sources, le panel de médias avec ses critères et le compteur par groupe sont publiés sur la page Méthode ; chaque éclairage a été relu par le comité et proposé en droit de réponse.
 
 ### Backlog ⏸
 
@@ -676,6 +684,8 @@ S'applique à R5, R7b, à toute reformulation automatique et, pour R17, à toute
 | Vie-publique.fr (DILA) | Fiches explicatives | ⬜ liens ; conditions de réutilisation à vérifier | R5, R14 |
 | Fact Check Tools (ClaimReview) | Vérifications publiées par des médias | ⏸ phase 3 | R17 |
 | Rapports officiels thématiques (rapport au Parlement sur les exportations d'armement, Cour des comptes, expertises collectives…) | Sources primaires et synthèses pour les éclairages | ⬜ au cas par cas | R17 |
+| Panel de médias (une dizaine, critères de qualité publiés) | Articles pour les éclairages | ⬜ à constituer avec le comité | R17 |
+| Textes de définition officiels (Code de la défense, règlements européens…) | Définitions citées par l'alerte « termes différents » | ⬜ au cas par cas | R17 |
 
 Les jeux de l'Assemblée sont sous Licence Ouverte ; leur présence a été vérifiée le 17 novembre 2026 sous
 `https://data.assemblee-nationale.fr/static/openData/repository/17/`.
@@ -705,7 +715,7 @@ Mesures côté serveur uniquement, sans traceur, dans l'esprit des `campaign_vis
 5. **Période électorale** : faut-il geler les nouveautés avant la présidentielle, et pendant combien de temps ?
 6. **Sénat** : à quelle phase ?
 7. **Noms** : onglet « Textes » ; « Comment le texte a été débattu » pour R10 ; « De quoi parle l'Assemblée » pour R18.
-8. **Éclairages sourcés (R17)** : quelle règle de sélection (affirmations contestées en séance, déjà traitées par un média de vérification, autre) ? Avec quel partenaire éditorial ?
+8. **Éclairages sourcés (R17)** : quelle règle de sélection (affirmations contestées en séance, déjà traitées par un média de vérification, autre) ? Avec quel partenaire éditorial ? Quels médias dans le panel, et faut-il lier des faits sur chacun (propriétaire, charte) ?
 9. **Forme de R18 sur l'accueil** : anneau à 6 parts ou barres ?
 
 ---
@@ -718,3 +728,4 @@ Mesures côté serveur uniquement, sans traceur, dans l'esprit des `campaign_vis
 | 2026-11-17 | Spikes 0.5 (présence en commission : feu vert) et 0.6 (XVIe législature : mémoire légère) ; constats sur l'agenda et le registre des déports (§ 6.1 à 6.3). |
 | 2026-11-17 | 0.2 fait : `agenda.sqlite` et son rafraîchissement quotidien. |
 | 2026-11-17 | Ajouts après discussion : éclairages sourcés sans verdict (R17, 🟠, phase 3), qui remplacent le fact-checking ; sujets et attention par période (R18, 🟢, phase 2). 63 cas d'usage, 18 retenus. |
+| 2026-11-17 | R17 précisé : panel de médias de toutes sensibilités, fixé à l'avance sur des critères de qualité, sans étiquette gauche ou droite ; alerte « termes différents » rédigée comme un constat, avec la définition officielle quand elle existe. |
