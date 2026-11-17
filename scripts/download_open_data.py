@@ -4,6 +4,9 @@
 - AMO30: every actor, mandate and organ (political groups, government, committees)
 - Scrutins: every public vote with the nominative breakdown
 - Dossiers legislatifs: bills, their documents and the committee in charge
+- Agenda: public sittings and committee meetings, their order of business and
+  committee attendance. Kept as a ZIP: build_agenda_db.py reads it directly, so
+  a meeting the Assembly removes does not linger as a stale extracted file.
 """
 
 from __future__ import annotations
@@ -25,7 +28,9 @@ DATASETS = {
     "AMO30_tous_acteurs_tous_mandats_tous_organes_historique.json.zip",
     "scrutins": f"{BASE_URL}/loi/scrutins/Scrutins.json.zip",
     "dossiers": f"{BASE_URL}/loi/dossiers_legislatifs/Dossiers_Legislatifs.json.zip",
+    "agenda": f"{BASE_URL}/vp/reunions/Agenda.json.zip",
 }
+ARCHIVE_ONLY = {"agenda"}
 DEFAULT_OUT_DIR = Path("data/raw/opendata")
 
 
@@ -64,7 +69,8 @@ def main() -> int:
     for name in args.only or sorted(DATASETS):
         archive = args.out_dir / f"{name}.json.zip"
         download(DATASETS[name], archive, args.force)
-        extract(archive, args.out_dir / name, args.force)
+        if name not in ARCHIVE_ONLY:
+            extract(archive, args.out_dir / name, args.force)
     return 0
 
 

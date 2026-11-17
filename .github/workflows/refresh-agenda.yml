@@ -1,0 +1,89 @@
+# Rebuilds analysis_outputs/agenda.sqlite every day and publishes it on the
+# "data" release as agenda.sqlite.gz. The Assembly updates its Agenda dataset
+# (sittings, committee meetings, order of business, committee attendance) every
+# day, while the analysis database (refresh-data.yml) is rebuilt once a week.
+# It downloads about 35 MB and takes a few minutes.
+#
+# The server does not read agenda.sqlite yet: the agenda page (roadmap.md, R3)
+# will, and will decide how Render picks up the daily file.
+#
+# 05:30 UTC every day, or by hand from the Actions tab. The job only runs on main.
+
+name: Refresh agenda
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 5 * * *"
+
+concurrency:
+  group: refresh-agenda
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Stay on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "This workflow publishes production data and only runs from main."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Download the agenda, the organs and the dossiers
+        run: uv run python scripts/download_open_data.py --only amo dossiers agenda
+
+      - name: Build the agenda database
+        run: uv run python build_agenda_db.py
+
+      - name: Refuse a database that is too small to publish
+        run: |
+          set -euo pipefail
+          cat > /tmp/check_agenda.py << 'PY'
+          import json
+          import sqlite3
+          import sys
+
+          con = sqlite3.connect("analysis_outputs/agenda.sqlite")
+          meta = {key: json.loads(value) for key, value in con.execute("select key, value from meta")}
+          counts = meta["counts"]
+          # The dataset covers the whole legislature: it only grows until the next one.
+          minimum = {"sittings": 800, "committee_meetings": 5000, "agenda_items": 4000, "attendance": 100000}
+          failed = False
+          for name, floor in minimum.items():
+              print(f"{name}: {counts[name]} (minimum {floor})")
+              failed |= counts[name] < floor
+          print(f"last confirmed sitting: {meta['last_confirmed_sitting']}")
+          print(f"attendance statuses: {meta['attendance_statuses']}")
+          if set(meta["attendance_statuses"]) - {"present", "excuse", "absent"}:
+              failed = True
+              print("Unexpected attendance status.")
+          if failed:
+              sys.exit("Refusing to publish: the agenda database looks incomplete.")
+          PY
+          uv run python /tmp/check_agenda.py
+
+      - name: Publish on the data release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gzip -c analysis_outputs/agenda.sqlite > agenda.sqlite.gz
+          gzip -t agenda.sqlite.gz
+          gh release upload data agenda.sqlite.gz --clobber
+          curl -fL --retry 5 --retry-delay 5 -o /dev/null -r 0-1023 \
+            "https://github.com/${{ github.repository }}/releases/download/data/agenda.sqlite.gz"

@@ -12,6 +12,9 @@ ignored by git.
 
 - Debates (comptes rendus): https://data.assemblee-nationale.fr/travaux-parlementaires/debats
 - Actors, mandates and organs (AMO), public votes (scrutins) and legislative files (dossiers).
+- Agenda (réunions): public sittings and committee meetings, their order of
+  business and committee attendance. Kept as `data/raw/opendata/agenda.json.zip`,
+  not extracted.
 
 ## Rebuild Pipeline
 
@@ -26,6 +29,7 @@ uv run python analyze_stances.py
 uv run python build_analytics_db.py
 uv run python dashboard/build_dashboard_data.py
 uv run python scripts/build_communes.py
+uv run python build_agenda_db.py
 ```
 
 - `extract_speeches.py` writes the dated speech index
@@ -65,8 +69,32 @@ uv run python scripts/build_communes.py
   (INSEE, La Poste, and the 2024 polling stations for the arrondissements of
   Paris, Lyon and Marseille; sources cached under `data/raw/geo/`). It ends
   with a coverage check against the open seats.
+- `build_agenda_db.py` writes `analysis_outputs/agenda.sqlite`
+  (`agenda_schema.sql`) from the Agenda archive, in a few seconds: every
+  sitting and committee meeting of the legislature, past and announced, with
+  its state (confirmed, possible, cancelled, removed), the items of the order
+  of business and the legislative dossier each item is about, and, for
+  committee meetings, every member marked present, excused or absent. The
+  dataset also announces Senate sittings (`organ_type = 'SENAT'`); an Assembly
+  sitting's `report_ref` is the `session_uid` of its speeches in
+  `analytics.sqlite`. Organ
+  names come from AMO and dossier titles from the dossiers download; a name or
+  title missing from them is left empty (information missions, for instance,
+  are not all in AMO, and publish no attendance). It only needs
+  `download_open_data.py --only amo dossiers agenda`, so it can run on its own.
+  The server does not read it yet.
 
 `uv run --extra topics --with pytest pytest -q` runs the Python tests.
+
+### Daily agenda refresh
+
+`.github/workflows/refresh-agenda.yml` rebuilds `agenda.sqlite` every day at
+05:30 UTC (or by hand from the Actions tab) and publishes it on the `data`
+release as `agenda.sqlite.gz`, next to the weekly `analytics.sqlite.gz`. It
+refuses to publish a database smaller than the current legislature
+(800 sittings, 5,000 committee meetings, 4,000 agenda items, 100,000
+attendance rows) or one with an unexpected attendance status. These floors
+only hold within one legislature: lower them after a dissolution.
 
 ## Serve Dashboard
 
