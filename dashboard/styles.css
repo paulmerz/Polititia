@@ -3345,3 +3345,164 @@ button.party-pill {
     grid-row: auto;
   }
 }
+
+/* ---------------------------------------------------------------- votes */
+
+.seat-dot.is-filtered {
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.vote-back {
+  margin-bottom: 8px;
+}
+
+.vote-controls {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.vote-controls .field input {
+  width: 100%;
+}
+
+.vote-picks {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.vote-pick {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vote-pick:hover,
+.vote-pick:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.vote-pick-title {
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.vote-pick-object,
+.vote-pick-total {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.vote-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.vote-card-title {
+  margin: 8px 0 4px;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.vote-card-object {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.vote-tally {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.vote-tally span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.vote-tally strong {
+  display: block;
+  font-size: 1.9rem;
+  line-height: 1.05;
+}
+
+.tally-pour strong {
+  color: #1e6b45;
+}
+
+.tally-contre strong {
+  color: #8d2436;
+}
+
+.tally-abstention strong {
+  color: #4a5361;
+}
+
+.vote-bar {
+  display: flex;
+  height: 10px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.vote-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.vote-group-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: help;
+}
+
+.vote-group-name {
+  font-weight: 700;
+}
+
+.vote-group-pos {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.vote-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+/* Five main tabs share one row in the side panel. */
+.tabs {
+  gap: 4px;
+}
+
+.tabs .tab {
+  flex: 1 1 auto;
+  padding: 7px 6px;
+  font-size: 0.86rem;
+}

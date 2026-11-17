@@ -548,6 +548,12 @@ Script reproductible : [`scripts/spike_commission_presence.py`](scripts/spike_co
 **R1. Fiche texte** (`/texte/<uid>`, nouvel onglet « Textes »). **L**
 - Contenu : titre et auteurs, type, frise du parcours réel, procédure (accélérée, 49.3, CMP), issue ; vote sur l'ensemble par groupe et par député ; scrutins clés du texte ; ce que chaque groupe en a dit (règle du § 5.2) ; positions annoncées confrontées aux votes ; étapes après le vote (Conseil constitutionnel, promulgation) ; carte de partage (le générateur d'images OG existe déjà).
 - *Fait quand* : tous les textes adoptés de la législature ont une fiche ; chaque élément renvoie à sa source ; la règle de sélection des prises de parole figure sur la page Méthode.
+- **Fait le 17 novembre 2026 : le volet « qui a voté quoi »**, en avance sur la fiche texte.
+  - Onglet Votes : tous les scrutins publics, filtrés par thème, votes clés ou mots du titre.
+  - Un scrutin choisi colore chaque siège selon le vote du député, avec une carte : résultat, décomptes et position de chaque groupe. Chaque scrutin a son lien.
+  - Chaque ligne de vote du tableau de bord y renvoie (« Qui a voté quoi »).
+  - Correctif associé : chaque député garde **la même place** dans l'hémicycle sur tous les écrans, dans l'ordre de son siège officiel (`numPlace`).
+  - Reste : la carte de partage d'un scrutin (image OG), la vue par texte (tous les scrutins d'un dossier), et les mises au point de vote.
 
 **R3. Agenda et mémoire du sujet** (`/agenda`, plus un bloc « Cette semaine à l'Assemblée » sur l'accueil). **M**
 - Contenu : les points de l'ordre du jour, chacun relié à sa fiche texte ; la mémoire du sujet (débats antérieurs par thème, scrutins, textes liés avec la raison du lien) ; l'état de chaque point, la date de mise à jour et la mention « susceptible d'évoluer ».

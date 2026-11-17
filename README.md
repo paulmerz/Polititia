@@ -349,10 +349,28 @@ cd server && npm test
 
 ## Dashboard
 
-Four tabs: **Thèmes**, **Député**, **Groupe**, **Assemblée** (plus **Style**
-in the detailed mode). The period selector (whole legislature, last 12 or 3
+Five tabs: **Thèmes**, **Député**, **Groupe**, **Assemblée**, **Votes** (plus
+**Style** in the detailed mode). The period selector (whole legislature, last 12 or 3
 months, parliamentary sessions, custom months) applies everywhere, including
 seat sizes, and the state is kept in the URL so any view can be shared.
+
+Every deputy keeps one place in the hemicycle on every screen: the layout is
+computed once from everyone the chamber can show, groups in sectors from left
+to right and, inside a group, the official seat number of the latest public
+vote (`politician_seats` in `analytics.sqlite`, `place` in the bundle). Filters,
+searches, themes, periods and votes dim seats; they never move them.
+
+**Votes** (« Qui vote quoi ») lists the public votes, newest first, filtered by
+the theme of the toolbar, key votes only (default) or words of the title
+(`GET /api/votes?theme=&cles=1&q=&offset=`). Choosing one
+(`/hemicycle?onglet=votes&scrutin=8280`, `GET /api/vote/8280`) colours each
+seat by the deputy's vote: pour, contre, abstention, non-votant, or « n'a pas
+pris part au vote » for a deputy the vote does not list while he or she sat
+(between the first and the last vote that lists him or her: `votedFrom`,
+`votedUntil` in the bundle). The card gives the result, the tallies and each
+group's position. Both routes read public records: they are free (not
+metered), same origin, 120 per minute and per IP. Every vote row elsewhere in
+the dashboard links to it (« Qui a voté quoi »).
 
 The **Assemblée** tab ends with a « Palmarès de l'hémicycle » (`palmares` in
 `/api/assembly`, ordered in `server/src/palmares.ts`): the deputies who

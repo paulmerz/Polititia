@@ -211,9 +211,29 @@ def load_politicians(db: sqlite3.Connection, reference: ReferenceData | None = N
         """
     ).fetchall()
     order = {config["id"]: index for index, config in enumerate(PARTY_CONFIG)}
+    # Official seat in the latest vote (politician_seats), for a fixed place in
+    # the hemicycle. A database built before that table has no places.
+    has_seats = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'politician_seats'").fetchone()
+    places = dict(db.execute("SELECT p.id, s.seat FROM politician_seats s JOIN politicians p ON p.pid = s.pid")) if has_seats else {}
+    # First and last public vote listing the deputy: outside that span, a vote
+    # does not count him or her as having not taken part.
+    spans = {
+        politician_id: (first, last)
+        for politician_id, first, last in db.execute(
+            """
+            SELECT p.id, MIN(v.date), MAX(v.date)
+            FROM vote_positions vp JOIN votes v ON v.vid = vp.vid JOIN politicians p ON p.pid = vp.pid
+            GROUP BY p.id
+            """
+        )
+    }
     politicians = []
     for pid, name, party, acteur_id, speeches, words in rows:
         item = {"id": pid, "name": name, "party": party, "acteurId": acteur_id, "speechCount": speeches, "words": words}
+        if places.get(pid):
+            item["place"] = places[pid]
+        if pid in spans:
+            item["votedFrom"], item["votedUntil"] = spans[pid]
         seat = seat_payload(reference, acteur_id)
         if seat:
             item["seat"] = seat

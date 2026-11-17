@@ -50,7 +50,7 @@ class MajorityTests(unittest.TestCase):
                                                 "positionMajoritaire": "pour",
                                                 "decompteVoix": {"pour": "12", "contre": "106", "abstentions": "0"},
                                                 "decompteNominatif": {
-                                                    "pours": {"votant": [{"acteurRef": "PA1"}]},
+                                                    "pours": {"votant": [{"acteurRef": "PA1", "numPlace": "073"}]},
                                                     "contres": {"votant": [{"acteurRef": "PA2"}]},
                                                 },
                                             },
@@ -68,6 +68,20 @@ class MajorityTests(unittest.TestCase):
         self.assertEqual(parsed[0].group_counts["RN"], {"pour": 12, "contre": 106, "abstention": 0, "members": 122})
         self.assertEqual(parsed[0].group_counts["_total"], {"pour": 291, "contre": 241, "abstention": 29})
         self.assertEqual(parsed[0].positions, {"PA1": "pour", "PA2": "contre"})
+        # The official seat number, when the file gives one.
+        self.assertEqual(parsed[0].seats, {"PA1": 73})
+
+    def test_latest_seat_wins(self) -> None:
+        from build_analytics_db import latest_seats
+        from reference_data import Vote
+
+        def vote(number: int, date: str, seats: dict[str, int]) -> Vote:
+            return Vote(uid=f"V{number}", number=number, date=date, title="", adopted=True, vote_type="SPO",
+                        positions={}, group_majority={}, seats=seats)
+
+        votes = [vote(2, "2025-02-01", {"PA1": 12}), vote(1, "2025-01-01", {"PA1": 10, "PA2": 20, "PA9": 99})]
+        # PA9 is not a known politician; the vote order in the list does not matter.
+        self.assertEqual(latest_seats(votes, {"PA1": 1, "PA2": 2}), [(1, 12, "2025-02-01"), (2, 20, "2025-01-01")])
 
 
 class KeyVoteTests(unittest.TestCase):

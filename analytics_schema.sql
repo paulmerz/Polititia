@@ -54,6 +54,10 @@ CREATE TABLE vote_positions (
 CREATE INDEX vote_positions_vid ON vote_positions (vid);
 CREATE INDEX vote_positions_party ON vote_positions (party, vid);
 CREATE TABLE vote_themes (vid INTEGER, theme TEXT, PRIMARY KEY (theme, vid)) WITHOUT ROWID;
+-- Each politician's official seat number (numPlace, 1 to 650, RN on the right
+-- of the chamber to LFI on the left) in the latest public vote that lists it,
+-- and that vote's date. The hemicycle uses it to keep everyone in one place.
+CREATE TABLE politician_seats (pid INTEGER PRIMARY KEY, seat INTEGER NOT NULL, date TEXT NOT NULL);
 CREATE TABLE stances (
   sid INTEGER NOT NULL, theme TEXT NOT NULL, stance TEXT NOT NULL, confidence REAL NOT NULL,
   method TEXT NOT NULL, quote TEXT NOT NULL, PRIMARY KEY (theme, sid)

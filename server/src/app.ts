@@ -90,6 +90,7 @@ const RETURN_TO_PATTERN = /^\?[A-Za-z0-9=&_.%-]{1,400}$/;
 const ADMIN_RETURN_TO = "/admin";
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
 const COMMUNE_SEARCHES_PER_MINUTE = 120;
+const VOTE_LOOKUPS_PER_MINUTE = 120;
 const CARD_RENDERS_PER_MINUTE = 30;
 const CARD_MAX_AGE_SECONDS = 24 * 60 * 60;
 // Beyond this, one address is replaying links, not following them.
@@ -447,6 +448,46 @@ export async function createApp(config: AppConfig) {
   );
 
   app.get("/api/assembly", (c) => metered(c, "assembly", "", (analytics, period) => analytics.assembly(period)));
+
+  // « Qui vote quoi » reads public records (who voted what in a public vote):
+  // not an analysis, so not metered, but rate limited against scraping.
+  function voteLookup(c: Context, view: (analytics: Analytics) => Response) {
+    if (!sameOriginOrSafeGet(config, c.req.raw)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    if (ipRateLimited(db, config.secret, "votes", requestIp(), VOTE_LOOKUPS_PER_MINUTE)) {
+      return c.json({ error: "rate_limited" }, 429);
+    }
+    const analytics = openAnalytics(config.analyticsPath);
+    if (!analytics) {
+      return c.json({ error: "analytics_missing" }, 503);
+    }
+    return view(analytics);
+  }
+
+  app.get("/api/votes", (c) =>
+    voteLookup(c, (analytics) => {
+      const theme = c.req.query("theme") || "";
+      if (theme && !analytics.themeIds.has(theme)) {
+        return c.json({ error: "unknown_theme" }, 400);
+      }
+      return c.json(
+        analytics.voteList({
+          theme,
+          keyOnly: c.req.query("cles") === "1",
+          query: (c.req.query("q") || "").slice(0, 80),
+          offset: Number(c.req.query("offset")) || 0,
+        }),
+      );
+    }),
+  );
+
+  app.get("/api/vote/:number{[0-9]{1,6}}", (c) =>
+    voteLookup(c, (analytics) => {
+      const vote = analytics.vote(Number(c.req.param("number")));
+      return vote ? c.json(vote) : c.json({ error: "not_found" }, 404);
+    }),
+  );
 
   // « Trouver mon député » only maps a place to constituencies, so it is not metered.
   app.get("/api/communes", (c) => {

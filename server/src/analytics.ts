@@ -444,6 +444,58 @@ export class Analytics {
     };
   }
 
+  // The « Votes » tab: public votes, newest first, by theme, key votes only or
+  // matching words of their title or text.
+  voteList(options: { theme?: string; keyOnly?: boolean; query?: string; offset?: number; limit?: number } = {}) {
+    const where: string[] = [];
+    const params: SQLInputValue[] = [];
+    if (options.keyOnly) {
+      where.push("is_key = 1");
+    }
+    if (options.theme) {
+      where.push("vid IN (SELECT vid FROM vote_themes WHERE theme = ?)");
+      params.push(options.theme);
+    }
+    for (const word of (options.query || "").trim().split(/\s+/).filter((item) => item.length >= 2).slice(0, 6)) {
+      where.push("(title LIKE ? OR dossier_title LIKE ?)");
+      params.push(`%${word}%`, `%${word}%`);
+    }
+    const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const limit = Math.min(Math.max(options.limit || 30, 1), 100);
+    const offset = Math.max(options.offset || 0, 0);
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM votes ${clause}`).get(...params) as { n: number }).n;
+    const rows = this.db
+      .prepare(`SELECT * FROM votes ${clause} ORDER BY date DESC, number DESC LIMIT ? OFFSET ?`)
+      .all(...params, limit, offset) as VoteRow[];
+    return { total, offset, votes: rows.map((vote) => ({ ...this.voteSummary(vote), themes: this.voteThemes(vote.vid) })) };
+  }
+
+  // One public vote: the summary, each group's tally and every listed deputy's
+  // position. Deputies the vote does not list did not take part in it.
+  vote(number: number) {
+    const vote = this.db.prepare("SELECT * FROM votes WHERE number = ?").get(number) as VoteRow | undefined;
+    if (!vote) {
+      return null;
+    }
+    const positions: Record<string, string> = {};
+    const groupsAtVote: Record<string, string> = {};
+    for (const row of this.db
+      .prepare("SELECT p.id, vp.position, vp.party FROM vote_positions vp JOIN politicians p ON p.pid = vp.pid WHERE vp.vid = ?")
+      .all(vote.vid) as Array<{ id: string; position: string; party: string }>) {
+      positions[row.id] = row.position;
+      groupsAtVote[row.id] = row.party;
+    }
+    const { counts } = this.groupsOf(vote);
+    return { ...this.voteSummary(vote), themes: this.voteThemes(vote.vid), counts, positions, groupsAtVote };
+  }
+
+  private voteThemes(vid: number): Array<{ id: string; label: string }> {
+    const ids = (this.db.prepare("SELECT theme FROM vote_themes WHERE vid = ?").all(vid) as Array<{ theme: string }>).map((row) => row.theme);
+    const entries = ids.map((id) => this.themeIds.get(id)).filter((entry): entry is ThemeCatalogEntry => Boolean(entry));
+    const themes = entries.filter((entry) => entry.type === "theme");
+    return (themes.length ? themes : entries).map((entry) => ({ id: entry.id, label: entry.label }));
+  }
+
   private themeVoteIds(themeId: string): Set<number> {
     return this.cached(`vote-themes:${themeId}`, () => {
       const rows = this.db.prepare("SELECT vid FROM vote_themes WHERE theme = ?").all(themeId) as Array<{ vid: number }>;

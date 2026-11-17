@@ -58,6 +58,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def latest_seats(votes, by_acteur: dict[str, int]) -> list[tuple[int, int, str]]:
+    """(pid, seat, date): each politician's official seat in the latest vote that lists it.
+
+    The hemicycle places everyone by this seat on every screen, so a deputy
+    keeps one place; it only moves when the Assembly gives him or her another.
+    """
+    latest: dict[int, tuple[str, int, int]] = {}
+    for vote in votes:
+        for acteur_id, seat in vote.seats.items():
+            pid = by_acteur.get(acteur_id)
+            if pid is not None and (vote.date, vote.number) >= latest.get(pid, ("", 0, 0))[:2]:
+                latest[pid] = (vote.date, vote.number, seat)
+    return [(pid, seat, date) for pid, (date, _number, seat) in sorted(latest.items())]
+
+
 def load_jsonl(path: Path) -> list[dict]:
     if not path.is_file():
         return []
@@ -333,6 +348,7 @@ class Builder:
         self.db.executemany("INSERT INTO votes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", vote_rows)
         self.db.executemany("INSERT OR IGNORE INTO vote_positions VALUES (?, ?, ?, ?)", position_rows)
         self.db.executemany("INSERT OR IGNORE INTO vote_themes VALUES (?, ?)", theme_rows)
+        self.db.executemany("INSERT INTO politician_seats VALUES (?, ?, ?)", latest_seats(votes, by_acteur))
         return len(vote_rows)
 
     def add_stances(self, stances: list[dict]) -> None:

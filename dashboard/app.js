@@ -48,7 +48,7 @@ const dialog = $("politicianDialog");
 const dialogTitle = $("dialogTitle");
 const dialogContent = $("dialogContent");
 
-const TABS = ["themes", "depute", "groupe", "assemblee", "style"];
+const TABS = ["themes", "depute", "groupe", "assemblee", "votes", "style"];
 const OTHER_PARTIES = new Set(["GOUV", "UNLABELED"]);
 const METHOD_URL = "/methode";
 // Fixed by the electoral code (art. LO 119); data.meta.deputies counts every
@@ -77,6 +77,10 @@ const state = {
   markerCategory: null,
   languageMetric: "LD",
   period: { preset: "all", from: "", to: "" },
+  // « Votes » tab: the public vote shown in the hemicycle (its number), else the list.
+  voteNumber: null,
+  voteKeyOnly: true,
+  voteQuery: "",
 };
 
 let data = null;
@@ -619,6 +623,9 @@ function reportTarget(fromDialog) {
   if (state.tab === "assemblee") {
     return { subject: "assemblee", label: "L'Assemblée, vue d'ensemble" };
   }
+  if (state.tab === "votes" && state.voteNumber) {
+    return { subject: `scrutin:${state.voteNumber}`, label: `Le scrutin n° ${state.voteNumber}` };
+  }
   if (state.tab === "style") {
     return { subject: "style", label: "Les styles de parole" };
   }
@@ -877,6 +884,9 @@ function writeUrl() {
   if (state.themeId) {
     params.set("theme", state.themeId);
   }
+  if (state.tab === "votes" && state.voteNumber) {
+    params.set("scrutin", String(state.voteNumber));
+  }
   if (state.period.preset !== "all") {
     params.set("periode", state.period.preset);
     if (state.period.preset === "custom") {
@@ -905,6 +915,9 @@ function pageTitle() {
   }
   if (state.tab === "themes" && state.themeId) {
     return `${themeLabel(state.themeId)} : qui en parle à l'Assemblée et comment votent les groupes`;
+  }
+  if (state.tab === "votes") {
+    return state.voteNumber ? `Qui a voté quoi au scrutin n° ${state.voteNumber}` : "Qui vote quoi à l'Assemblée nationale";
   }
   return "La parole des députés : ce que votre député dit vraiment";
 }
@@ -935,6 +948,13 @@ function readUrl() {
   if (theme && themeMap.has(theme)) {
     state.themeId = theme;
   }
+  const scrutin = Number(params.get("scrutin"));
+  if (Number.isInteger(scrutin) && scrutin > 0) {
+    state.voteNumber = scrutin;
+    if (!tab) {
+      state.tab = "votes";
+    }
+  }
   const preset = params.get("periode");
   if (preset && periodPresets().some((option) => option.id === preset)) {
     state.period.preset = preset;
@@ -958,6 +978,7 @@ function commit() {
   writeUrl();
   render();
   load();
+  loadVotes();
 }
 
 // ---------------------------------------------------------------- controls
@@ -1290,27 +1311,50 @@ function seatTooltip(person) {
   return `${person.name} – ${partyLabel(person.party)} – ${plural(stats.speeches, "intervention", "interventions")} · ${fmtCompact(stats.words)} mots`;
 }
 
+// Fills a group's sector left to right in the order of `people`: the first
+// person takes the leftmost place, whatever the row.
 function layoutPartySeats(people, sector) {
   const rowCounts = distributeRowCounts(people.length, SEAT_ROW_RADII);
   const gap = Math.min(2.4, sector.width / 7);
   const start = sector.start - gap;
   const end = sector.end + gap;
-  const seats = [];
-  let cursor = 0;
-  for (let rowIndex = rowCounts.length - 1; rowIndex >= 0; rowIndex -= 1) {
-    const count = rowCounts[rowIndex];
-    if (!count) {
-      continue;
-    }
-    const group = people.slice(cursor, cursor + count);
-    cursor += count;
+  const slots = [];
+  rowCounts.forEach((count, rowIndex) => {
     const stagger = count > 1 && rowIndex % 2 === 1 ? 0.4 : 0;
-    group.forEach((person, index) => {
+    for (let index = 0; index < count; index += 1) {
       const theta = start + (end - start) * ((index + 0.5 + stagger) / count);
-      seats.push({ person, ...polarPoint(500, 585, SEAT_ROW_RADII[rowIndex], theta) });
-    });
+      slots.push({ theta, rowIndex, ...polarPoint(500, 585, SEAT_ROW_RADII[rowIndex], theta) });
+    }
+  });
+  slots.sort((a, b) => b.theta - a.theta || b.rowIndex - a.rowIndex);
+  return people.map((person, index) => ({ person, x: slots[index].x, y: slots[index].y }));
+}
+
+// The seats are laid out once, from everyone the chamber can show: a filter, a
+// search, a theme, a period or a vote never moves anyone. Inside a group,
+// deputies follow their official seat number (published with every public
+// vote), highest on the left as in the Assembly; people without one come last.
+let chamberLayoutCache = null;
+
+function chamberLayout() {
+  const key = `${data.politicians.length}:${state.showOthers}`;
+  if (chamberLayoutCache?.key === key) {
+    return chamberLayoutCache;
   }
-  return seats;
+  const people = data.politicians.filter((person) => partyVisible(person.party));
+  const sectors = buildSectors(people);
+  const seats = [];
+  data.partyOrder.forEach((party) => {
+    const sector = sectors.get(party);
+    const members = people
+      .filter((person) => person.party === party)
+      .sort((a, b) => (b.place || 0) - (a.place || 0) || a.name.localeCompare(b.name, "fr"));
+    if (sector && members.length) {
+      seats.push(...layoutPartySeats(members, sector));
+    }
+  });
+  chamberLayoutCache = { key, sectors, seats };
+  return chamberLayoutCache;
 }
 
 function seatLabelPoint(x, y, extra) {
@@ -1321,15 +1365,17 @@ function seatLabelPoint(x, y, extra) {
 }
 
 function renderChamber() {
+  const layout = chamberLayout();
   const visible = getVisiblePoliticians();
-  const sectors = buildSectors(visible);
+  const shown = new Set(visible.map((person) => person.id));
+  const vote = currentVote();
   const showSeatNames = state.partyFilter !== "ALL";
   chamberSvg.replaceChildren();
 
   SEAT_ROW_RADII.forEach((radius) => {
     chamberSvg.appendChild(svgEl("path", { d: arcPath(500, 585, radius, 160, 20), class: "grid-arc" }));
   });
-  sectors.forEach((sector) => {
+  layout.sectors.forEach((sector) => {
     chamberSvg.appendChild(
       svgEl("path", {
         d: arcPath(500, 585, 520, sector.start - 1, sector.end + 1, 28),
@@ -1350,14 +1396,6 @@ function renderChamber() {
   tribuneText.textContent = "Présidence";
   chamberSvg.appendChild(tribuneText);
 
-  if (!visible.length) {
-    const empty = svgEl("text", { x: 500, y: 300, class: "empty-label" });
-    empty.textContent = "Aucune correspondance";
-    chamberSvg.appendChild(empty);
-    renderLegend(new Map());
-    return;
-  }
-
   const byParty = new Map();
   visible.forEach((person) => {
     if (!byParty.has(person.party)) {
@@ -1366,58 +1404,66 @@ function renderChamber() {
     byParty.get(person.party).push(person);
   });
 
-  const seats = [];
-  data.partyOrder.forEach((party) => {
-    const people = byParty.get(party);
-    const sector = sectors.get(party);
-    if (people && sector) {
-      people.sort((a, b) => (b.speechCount || 0) - (a.speechCount || 0) || a.name.localeCompare(b.name, "fr"));
-      seats.push(...layoutPartySeats(people, sector));
-    }
-  });
-
   const scale = seatScale();
-  const scores = themeScores();
+  const scores = vote ? null : themeScores();
   const dots = svgEl("g");
   const names = svgEl("g", { class: "seat-names", "aria-hidden": "true" });
   const nameSize = visible.length > 90 ? 6.8 : visible.length > 50 ? 7.6 : visible.length > 28 ? 8.6 : 10;
+  const tally = new Map();
 
-  seats.forEach(({ person, x, y }) => {
-    const stats = seatStats(person);
-    const score = scores?.[person.id] || null;
-    const muted = (scores && !score) || !stats.spoke;
-    const share = Number(score?.share || 0);
-    let radius = seatRadiusForValue(seatMetricValue(person), scale);
-    if (scores) {
-      radius *= score ? 1 + Math.min(0.7, share) : 0.72;
-    }
-    if (score) {
-      dots.appendChild(
-        svgEl("circle", {
-          cx: x.toFixed(1),
-          cy: y.toFixed(1),
-          r: (radius + 3.2).toFixed(2),
-          fill: partyColor(person.party),
-          opacity: 0.22 + Math.min(0.35, share),
-          class: "seat-halo",
-        }),
-      );
-    }
-    let label = seatTooltip(person);
-    if (scores) {
-      label += score
-        ? ` – sur ce thème : ${plural(score.speechCount, "intervention", "interventions")} (${fmtPct(share)} de sa parole)`
-        : " – n'a pas abordé ce thème";
-    } else if (!stats.spoke) {
-      label += " – aucune intervention sur la période";
+  layout.seats.forEach(({ person, x, y }) => {
+    const filtered = !shown.has(person.id);
+    let radius;
+    let fill;
+    let label;
+    let muted = false;
+    if (vote) {
+      const status = voteStatusOf(person, vote);
+      if (!filtered) {
+        tally.set(status, (tally.get(status) || 0) + 1);
+      }
+      radius = status === "hors-mandat" ? VOTE_SEAT_RADIUS * 0.45 : VOTE_SEAT_RADIUS;
+      fill = VOTE_COLORS[status];
+      const group = vote.groupsAtVote?.[person.id] || person.party;
+      label = `${person.name} – ${partyLabel(group)} – ${VOTE_STATUS_LABELS[status]}`;
+    } else {
+      const stats = seatStats(person);
+      const score = scores?.[person.id] || null;
+      muted = (scores && !score) || !stats.spoke;
+      const share = Number(score?.share || 0);
+      radius = seatRadiusForValue(seatMetricValue(person), scale);
+      if (scores) {
+        radius *= score ? 1 + Math.min(0.7, share) : 0.72;
+      }
+      if (score && !filtered) {
+        dots.appendChild(
+          svgEl("circle", {
+            cx: x.toFixed(1),
+            cy: y.toFixed(1),
+            r: (radius + 3.2).toFixed(2),
+            fill: partyColor(person.party),
+            opacity: 0.22 + Math.min(0.35, share),
+            class: "seat-halo",
+          }),
+        );
+      }
+      fill = partyColor(person.party);
+      label = seatTooltip(person);
+      if (scores) {
+        label += score
+          ? ` – sur ce thème : ${plural(score.speechCount, "intervention", "interventions")} (${fmtPct(share)} de sa parole)`
+          : " – n'a pas abordé ce thème";
+      } else if (!stats.spoke) {
+        label += " – aucune intervention sur la période";
+      }
     }
     const dot = svgEl("circle", {
       cx: x.toFixed(1),
       cy: y.toFixed(1),
       r: radius.toFixed(2),
-      fill: partyColor(person.party),
-      class: `seat-dot${person.id === state.selectedId ? " is-selected" : ""}${muted ? " is-muted" : ""}`,
-      tabindex: 0,
+      fill,
+      class: `seat-dot${person.id === state.selectedId ? " is-selected" : ""}${muted ? " is-muted" : ""}${filtered ? " is-filtered" : ""}`,
+      tabindex: filtered ? -1 : 0,
       role: "button",
       "aria-label": label,
       "data-politician-id": person.id,
@@ -1426,7 +1472,7 @@ function renderChamber() {
     title.textContent = label;
     dot.appendChild(title);
     dots.appendChild(dot);
-    if (showSeatNames) {
+    if (showSeatNames && !filtered) {
       const point = seatLabelPoint(x, y, 7 + radius);
       const text = svgEl("text", { x: point.x.toFixed(1), y: point.y.toFixed(1), class: "seat-name", "font-size": String(nameSize) });
       text.textContent = shortPoliticianName(person.name);
@@ -1436,6 +1482,24 @@ function renderChamber() {
   chamberSvg.appendChild(dots);
   if (showSeatNames) {
     chamberSvg.appendChild(names);
+  }
+  if (!visible.length) {
+    const empty = svgEl("text", { x: 500, y: 300, class: "empty-label" });
+    empty.textContent = "Aucune correspondance";
+    chamberSvg.appendChild(empty);
+  }
+  if (vote) {
+    renderVoteLegend(tally);
+    // The card gives the Assembly's tallies; deputies who never spoke in a
+    // sitting are not in Polititia's corpus, so the seats can count fewer.
+    const official = vote.total ? vote.total.pour + vote.total.contre + vote.total.abstention : 0;
+    const drawn = layout.seats.filter(({ person }) => ["pour", "contre", "abstention"].includes(vote.positions?.[person.id])).length;
+    const missing = Math.max(0, official - drawn);
+    const gap = missing
+      ? ` ${missing > 1 ? `${fmtInt(missing)} votants n'apparaissent pas : ils n'ont jamais pris la parole en séance, Polititia ne les connaît donc pas` : "Un votant n'apparaît pas : il n'a jamais pris la parole en séance, Polititia ne le connaît donc pas"}. Les décomptes de la carte sont ceux de l'Assemblée.`
+      : "";
+    seatScaleNote.innerHTML = `<span>Chaque cercle est un député, toujours à la même place ; sa couleur suit son vote au scrutin n° ${vote.number}.${escapeHtml(gap)}</span>`;
+    return;
   }
   renderLegend(byParty);
   renderSeatScaleNote(scale);
@@ -1683,7 +1747,10 @@ function voteRow(vote, { person = false, group = false, groups = false } = {}) {
       ${groups ? groupChips(vote.groups) : ""}
       <p class="vote-foot">
         <span>${escapeHtml(total)}</span>
-        ${vote.url ? `<a href="${escapeHtml(vote.url)}" target="_blank" rel="noopener">Scrutin n° ${fmtInt(vote.number)} ↗</a>` : ""}
+        <span class="vote-links">
+          <button type="button" class="link-button" data-select-vote="${vote.number}">Qui a voté quoi</button>
+          ${vote.url ? `<a href="${escapeHtml(vote.url)}" target="_blank" rel="noopener">Scrutin n° ${vote.number} ↗</a>` : ""}
+        </span>
       </p>
     </article>`;
 }
@@ -2840,18 +2907,288 @@ function renderStylePanel() {
 
 // ---------------------------------------------------------------- render
 
+// ---------------------------------------------------------------- votes
+
+// « Qui vote quoi » reads public records: the server does not meter it.
+const VOTE_SEAT_RADIUS = 6.4;
+const VOTE_PAGE = 30;
+const VOTE_COLORS = {
+  pour: "#2f8f5b",
+  contre: "#c8344b",
+  abstention: "#8794ab",
+  "non-votant": "#c9bfa9",
+  "sans-vote": "#e3ddd0",
+  "hors-mandat": "#ece8df",
+};
+const VOTE_STATUS_LABELS = {
+  pour: "Pour",
+  contre: "Contre",
+  abstention: "Abstention",
+  "non-votant": "Non-votant",
+  "sans-vote": "N'a pas pris part au vote",
+  "hors-mandat": "Pas député à cette date",
+};
+const voteLists = new Map();
+const voteDetails = new Map();
+const voteStatus = new Map();
+let voteSearchTimer = null;
+
+function voteListKey(offset = 0) {
+  const params = new URLSearchParams();
+  if (state.themeId) {
+    params.set("theme", state.themeId);
+  }
+  if (state.voteKeyOnly) {
+    params.set("cles", "1");
+  }
+  if (state.voteQuery.trim()) {
+    params.set("q", state.voteQuery.trim());
+  }
+  if (offset) {
+    params.set("offset", String(offset));
+  }
+  return `/api/votes?${params}`;
+}
+
+function currentVote() {
+  return state.tab === "votes" && state.voteNumber ? voteDetails.get(state.voteNumber) || null : null;
+}
+
+// A deputy the vote does not list did not take part in it, if he or she sat
+// then: between the first and the last public vote that lists him or her.
+function voteStatusOf(person, vote) {
+  const position = vote.positions?.[person.id];
+  if (position) {
+    return position;
+  }
+  if (person.votedFrom && person.votedFrom <= vote.date && vote.date <= person.votedUntil) {
+    return "sans-vote";
+  }
+  return "hors-mandat";
+}
+
+async function fetchVoteJson(path) {
+  const response = await fetch(path, { credentials: "include", headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    const error = new Error(`HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+async function loadVotes() {
+  if (state.tab !== "votes") {
+    return;
+  }
+  const tasks = [];
+  if (state.voteNumber && !voteDetails.has(state.voteNumber) && voteStatus.get(state.voteNumber) !== "loading") {
+    const number = state.voteNumber;
+    voteStatus.set(number, "loading");
+    tasks.push(
+      fetchVoteJson(`/api/vote/${number}`)
+        .then((vote) => {
+          voteDetails.set(number, vote);
+          voteStatus.delete(number);
+        })
+        .catch((error) => voteStatus.set(number, error.status === 404 ? "missing" : "error")),
+    );
+  }
+  const key = voteListKey();
+  if (!state.voteNumber && !voteLists.has(key) && voteStatus.get(key) !== "loading") {
+    voteStatus.set(key, "loading");
+    tasks.push(
+      fetchVoteJson(key)
+        .then((page) => {
+          voteLists.set(key, { total: page.total, votes: page.votes });
+          voteStatus.delete(key);
+        })
+        .catch(() => voteStatus.set(key, "error")),
+    );
+  }
+  if (tasks.length) {
+    render();
+    await Promise.all(tasks);
+    render();
+  }
+}
+
+async function loadMoreVotes() {
+  const key = voteListKey();
+  const list = voteLists.get(key);
+  if (!list || voteStatus.get(`${key}:more`) === "loading") {
+    return;
+  }
+  voteStatus.set(`${key}:more`, "loading");
+  try {
+    const page = await fetchVoteJson(voteListKey(list.votes.length));
+    list.votes.push(...page.votes);
+  } finally {
+    voteStatus.delete(`${key}:more`);
+    render();
+  }
+}
+
+function selectVote(number) {
+  state.voteNumber = number;
+  state.tab = "votes";
+  commit();
+  const panel = analysisContent.closest(".analysis-panel");
+  panel.scrollTop = 0;
+}
+
+function renderVoteLegend(tally) {
+  $("partyLegend").innerHTML = Object.keys(VOTE_STATUS_LABELS)
+    .filter((status) => tally.get(status) && status !== "hors-mandat")
+    .map(
+      (status) => `
+        <span class="legend-item">
+          <span class="swatch" data-style="background:${VOTE_COLORS[status]}"></span>
+          <span>${escapeHtml(VOTE_STATUS_LABELS[status])} ${fmtInt(tally.get(status))}</span>
+        </span>`,
+    )
+    .join("");
+}
+
+function voteGroupGrid(vote) {
+  const parties = data.partyOrder.filter((party) => vote.counts?.[party] && party !== "_total");
+  if (!parties.length) {
+    return "";
+  }
+  return `
+    <div class="vote-group-grid" aria-label="Position de chaque groupe">
+      ${parties
+        .map((party) => {
+          const counts = vote.counts[party];
+          const position = vote.groups?.[party] || "";
+          const detail = `${partyMap.get(party)?.name || partyLabel(party)} : ${fmtInt(counts.pour)} pour, ${fmtInt(counts.contre)} contre, ${fmtInt(counts.abstention)} abstentions${counts.members ? ` sur ${fmtInt(counts.members)} membres` : ""}`;
+          return `
+            <span class="vote-group-cell pos-${escapeHtml(position || "none")}" title="${escapeHtml(detail)}">
+              <span class="swatch" data-style="background:${partyColor(party)}"></span>
+              <span class="vote-group-name">${escapeHtml(partyLabel(party))}</span>
+              <span class="vote-group-pos">${escapeHtml(POSITION_LABELS[position] || "Partagé")}</span>
+            </span>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function voteCard(vote) {
+  const total = vote.total || { pour: 0, contre: 0, abstention: 0 };
+  const sum = Math.max(1, total.pour + total.contre + total.abstention);
+  const title = vote.dossier || capitalize(voteTitle(vote));
+  const themes = (vote.themes || [])
+    .map((theme) => `<button type="button" class="link-button" data-vote-theme="${escapeHtml(theme.id)}">${escapeHtml(theme.label)}</button>`)
+    .join(" · ");
+  return `
+    <article class="vote-card">
+      <div class="vote-head">
+        <span class="vote-date">${escapeHtml(fmtDate(vote.date))}</span>
+        ${vote.adopted ? `<span class="vote-result is-adopted">Adopté</span>` : `<span class="vote-result is-rejected">Rejeté</span>`}
+        ${vote.isKey ? `<span class="vote-key">Vote clé</span>` : ""}
+      </div>
+      <h3 class="vote-card-title">${escapeHtml(title)}</h3>
+      ${vote.dossier ? `<p class="vote-card-object">${escapeHtml(capitalize(voteTitle(vote)))}</p>` : ""}
+      <div class="vote-tally">
+        <span class="tally-pour"><strong>${fmtInt(total.pour)}</strong> pour</span>
+        <span class="tally-contre"><strong>${fmtInt(total.contre)}</strong> contre</span>
+        <span class="tally-abstention"><strong>${fmtInt(total.abstention)}</strong> ${total.abstention > 1 ? "abstentions" : "abstention"}</span>
+      </div>
+      <div class="vote-bar" aria-hidden="true">
+        <span data-style="width:${((total.pour / sum) * 100).toFixed(2)}%;background:${VOTE_COLORS.pour}"></span>
+        <span data-style="width:${((total.contre / sum) * 100).toFixed(2)}%;background:${VOTE_COLORS.contre}"></span>
+        <span data-style="width:${((total.abstention / sum) * 100).toFixed(2)}%;background:${VOTE_COLORS.abstention}"></span>
+      </div>
+      ${sectionTitle("Position de chaque groupe", "La position majoritaire parmi les membres du groupe qui ont voté ; « Partagé » quand aucune ne l'emporte. Survolez un groupe pour son décompte.")}
+      ${voteGroupGrid(vote)}
+      ${themes ? `<p class="source-note">Thème : ${themes}</p>` : ""}
+      <p class="vote-foot">
+        <span>Ne pas voter peut avoir de nombreuses raisons (commission, délégation, mission) : voir la méthode.</span>
+        <a href="${escapeHtml(vote.url)}" target="_blank" rel="noopener">Scrutin n° ${vote.number} ↗</a>
+      </p>
+    </article>`;
+}
+
+function voteListRow(vote) {
+  const total = vote.total ? `${fmtInt(vote.total.pour)} pour, ${fmtInt(vote.total.contre)} contre` : "";
+  return `
+    <button type="button" class="vote-pick" data-select-vote="${vote.number}">
+      <span class="vote-head">
+        <span class="vote-date">${escapeHtml(fmtDate(vote.date))}</span>
+        ${vote.adopted ? `<span class="vote-result is-adopted">Adopté</span>` : `<span class="vote-result is-rejected">Rejeté</span>`}
+        ${vote.isKey ? `<span class="vote-key">Vote clé</span>` : ""}
+      </span>
+      <span class="vote-pick-title">${escapeHtml(vote.dossier || capitalize(voteTitle(vote)))}</span>
+      ${vote.dossier ? `<span class="vote-pick-object">${escapeHtml(capitalize(voteTitle(vote)))}</span>` : ""}
+      <span class="vote-pick-total">${escapeHtml(total)}</span>
+    </button>`;
+}
+
+function renderVotesPanel() {
+  const header = `<h2>Qui vote quoi</h2>`;
+  if (state.voteNumber) {
+    const vote = voteDetails.get(state.voteNumber);
+    const status = voteStatus.get(state.voteNumber);
+    const back = `<button type="button" class="link-button vote-back" data-vote-back="true">← Tous les scrutins</button>`;
+    let body = `<p class="source-note loading-note">Chargement du scrutin…</p>`;
+    if (vote) {
+      body = voteCard(vote);
+    } else if (status === "missing") {
+      body = note("Ce scrutin n'existe pas dans nos données.");
+    } else if (status === "error") {
+      body = `${note("Ce scrutin n'a pas pu être chargé.")}<button class="gate-secondary" type="button" data-vote-retry="true">Réessayer</button>`;
+    }
+    return `<div class="detail-body">${back}${header}${body}</div>`;
+  }
+  const key = voteListKey();
+  const list = voteLists.get(key);
+  const status = voteStatus.get(key);
+  const themeNote = state.themeId
+    ? `<p class="source-note">Thème : <strong>${escapeHtml(themeLabel(state.themeId))}</strong> (changez-le dans la barre de l'hémicycle).</p>`
+    : `<p class="source-note">Choisissez un thème dans la barre de l'hémicycle pour n'en voir que les scrutins.</p>`;
+  const controls = `
+    <div class="vote-controls">
+      <label class="field">
+        <span>Chercher un texte</span>
+        <input type="search" data-vote-search value="${escapeHtml(state.voteQuery)}" autocomplete="off" placeholder="Retraites, aide à mourir, budget…" maxlength="80" />
+      </label>
+      <label class="toggle-field">
+        <input type="checkbox" data-vote-key ${state.voteKeyOnly ? "checked" : ""} />
+        <span>Votes clés seulement (ensemble d'un texte, motions de censure)</span>
+      </label>
+    </div>`;
+  let body = `<p class="source-note loading-note">Chargement des scrutins…</p>`;
+  if (list) {
+    const more =
+      list.votes.length < list.total
+        ? `<button type="button" class="gate-secondary" data-vote-more="true">Afficher plus (${fmtInt(list.total - list.votes.length)} restants)</button>`
+        : "";
+    body = list.votes.length
+      ? `<p class="source-note">${plural(list.total, "scrutin", "scrutins")}, du plus récent au plus ancien. Choisissez-en un pour voir le vote de chaque député dans l'hémicycle.</p>
+         <div class="vote-picks">${list.votes.map(voteListRow).join("")}</div>${more}`
+      : note("Aucun scrutin ne correspond.");
+  } else if (status === "error") {
+    body = `${note("La liste des scrutins n'a pas pu être chargée.")}<button class="gate-secondary" type="button" data-vote-retry="true">Réessayer</button>`;
+  }
+  return `<div class="detail-body">${header}${themeNote}${controls}${body}</div>`;
+}
+
 function renderAnalysis() {
   const renderers = {
     themes: renderThemePanel,
     depute: () => renderPoliticianDetail(state.selectedId),
     groupe: renderPartyPanel,
     assemblee: renderAssemblyPanel,
+    votes: renderVotesPanel,
     style: renderStylePanel,
   };
-  const searchFocused = document.activeElement?.matches("[data-deputy-search]") && analysisContent.contains(document.activeElement);
+  // A re-render must not take the cursor out of a search box being typed in.
+  const focusedSearch = ["[data-deputy-search]", "[data-vote-search]"].find(
+    (selector) => document.activeElement?.matches(selector) && analysisContent.contains(document.activeElement),
+  );
   analysisContent.innerHTML = (renderers[state.tab] || renderThemePanel)() + reportLine();
-  if (searchFocused) {
-    const input = analysisContent.querySelector("[data-deputy-search]");
+  if (focusedSearch) {
+    const input = analysisContent.querySelector(focusedSearch);
     input?.focus();
     input?.setSelectionRange(input.value.length, input.value.length);
   }
@@ -2998,6 +3335,36 @@ document.body.addEventListener("click", (event) => {
   const tab = target.closest("[data-tab]");
   if (tab) {
     state.tab = tab.dataset.tab;
+    commit();
+    return;
+  }
+  const votePick = target.closest("[data-select-vote]");
+  if (votePick) {
+    selectVote(Number(votePick.dataset.selectVote));
+    return;
+  }
+  if (target.closest("[data-vote-back]")) {
+    state.voteNumber = null;
+    commit();
+    return;
+  }
+  if (target.closest("[data-vote-more]")) {
+    loadMoreVotes();
+    return;
+  }
+  if (target.closest("[data-vote-retry]")) {
+    for (const [key, value] of voteStatus) {
+      if (value === "error") {
+        voteStatus.delete(key);
+      }
+    }
+    loadVotes();
+    return;
+  }
+  const voteTheme = target.closest("[data-vote-theme]");
+  if (voteTheme && themeMap.has(voteTheme.dataset.voteTheme)) {
+    state.themeId = voteTheme.dataset.voteTheme;
+    state.voteNumber = null;
     commit();
     return;
   }
@@ -3196,7 +3563,20 @@ function handlePanelChange(event) {
 analysisContent.addEventListener("change", handlePanelChange);
 dialogContent.addEventListener("change", handlePanelChange);
 
+analysisContent.addEventListener("change", (event) => {
+  if (event.target.matches("[data-vote-key]")) {
+    state.voteKeyOnly = event.target.checked;
+    commit();
+  }
+});
+
 analysisContent.addEventListener("input", (event) => {
+  if (event.target.matches("[data-vote-search]")) {
+    state.voteQuery = event.target.value.slice(0, 80);
+    clearTimeout(voteSearchTimer);
+    voteSearchTimer = setTimeout(commit, 300);
+    return;
+  }
   if (event.target.matches("[data-commune-search]")) {
     queueCommuneSearch("panel", event.target.value, refreshCommuneFinder);
     refreshCommuneFinder();

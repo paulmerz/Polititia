@@ -173,6 +173,8 @@ class Vote:
     dossier_uid: str = ""
     # {"pour", "contre", "abstention", "members"} per group, plus "_total".
     group_counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Official seat number (numPlace, 1 to 650) of each listed voter.
+    seats: dict[str, int] = field(default_factory=dict)
 
 
 class ReferenceData:
@@ -334,6 +336,7 @@ class ReferenceData:
         for path in sorted(directory.glob("*.json")):
             raw = _load(path, "scrutin")
             positions: dict[str, str] = {}
+            seats: dict[str, int] = {}
             majority: dict[str, str] = {}
             counts: dict[str, dict[str, int]] = {}
             total = ((raw.get("syntheseVote") or {}).get("decompte")) or {}
@@ -355,6 +358,8 @@ class ReferenceData:
                     for voter in as_list((nominative.get(key) or {}).get("votant")):
                         if voter.get("acteurRef"):
                             positions[voter["acteurRef"]] = label
+                            if _int(voter.get("numPlace")):
+                                seats[voter["acteurRef"]] = _int(voter.get("numPlace"))
             title = raw.get("titre") or ((raw.get("objet") or {}).get("libelle")) or ""
             votes.append(
                 Vote(
@@ -367,6 +372,7 @@ class ReferenceData:
                     positions=positions,
                     group_majority=majority,
                     group_counts=counts,
+                    seats=seats,
                 )
             )
         return votes
