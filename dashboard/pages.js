@@ -23,7 +23,7 @@
         status.textContent =
           remaining === undefined
             ? "Vous n’êtes pas connecté."
-            : `Vous n’êtes pas connecté. Analyses gratuites restantes sur cet appareil : ${remaining}.`;
+            : `Vous n’êtes pas connecté. Analyses sans inscription restantes sur cet appareil : ${remaining}.`;
         actions.hidden = true;
       }
     } catch {

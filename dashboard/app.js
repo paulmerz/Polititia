@@ -51,6 +51,9 @@ const dialogContent = $("dialogContent");
 const TABS = ["themes", "depute", "groupe", "assemblee", "style"];
 const OTHER_PARTIES = new Set(["GOUV", "UNLABELED"]);
 const METHOD_URL = "/methode";
+// Fixed by the electoral code (art. LO 119); data.meta.deputies counts every
+// deputy who spoke, former ones included.
+const SEATS = 577;
 const ABROAD_DEPT = "099";
 const COMMUNE_SEARCH_DELAY_MS = 200;
 // Above this, a commune (Paris, Marseille…) asks for an arrondissement or a postcode.
@@ -841,9 +844,9 @@ function statusBlock(path) {
   if (status === "locked") {
     return `
       <div class="locked-card">
-        <p><strong>Vos analyses gratuites sont épuisées.</strong></p>
-        <p>La suite reste gratuite : confirmez simplement votre adresse email pour continuer sans limite.</p>
-        <button class="gate-submit" type="button" data-open-gate="true">Continuer gratuitement</button>
+        <p><strong>Vous avez atteint les ${fmtInt(Gate.state.quota?.limit || 10)} analyses sans inscription.</strong></p>
+        <p>Tout reste gratuit : confirmez votre adresse email pour continuer sans limite.</p>
+        <button class="gate-submit" type="button" data-open-gate="true">Confirmer mon email</button>
       </div>`;
   }
   if (status === "missing") {
@@ -886,7 +889,8 @@ function writeUrl() {
     params.set("mode", "detaille");
   }
   const query = params.toString();
-  window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  // "/" without a query is the home page: the dashboard keeps its own address.
+  window.history.replaceState(null, "", `/hemicycle${query ? `?${query}` : ""}`);
   document.title = `${pageTitle()} · Polititia`;
 }
 
@@ -945,6 +949,8 @@ function readUrl() {
   if (selected && isOtherParty(selected.party)) {
     state.showOthers = true;
   }
+  // The search box of the home page.
+  state.search = (params.get("q") || "").trim().slice(0, 80);
 }
 
 // One user action: update the state, then render and fetch.
@@ -1099,7 +1105,7 @@ function renderSummary() {
         ["Scrutins", fmtInt(assembly.totals.votes)],
       ]
     : [
-        ["Députés", fmtInt(data.meta.deputies)],
+        ["Députés", fmtInt(SEATS)],
         ["Interventions", fmtCompact(data.meta.totalSpeeches)],
         ["Mots prononcés", fmtCompact(data.meta.totalWords)],
         ["Groupes", fmtInt(data.parties.filter((party) => party.politicianCount > 0 && !isOtherParty(party.id)).length)],
@@ -2370,7 +2376,7 @@ function renderThemeList() {
         <li><strong>Choisissez un thème</strong> ci-dessous pour voir qui en parle, comment votent les groupes et ce qu'ils en disent.</li>
         <li><strong>Changez la période</strong> en haut de la page pour comparer une session, les derniers mois ou des dates précises.</li>
       </ul>
-      <p class="source-note">Les ${fmtInt(Gate.state.quota?.limit || 10)} premières analyses sont libres. Au-delà, l'accès reste gratuit après confirmation d'un email, pour tenir les robots à distance. <a href="${METHOD_URL}">Méthode et limites</a></p>
+      <p class="source-note">Polititia est gratuit. Les ${fmtInt(Gate.state.quota?.limit || 10)} premières analyses se font sans inscription ; ensuite, une simple confirmation d'email suffit (pour tenir les robots à distance). <a href="${METHOD_URL}">Méthode et limites</a></p>
     </div>`;
   const domains = catalogDomains()
     .map((domain) => {
@@ -3251,6 +3257,13 @@ async function boot() {
   const pendingFollow = new URLSearchParams(window.location.search).get("suivre");
   readUrl();
   commit();
+  if (state.search) {
+    queueCommuneSearch("top", state.search, () => {
+      renderSearchResults();
+      renderChamber();
+    });
+    searchInput.focus();
+  }
   await loadFollows();
   // Back from the emailed link of « Suivre » (?suivre=ID): finish the follow.
   if (pendingFollow && Gate.state.session && politiciansById.has(pendingFollow) && !follows.ids.has(pendingFollow)) {

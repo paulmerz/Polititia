@@ -59,9 +59,9 @@ window.PolititiaGate = (function createGate() {
     chip.hidden = false;
     const remaining = Math.max(0, Number(state.quota.remaining || 0));
     chip.textContent = remaining
-      ? `${plural(remaining, "analyse gratuite restante", "analyses gratuites restantes")}`
-      : "Analyses gratuites épuisées";
-    chip.title = `Chaque analyse (un député, un groupe, un thème ou une période) compte une fois. Revoir une analyse déjà consultée est gratuit. Au-delà de ${state.quota.limit || 10}, l’accès reste gratuit après confirmation d’un email.`;
+      ? `Gratuit · ${plural(remaining, "analyse sans inscription", "analyses sans inscription")}`
+      : "Inscription gratuite pour continuer";
+    chip.title = `Polititia est entièrement gratuit, sans limite. Sans inscription, vous pouvez consulter ${state.quota.limit || 10} analyses (un député, un groupe, un thème ou une période) ; ensuite, il suffit de confirmer votre email pour continuer. Revoir une analyse déjà consultée ne compte pas.`;
     chip.classList.toggle("is-low", remaining <= 3);
   }
 
@@ -131,9 +131,9 @@ window.PolititiaGate = (function createGate() {
   function show({ title = "", lead = "", retry = null, returnTo = null } = {}) {
     const dialog = $("accessGate");
     const limit = state.quota?.limit || 10;
-    $("gateTitle").textContent = title || "Continuer gratuitement";
+    $("gateTitle").textContent = title || "Continuez sans limite";
     $("gateLead").textContent =
-      lead || `Vous avez utilisé vos ${limit} analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.`;
+      lead || `Vous avez consulté ${limit} analyses sans inscription. Polititia est entièrement gratuit et le restera : confirmez simplement votre adresse email pour un accès illimité.`;
     if (retry) {
       state.pendingRetry = retry;
     }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>La parole des députés</title>
-    <link rel="stylesheet" href="styles.css?v=parole-13" />
+    <link rel="stylesheet" href="styles.css?v=parole-17" />
   </head>
   <body data-mode="citizen">
     <header class="topbar">
@@ -15,7 +15,7 @@
         <h1 id="appTitle" class="visually-hidden">La parole des députés</h1>
       </div>
       <div class="access-status">
-        <span class="quota-chip" id="quotaChip" tabindex="0">10 analyses gratuites restantes</span>
+        <span class="quota-chip" id="quotaChip" tabindex="0">Gratuit · 10 analyses sans inscription</span>
         <button class="account-chip" id="accountButton" type="button" hidden></button>
       </div>
       <div class="summary-strip" id="summaryStrip"></div>
@@ -99,6 +99,7 @@
     <footer class="app-footer">
       <span>Données : comptes rendus et scrutins publiés par l'Assemblée nationale (open data).</span>
       <nav aria-label="Informations">
+        <a href="/">Accueil</a>
         <a href="/methode">Méthode et limites</a>
         <a href="/a-propos">Qui sommes-nous</a>
         <a href="/conditions">Conditions et données personnelles</a>
@@ -115,11 +116,11 @@
 
     <dialog id="accessGate" class="detail-dialog gate-dialog" aria-labelledby="gateTitle">
       <div class="dialog-bar">
-        <div id="gateTitle">Continuer gratuitement</div>
+        <div id="gateTitle">Continuez sans limite</div>
         <button class="close-button" id="closeGate" type="button" aria-label="Fermer">×</button>
       </div>
       <form id="gateForm" class="gate-body" novalidate>
-        <p id="gateLead">Vous avez utilisé vos analyses gratuites. La suite reste gratuite et illimitée : il suffit de confirmer votre adresse email.</p>
+        <p id="gateLead">Vous avez consulté 10 analyses sans inscription. Polititia est entièrement gratuit et le restera : confirmez simplement votre adresse email pour un accès illimité.</p>
         <p class="gate-why">
           Pour éviter les usages abusifs (robots, aspiration massive des données), nous vérifions que chaque utilisateur est
           une personne réelle. Votre email sert uniquement à cela, et aux alertes que vous demandez vous-même en suivant
@@ -207,7 +208,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="quota-gate.js?v=parole-6"></script>
-    <script src="app.js?v=parole-13"></script>
+    <script src="quota-gate.js?v=parole-7"></script>
+    <script src="app.js?v=parole-15"></script>
   </body>
 </html>

@@ -88,6 +88,12 @@ On Windows Command Prompt the same two commands apply. `npm start` alone fails w
 
 Open http://127.0.0.1:8000.
 
+- `/` is the home page (`dashboard/accueil.html`): what the tool does, a
+  deputy search and a few figures filled in by the server. The dashboard
+  lives at `/hemicycle`; `/` still opens it directly when the link carries
+  dashboard parameters (`?depute=`, `?suivre=`, `?verifie=`...), so shared
+  and emailed links keep working. Campaign tags (`utm_*`) alone land on the
+  home page.
 - The first screen is free. Each analysis a visitor asks for (a deputy, a
   group, a theme or the Assembly, for a period) counts once, whatever the
   number of requests behind it; seeing it again is free.
@@ -269,7 +275,7 @@ Environment (`server/.env`):
 | --- | --- |
 | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Session signing and public URL (https in production) |
 | `HOST`, `PORT`, `TRUST_PROXY` | Bind address; `TRUST_PROXY` = number of reverse proxies, or `cloudflare` (see above) |
-| `FREE_REQUEST_LIMIT` | Free analyses before the email (default 10) |
+| `FREE_REQUEST_LIMIT` | Analyses without an account before the email (default 10) |
 | `ACCOUNT_REQUESTS_PER_MINUTE`, `ACCOUNT_REQUESTS_PER_DAY` | Ceilings for signed-in accounts, administrators excepted (default 120 and 2000 analysis requests) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Magic-link mailer, required in production |
 | `SIGNUP_NOTIFY_EMAIL` | Recipient of the new-account notification (no default: empty or `off` disables it) |

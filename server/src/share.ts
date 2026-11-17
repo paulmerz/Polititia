@@ -7,6 +7,7 @@ import type { Analytics } from "./analytics.ts";
 import type { DashboardBundle } from "./data.ts";
 import { fitText, FontMetrics } from "./font.ts";
 import { escapeHtml } from "./mailer.ts";
+import { SEATS } from "./landing.ts";
 
 // Share cards: the Open Graph tags of the dashboard page and the 1200×630 PNG
 // that WhatsApp, X, LinkedIn or Bluesky show next to a shared link. Crawlers
@@ -178,14 +179,14 @@ function personOf(bundle: DashboardBundle | null, id: string): Person | null {
 }
 
 function homeCard(bundle: DashboardBundle | null): Card {
-  const meta = (bundle?.meta || {}) as { deputies?: number; totalSpeeches?: number };
+  const meta = (bundle?.meta || {}) as { totalSpeeches?: number };
   return {
     accent: COLORS.accent,
     kicker: TAGLINE,
     title: "Ce que votre député dit vraiment.",
     lead: "Et s'il vote comme il parle. Ses sujets, ses expressions, ses votes : chaque intervention en séance, analysée à partir des comptes rendus officiels.",
     stats: [
-      meta.deputies ? plural(meta.deputies, "député", "députés") : "",
+      plural(SEATS, "député", "députés"),
       meta.totalSpeeches ? plural(meta.totalSpeeches, "intervention analysée", "interventions analysées") : "",
     ].filter(Boolean),
   };

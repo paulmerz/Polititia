@@ -46,12 +46,14 @@ import { sendFollowAlerts, type AlertRun } from "./alerts.ts";
 import { escapeHtml } from "./mailer.ts";
 import { campaignOf, campaignReport, isCrawler, recordCampaignVisit } from "./campaigns.ts";
 import { closeReport, createReport, listReports, notifyReport, parseReport, REPORTS_PER_HOUR, type Report } from "./reports.ts";
+import { LANDING_PAGE, opensDashboard, withLandingFigures } from "./landing.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
 type NodeBindings = { incoming?: IncomingMessage };
 
 const STATIC_FILES: Record<string, string> = {
-  "/": "index.html",
+  "/": LANDING_PAGE,
+  "/hemicycle": "index.html",
   "/index.html": "index.html",
   "/conditions": "conditions.html",
   "/methode": "methode.html",
@@ -64,6 +66,8 @@ const STATIC_FILES: Record<string, string> = {
   "/admin.js": "admin.js",
   "/assets/logo-polititia.png": "assets/logo-polititia.png",
   "/assets/logo-polititia-web.png": "assets/logo-polititia-web.png",
+  "/assets/hemicycle.jpg": "assets/hemicycle.jpg",
+  "/assets/palais-bourbon.jpg": "assets/palais-bourbon.jpg",
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -71,6 +75,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
 };
 
 // The only Better Auth endpoints the dashboard needs. Everything else (the
@@ -95,11 +100,11 @@ function simplePage(title: string, body: string, status = 200): Response {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>${escapeHtml(title)} · La parole des députés</title>
-    <link rel="stylesheet" href="/styles.css?v=pages-1" />
+    <link rel="stylesheet" href="/styles.css?v=pages-5" />
   </head>
   <body class="page-body">
     <header class="page-header">
-      <a class="page-back" href="/">← Retour à l’hémicycle</a>
+      <a class="page-back" href="/hemicycle">← Retour à l’hémicycle</a>
       <p class="eyebrow">La parole des députés</p>
       <h1>${escapeHtml(title)}</h1>
     </header>
@@ -898,8 +903,10 @@ export async function createApp(config: AppConfig) {
     return c.json({ ok: true, id: target.id, blocked: true });
   });
 
-  for (const [urlPath, relative] of Object.entries(STATIC_FILES)) {
+  for (const [urlPath, file] of Object.entries(STATIC_FILES)) {
     app.get(urlPath, (c) => {
+      const query = new URL(c.req.url).searchParams;
+      const relative = file === LANDING_PAGE && opensDashboard(query) ? "index.html" : file;
       const absolute = path.resolve(config.dashboardDir, relative);
       if (!absolute.startsWith(path.resolve(config.dashboardDir) + path.sep)) {
         return c.json({ error: "not_found" }, 404);
@@ -908,16 +915,18 @@ export async function createApp(config: AppConfig) {
         return c.json({ error: "not_found" }, 404);
       }
       const ext = path.extname(absolute);
-      if (relative === "index.html") {
+      if (relative === "index.html" || relative === LANDING_PAGE) {
         const analytics = openAnalytics(config.analyticsPath);
         const bundle = bundleOrNull(config);
-        const query = new URL(c.req.url).searchParams;
         const campaign = campaignOf(query);
         if (campaign && !isCrawler(c.req.raw) && !ipRateLimited(db, config.secret, "campaign", requestIp(), CAMPAIGN_VISITS_PER_MINUTE)) {
           recordCampaignVisit(db, campaign);
         }
         const target = shareTarget(query, bundle, analytics);
-        const html = withHeadTags(readFileSync(absolute, "utf8"), headTags(config.baseURL, target, bundle, analytics));
+        let html = withHeadTags(readFileSync(absolute, "utf8"), headTags(config.baseURL, target, bundle, analytics));
+        if (relative === LANDING_PAGE) {
+          html = withLandingFigures(html, bundle, analytics);
+        }
         return new Response(html, {
           headers: { "Content-Type": CONTENT_TYPES[ext], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
         });

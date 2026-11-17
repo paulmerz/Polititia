@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>La parole des députés</title>
+    <link rel="stylesheet" href="styles.css?v=parole-17" />
+  </head>
+  <body class="page-body landing-body">
+    <header class="landing-nav">
+      <a class="brand-logo page-logo" href="/">
+        <img src="/assets/logo-polititia-web.png" alt="Polititia, tous citoyens augmentés" width="640" height="144" />
+      </a>
+      <nav aria-label="Navigation principale">
+        <a href="/methode">Méthode</a>
+        <a href="/a-propos">Qui sommes-nous</a>
+        <a class="landing-nav-cta" href="/hemicycle">Ouvrir l’outil</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="landing-hero">
+        <p class="eyebrow">La parole des députés</p>
+        <h1>Ce que votre député dit vraiment à l’Assemblée, et s’il vote comme il l’annonce.</h1>
+        <p class="landing-lead">
+          Chaque intervention en séance publique depuis le début de la XVII<sup>e</sup> législature, confrontée aux
+          votes. Gratuit, indépendant, à partir des sources officielles.
+        </p>
+        <form class="landing-search" action="/hemicycle" method="get" role="search">
+          <label for="landingSearch">Trouver mon député</label>
+          <div class="landing-search-row">
+            <input id="landingSearch" type="search" name="q" autocomplete="off" required minlength="2" maxlength="80" placeholder="Nom du député ou de votre commune" />
+            <button type="submit">Rechercher</button>
+          </div>
+        </form>
+        <p class="landing-hero-alt">ou <a href="/hemicycle">explorer l’hémicycle</a></p>
+      </section>
+
+      <!-- chiffres-cles -->
+
+      <section class="landing-section landing-why" aria-labelledby="whyTitle">
+        <div class="landing-why-head">
+          <h2 id="whyTitle">Les lois façonnent nos vies. Elles méritent d’être comprises.</h2>
+          <img class="landing-why-photo" src="/assets/palais-bourbon.jpg" width="1024" height="682" loading="lazy"
+            alt="La façade du Palais Bourbon, siège de l’Assemblée nationale, à Paris" />
+        </div>
+        <div class="landing-why-text">
+          <p>
+            Le montant de votre loyer, l’âge de votre retraite, l’école de vos enfants, l’hôpital le plus proche :
+            presque tout ce qui fait notre quotidien passe un jour par l’Assemblée nationale.
+          </p>
+          <p>
+            Pourtant, suivre la fabrique de la loi reste un parcours d’initiés. Des milliers de pages de débats, des
+            scrutins aux intitulés obscurs, des séances tard dans la nuit : tout est public, mais presque rien n’est
+            lisible. Résultat, ceux qui décident pour nous le font souvent loin de nos regards.
+          </p>
+          <p>
+            Polititia rend ce travail visible. Nous analysons chaque prise de parole et chaque vote pour vous montrer,
+            clairement, qui défend quoi, avec quels mots, et si les actes suivent les discours. Pour que chacun puisse
+            comprendre les enjeux, se forger son propre avis, interpeller son député et voter en connaissance de cause.
+          </p>
+          <p class="landing-why-punch">La démocratie ne s’arrête pas le jour du vote. Prenons les choses en main.</p>
+        </div>
+      </section>
+
+      <section class="landing-section" aria-labelledby="featuresTitle">
+        <h2 id="featuresTitle">Ce que vous pouvez faire</h2>
+        <div class="landing-grid">
+          <a class="landing-card" href="/hemicycle?onglet=depute">
+            <h3>Suivre ses positions et ses votes</h3>
+            <p>Ce que votre député annonce en séance, et ce qu’il vote réellement sur les textes de loi, votes clés compris.</p>
+            <span class="landing-card-link">Choisir un député</span>
+          </a>
+          <a class="landing-card" href="/hemicycle?onglet=depute">
+            <h3>Lire ses interventions</h3>
+            <p>Toutes ses prises de parole dans l’hémicycle, chacune reliée au compte rendu officiel de la séance.</p>
+            <span class="landing-card-link">Voir les interventions</span>
+          </a>
+          <a class="landing-card" href="/hemicycle?onglet=depute">
+            <h3>Voir les mots qu’il utilise</h3>
+            <p>Les expressions qui le distinguent des autres députés, et celles qu’il emploie le plus souvent.</p>
+            <span class="landing-card-link">Explorer son vocabulaire</span>
+          </a>
+          <a class="landing-card" href="/hemicycle">
+            <h3>Connaître les thèmes débattus</h3>
+            <p>Les grands sujets de l’Assemblée : qui en parle, ce que les groupes en disent et comment ils votent.</p>
+            <span class="landing-card-link">Parcourir les thèmes</span>
+          </a>
+          <a class="landing-card" href="/hemicycle?onglet=groupe">
+            <h3>Comparer les groupes</h3>
+            <p>Les sujets, les votes et le vocabulaire de chaque groupe politique, et une vue d’ensemble de l’Assemblée.</p>
+            <span class="landing-card-link">Voir les groupes</span>
+          </a>
+          <a class="landing-card" href="/hemicycle?onglet=depute">
+            <h3>S’abonner à son député</h3>
+            <p>Recevez un email quand il prend la parole ou vote. Un clic suffit pour arrêter.</p>
+            <span class="landing-card-link">Suivre un député</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="landing-section" aria-labelledby="howTitle">
+        <h2 id="howTitle">Comment ça marche</h2>
+        <ol class="landing-steps">
+          <li>
+            <h3>Les sources officielles</h3>
+            <p>Les comptes rendus des séances et les scrutins publics publiés par l’Assemblée nationale en open data.</p>
+          </li>
+          <li>
+            <h3>L’analyse</h3>
+            <p>Chaque intervention est rattachée à son auteur, classée par thème et comparée aux votes sur le même texte.</p>
+          </li>
+          <li>
+            <h3>Vous consultez</h3>
+            <p>Un député, un groupe, un thème ou une période : chaque chiffre renvoie à sa source.</p>
+          </li>
+        </ol>
+        <p class="landing-more">Les règles de calcul, leurs taux d’erreur et leurs limites sont publics : <a href="/methode">lire la méthode</a>.</p>
+      </section>
+
+      <section class="landing-section landing-free" aria-labelledby="freeTitle">
+        <h2 id="freeTitle">Gratuit, sans publicité, indépendant</h2>
+        <ul>
+          <li><strong>Jamais payant.</strong> Les 10 premières analyses se font sans inscription. Ensuite, l’accès reste
+            gratuit et illimité : il suffit de confirmer une adresse email, pour tenir les robots à distance.</li>
+          <li><strong>Aucun lien avec un parti.</strong> Tous les députés et tous les groupes sont traités avec les mêmes règles.</li>
+          <li><strong>Aucune revente de données.</strong> Votre email ne sert qu’à vérifier que vous êtes une personne
+            réelle, et aux alertes que vous demandez.</li>
+        </ul>
+        <p class="landing-more"><a href="/a-propos">Qui sommes-nous</a> · <a href="/conditions">Conditions et données personnelles</a></p>
+        <a class="landing-cta" href="/hemicycle">Ouvrir l’outil</a>
+      </section>
+    </main>
+
+    <footer class="page-footer landing-footer">
+      <span>Données : comptes rendus et scrutins publiés par l’Assemblée nationale (open data).</span>
+      <span>
+        <a href="/hemicycle">Hémicycle</a> · <a href="/methode">Méthode</a> · <a href="/a-propos">Qui sommes-nous</a> ·
+        <a href="/conditions">Conditions et confidentialité</a>
+      </span>
+      <span class="landing-credits">
+        Photos via Wikimedia Commons : hémicycle, Richard Ying et Tangui Morlier
+        (<a href="https://creativecommons.org/licenses/by-sa/3.0/deed.fr" rel="noopener">CC BY-SA 3.0</a>) ;
+        Palais Bourbon, ZeusUpsistos
+        (<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.fr" rel="noopener">CC BY-SA 4.0</a>).
+      </span>
+    </footer>
+  </body>
+</html>

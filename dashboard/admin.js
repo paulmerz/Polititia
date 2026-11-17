@@ -108,7 +108,7 @@
       statCard(
         "Visiteurs anonymes (30 j)",
         formatNumber(stats.anonymousDevices30),
-        `appareils, ${formatNumber(stats.anonymousAnalyses30)} analyses gratuites`,
+        `appareils, ${formatNumber(stats.anonymousAnalyses30)} analyses sans compte`,
       ),
     );
   }

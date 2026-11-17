@@ -254,9 +254,36 @@ test("terms, method and about pages are served", async () => {
   assert.doesNotMatch(terms, /recontact/);
 });
 
+test("/ is the home page unless the link carries dashboard parameters", async () => {
+  const { request } = await startTestApp();
+  const isHome = (html: string) => /class="page-body landing-body"/.test(html);
+  const isDashboard = (html: string) => /id="chamberSvg"/.test(html);
+
+  const home = await (await request("/")).text();
+  assert.ok(isHome(home));
+  assert.doesNotMatch(home, /<!-- chiffres-cles -->/);
+  const { meta, analytics } = await (await request("/api/bootstrap")).json();
+  const figure = (label: string) => home.match(new RegExp(`<strong>([^<]+)</strong><span>${label}</span>`))?.[1];
+  assert.equal(figure("interventions analysées"), new Intl.NumberFormat("fr-FR").format(meta.totalSpeeches));
+  assert.ok(figure("mots prononcés"));
+  assert.equal(figure("députés"), "577");
+  const [year, , day] = analytics.lastDate.split("-").map(Number);
+  assert.match(figure("dernière séance analysée") || "", new RegExp(`^(${day}|1er) \\S+ ${year}$`));
+  assert.match(home, /action="\/hemicycle"/);
+  assert.match(home, /<meta property="og:image" content="[^"]*\/og\/accueil\.png/);
+  assert.doesNotMatch(home, /analyses gratuites/);
+
+  assert.ok(isHome(await (await request("/?utm_source=x&utm_campaign=y")).text()), "campaign tags alone");
+  for (const path of ["/hemicycle", `/?depute=${BOB}`, `/?depute=${BOB}&suivre=${BOB}`, "/?verifie=1", "/?groupe=RN&utm_source=x"]) {
+    assert.ok(isDashboard(await (await request(path)).text()), path);
+  }
+  const shared = await (await request(`/hemicycle?depute=${BOB}`)).text();
+  assert.match(shared, /<title>Ce que dit Bob/);
+});
+
 test("the dashboard carries every element the access gate drives and says why the email is asked", async () => {
   const { request } = await startTestApp();
-  const index = await (await request("/")).text();
+  const index = await (await request("/hemicycle")).text();
   const gate = await (await request("/quota-gate.js")).text();
   const ids = [...new Set([...gate.matchAll(/\$\("([A-Za-z]+)"\)/g)].map((match) => match[1]))];
   assert.ok(ids.length > 15);
