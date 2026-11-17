@@ -7,7 +7,9 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from build_agenda_db import build, fold, timestamp
+from build_agenda_db import build, deposit_origin, dossier_kind, fold, timestamp
+
+LEXICON = Path(__file__).resolve().parents[1] / "themes" / "lexicon.json"
 
 SITTING = {
     "@xsi:type": "seance_type",
@@ -98,9 +100,36 @@ def make_inputs(root: Path) -> tuple[Path, Path]:
     organs = open_data / "amo" / "json" / "organe"
     write_json(organs / "PO1.json", {"organe": {"uid": "PO1", "codeType": "ASSEMBLEE", "libelle": "Assemblée nationale", "libelleAbrege": "AN"}})
     write_json(organs / "PO2.json", {"organe": {"uid": "PO2", "codeType": "COMPER", "libelle": "Commission des affaires sociales", "libelleAbrege": "Affaires sociales"}})
+    write_json(organs / "PO50.json", {"organe": {"uid": "PO50", "codeType": "GP", "libelle": "Socialistes et apparentés", "libelleAbrege": "SOC"}})
+    write_json(
+        open_data / "amo" / "json" / "acteur" / "PA10.json",
+        {
+            "acteur": {
+                "uid": {"#text": "PA10"},
+                "etatCivil": {"ident": {"civ": "Mme", "prenom": "Anne", "nom": "Exemple"}},
+                "mandats": {"mandat": [
+                    {"typeOrgane": "GP", "dateDebut": "2024-07-18", "dateFin": None, "organes": {"organeRef": "PO50"}},
+                ]},
+            }
+        },
+    )
     write_json(
         open_data / "dossiers" / "json" / "dossierParlementaire" / "DLR5L17N1.json",
-        {"dossierParlementaire": {"uid": "DLR5L17N1", "titreDossier": {"titre": "Fin de vie"}}},
+        {
+            "dossierParlementaire": {
+                "uid": "DLR5L17N1",
+                "titreDossier": {"titre": "Fin de vie"},
+                "procedureParlementaire": {"libelle": "Proposition de loi ordinaire"},
+                "initiateur": {"acteurs": {"acteur": [{"acteurRef": "PA10"}, {"acteurRef": "PA11"}, {"acteurRef": "PA12"}]}},
+                "actesLegislatifs": {"acteLegislatif": {
+                    "codeActe": "AN1",
+                    "actesLegislatifs": {"acteLegislatif": [
+                        {"codeActe": "AN1-DEPOT", "dateActe": "2025-03-04T00:00:00.000+01:00", "texteAssocie": "PIONANR5L17B0999"},
+                        {"codeActe": "AN1-COM", "actesLegislatifs": {"acteLegislatif": {"codeActe": "AN1-COM-FOND", "organeRef": "PO2"}}},
+                    ]},
+                }},
+            }
+        },
     )
     return archive, open_data
 
@@ -115,6 +144,20 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(timestamp("2025-11-07T21:30:00.000+01:00"), "2025-11-07T21:30:00+01:00")
         self.assertEqual(timestamp(None), "")
 
+    def test_dossier_kind_reads_the_procedure_then_the_deposited_text(self) -> None:
+        self.assertEqual(dossier_kind("Projet de loi ordinaire", ""), "projet")
+        self.assertEqual(dossier_kind("Projet de ratification des traités et conventions", ""), "projet")
+        self.assertEqual(dossier_kind("Proposition de loi ordinaire", ""), "proposition")
+        self.assertEqual(dossier_kind("Résolution", ""), "resolution")
+        self.assertEqual(dossier_kind("Projet ou proposition de loi organique", "PIONANR5L17B0001"), "proposition")
+        self.assertEqual(dossier_kind("Projet ou proposition de loi organique", "PRJLANR5L17B0001"), "projet")
+        self.assertEqual(dossier_kind("", ""), "")
+
+    def test_deposit_origin(self) -> None:
+        self.assertEqual(deposit_origin("AN1-DEPOT"), "assemblee")
+        self.assertEqual(deposit_origin("SN1-DEPOT"), "senat")
+        self.assertEqual(deposit_origin(""), "")
+
 
 class BuildTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -122,7 +165,7 @@ class BuildTests(unittest.TestCase):
         root = Path(self.tmp.name)
         archive, open_data = make_inputs(root)
         self.out = root / "out" / "agenda.sqlite"
-        self.counts = build(self.out, archive, open_data)
+        self.counts = build(self.out, archive, open_data, LEXICON)
         self.db = sqlite3.connect(self.out)
 
     def tearDown(self) -> None:
@@ -161,6 +204,20 @@ class BuildTests(unittest.TestCase):
         links = self.db.execute("SELECT dossier_uid, dossier_title FROM agenda_item_dossiers ORDER BY dossier_uid").fetchall()
         # The repeated reference is stored once; an unknown dossier keeps an empty title.
         self.assertEqual(links, [("DLR5L17N1", "Fin de vie"), ("DLR5L17N404", "")])
+
+    def test_dossiers_on_the_agenda(self) -> None:
+        rows = self.db.execute(
+            "SELECT uid, title, kind, origin, procedure, deposited_on, committee_ref, committee_name, "
+            "author_id, author_name, author_group, coauthors, themes FROM dossiers ORDER BY uid"
+        ).fetchall()
+        self.assertEqual(self.counts["dossiers"], 2)
+        self.assertEqual(rows[0][:12], (
+            "DLR5L17N1", "Fin de vie", "proposition", "assemblee", "Proposition de loi ordinaire", "2025-03-04",
+            "PO2", "Affaires sociales", "PA10", "Mme Anne Exemple", "SOC", 2,
+        ))
+        self.assertEqual(json.loads(rows[0][12]), [{"id": "fin-de-vie", "label": "Fin de vie"}])
+        # A dossier missing from the download keeps its uid; its subject alone names no theme.
+        self.assertEqual(rows[1], ("DLR5L17N404", "", "", "", "", "", "", "", "", "", "", 0, "[]"))
 
     def test_committee_attendance_and_topics(self) -> None:
         rows = self.db.execute("SELECT acteur_id, status FROM attendance ORDER BY acteur_id").fetchall()

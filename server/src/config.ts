@@ -15,6 +15,8 @@ export const ACCOUNT_REQUESTS_PER_MINUTE_DEFAULT = 120;
 export const ACCOUNT_REQUESTS_PER_DAY_DEFAULT = 2000;
 export const DEVICE_COOKIE_NAME = "pt_did";
 const DEV_SECRET = "polititia-dev-secret-do-not-use-in-production";
+// Published every day by .github/workflows/refresh-agenda.yml.
+export const DEFAULT_AGENDA_URL = "https://github.com/paulmerz/Polititia/releases/download/data/agenda.sqlite.gz";
 
 export type AppConfig = {
   nodeEnv: string;
@@ -29,6 +31,10 @@ export type AppConfig = {
   dashboardDataPath: string;
   communesPath: string;
   analyticsPath: string;
+  // agenda.sqlite (build_agenda_db.py). With agendaUrl, the server downloads
+  // it there at start and every few hours; without, it reads the file as is.
+  agendaPath: string;
+  agendaUrl: string;
   dashboardDir: string;
   usingDevSecret: boolean;
   secret: string;
@@ -147,6 +153,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const analyticsPath = path.resolve(
     env.ANALYTICS_DB_PATH || path.join(REPO_ROOT, "analysis_outputs", "analytics.sqlite"),
   );
+  // Production downloads the daily agenda unless AGENDA_DB_URL=off; elsewhere
+  // only when AGENDA_DB_URL is set.
+  const agendaSetting = (env.AGENDA_DB_URL || "").trim();
+  const agendaUrl = agendaSetting.toLowerCase() === "off" ? "" : agendaSetting || (isProduction ? DEFAULT_AGENDA_URL : "");
+  if (agendaUrl && !agendaUrl.startsWith("https://")) {
+    throw new Error("AGENDA_DB_URL must be an https URL (or off).");
+  }
+  const agendaPath = path.resolve(
+    env.AGENDA_DB_PATH ||
+      (agendaUrl ? path.join(dataDir, "agenda.sqlite") : path.join(REPO_ROOT, "analysis_outputs", "agenda.sqlite")),
+  );
   const allowInsecureHttp = readBoolean(env.ALLOW_INSECURE_HTTP, !isProduction);
   const host = env.HOST || "127.0.0.1";
   const localOnly = LOOPBACK_HOSTS.has(host) && LOOPBACK_HOSTS.has(new URL(baseURL).hostname);
@@ -189,6 +206,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     dashboardDataPath,
     communesPath,
     analyticsPath,
+    agendaPath,
+    agendaUrl,
     dashboardDir,
     usingDevSecret: !secret,
     secret: secret || DEV_SECRET,

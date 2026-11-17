@@ -551,8 +551,21 @@ Script reproductible : [`scripts/spike_commission_presence.py`](scripts/spike_co
 
 **R3. Agenda et mémoire du sujet** (`/agenda`, plus un bloc « Cette semaine à l'Assemblée » sur l'accueil). **M**
 - Contenu : les points de l'ordre du jour, chacun relié à sa fiche texte ; la mémoire du sujet (débats antérieurs par thème, scrutins, textes liés avec la raison du lien) ; l'état de chaque point, la date de mise à jour et la mention « susceptible d'évoluer ».
-- Données : `agenda.sqlite` (0.2). Reste à décider comment Render récupère le fichier publié chaque jour.
+- Données : `agenda.sqlite` (0.2), téléchargée par le serveur toutes les trois heures.
 - *Fait quand* : rafraîchi chaque jour ; tous les points de l'ordre du jour de la séance publique sont reliés à leur dossier, quand il existe.
+- **Fait le 17 novembre 2026 (première version)** :
+  - Page `/agenda` rendue par le serveur, gratuite. Elle montre les séances publiques annoncées, point par point, avec les points « éventuels » signalés et les points retirés masqués.
+  - Une fiche par texte au programme :
+    - type (projet du Gouvernement, proposition de loi ou de résolution), chambre d'origine, premier auteur et son groupe, commission saisie au fond, thème du lexique ;
+    - « Déjà en séance » : interventions, scrutins et votes clés déjà relevés, rattachés par le titre du dossier.
+  - Les réunions de commission des sept jours suivants, groupes d'amitié et d'études exclus.
+  - Bloc « Cette semaine à l'Assemblée » sur l'accueil ; section 7 de la page Méthode ; lien « Agenda » dans la navigation.
+  - Le serveur télécharge lui-même `agenda.sqlite.gz` toutes les trois heures en production (`AGENDA_DB_URL`) : pas de redéploiement quotidien.
+  - Au 17 novembre 2026 : 45 textes au programme, dont 4 déjà débattus en séance ; les autres arrivent pour la première fois.
+- Reste pour R3 :
+  - mémoire par thème plus fine (débats antérieurs les plus pertinents, textes liés avec la raison du lien) ;
+  - XVIe législature (§ 6.2) ;
+  - lien vers la fiche texte une fois R1 livrée.
 
 **R4. Suivre un texte ou un thème.** **S-M**
 - Étendre `follows` à trois types : député, dossier, thème. Événements d'alerte : inscription à l'ordre du jour, vote, CMP, décision du Conseil constitutionnel, promulgation. Mêmes règles de désabonnement en un clic.

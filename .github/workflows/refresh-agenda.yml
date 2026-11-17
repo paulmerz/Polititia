@@ -4,8 +4,8 @@
 # day, while the analysis database (refresh-data.yml) is rebuilt once a week.
 # It downloads about 35 MB and takes a few minutes.
 #
-# The server does not read agenda.sqlite yet: the agenda page (roadmap.md, R3)
-# will, and will decide how Render picks up the daily file.
+# The server downloads the file itself every three hours (AGENDA_DB_URL, see
+# README): no redeploy is needed.
 #
 # 05:30 UTC every day, or by hand from the Actions tab. The job only runs on main.
 

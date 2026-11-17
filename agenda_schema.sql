@@ -55,6 +55,32 @@ CREATE TABLE agenda_item_dossiers (
   PRIMARY KEY (item_uid, dossier_uid)
 ) WITHOUT ROWID;
 CREATE INDEX agenda_item_dossiers_dossier ON agenda_item_dossiers (dossier_uid);
+-- Each dossier an agenda item refers to, with what the agenda page shows next
+-- to it. kind: 'projet' (Government bill), 'proposition' (Members' bill),
+-- 'resolution' or ''. origin: 'assemblee' or 'senat', where the text was
+-- first deposited (a Senate proposition has a senator as author).
+-- committee: the committee in charge (au fond). author_*: the first author of
+-- a proposition or a resolution and his or her group (party code, as in analytics.sqlite) on
+-- the deposit date, else the latest group of this legislature ('' for a
+-- senator); coauthors counts the other authors the dossier lists.
+-- themes: JSON list of {"id", "label"} from the curated
+-- lexicon, read from the dossier title and the items' subjects
+-- (analyze_themes.title_themes); [] when they name none.
+CREATE TABLE dossiers (
+  uid TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  procedure TEXT NOT NULL,
+  deposited_on TEXT NOT NULL,
+  committee_ref TEXT NOT NULL,
+  committee_name TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  author_group TEXT NOT NULL,
+  coauthors INTEGER NOT NULL,
+  themes TEXT NOT NULL
+);
 -- Committee attendance as published with each meeting: every member of the
 -- organ, status 'present', 'excuse' or 'absent'. Information missions publish
 -- none. Checked against the committee reports (roadmap.md § 6.1).

@@ -3,6 +3,7 @@ import { serve } from "@hono/node-server";
 import { loadDotEnv } from "./load-env.ts";
 import { assertSafeHostBinding, loadConfig } from "./config.ts";
 import { createApp, unfilledPages } from "./app.ts";
+import { startAgendaRefresh } from "./agenda.ts";
 
 loadDotEnv();
 
@@ -29,6 +30,7 @@ if (config.isProduction) {
 }
 
 const { app } = await createApp(config);
+startAgendaRefresh(config);
 
 serve(
   {

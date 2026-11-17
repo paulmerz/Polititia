@@ -47,6 +47,8 @@ import { escapeHtml } from "./mailer.ts";
 import { campaignOf, campaignReport, isCrawler, recordCampaignVisit } from "./campaigns.ts";
 import { closeReport, createReport, listReports, notifyReport, parseReport, REPORTS_PER_HOUR, type Report } from "./reports.ts";
 import { LANDING_PAGE, opensDashboard, withLandingFigures } from "./landing.ts";
+import { openAgenda, parisToday } from "./agenda.ts";
+import { AGENDA_PAGE, withAgenda, withAgendaTeaser } from "./agenda-page.ts";
 
 type SessionUser = { id?: string; email?: string | null } | null;
 type NodeBindings = { incoming?: IncomingMessage };
@@ -58,6 +60,7 @@ const STATIC_FILES: Record<string, string> = {
   "/conditions": "conditions.html",
   "/methode": "methode.html",
   "/a-propos": "a-propos.html",
+  "/agenda": AGENDA_PAGE,
   "/app.js": "app.js",
   "/pages.js": "pages.js",
   "/styles.css": "styles.css",
@@ -915,6 +918,19 @@ export async function createApp(config: AppConfig) {
         return c.json({ error: "not_found" }, 404);
       }
       const ext = path.extname(absolute);
+      // The agenda is free: not an analysis, and it should be indexed.
+      if (relative === AGENDA_PAGE) {
+        const html = withAgenda(
+          readFileSync(absolute, "utf8"),
+          openAgenda(config.agendaPath),
+          openAnalytics(config.analyticsPath),
+          bundleOrNull(config),
+          parisToday(),
+        );
+        return new Response(html, {
+          headers: { "Content-Type": CONTENT_TYPES[ext], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+        });
+      }
       if (relative === "index.html" || relative === LANDING_PAGE) {
         const analytics = openAnalytics(config.analyticsPath);
         const bundle = bundleOrNull(config);
@@ -926,6 +942,7 @@ export async function createApp(config: AppConfig) {
         let html = withHeadTags(readFileSync(absolute, "utf8"), headTags(config.baseURL, target, bundle, analytics));
         if (relative === LANDING_PAGE) {
           html = withLandingFigures(html, bundle, analytics);
+          html = withAgendaTeaser(html, openAgenda(config.agendaPath), analytics, bundle, parisToday());
         }
         return new Response(html, {
           headers: { "Content-Type": CONTENT_TYPES[ext], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

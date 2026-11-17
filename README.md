@@ -77,12 +77,15 @@ uv run python build_agenda_db.py
   committee meetings, every member marked present, excused or absent. The
   dataset also announces Senate sittings (`organ_type = 'SENAT'`); an Assembly
   sitting's `report_ref` is the `session_uid` of its speeches in
-  `analytics.sqlite`. Organ
-  names come from AMO and dossier titles from the dossiers download; a name or
-  title missing from them is left empty (information missions, for instance,
-  are not all in AMO, and publish no attendance). It only needs
+  `analytics.sqlite`. For each dossier on the agenda, the `dossiers` table
+  stores what the agenda page shows next to it: Government or Members' bill,
+  the chamber where it was first deposited, the first author and his or her
+  group, the committee in charge and the lexicon themes its title names
+  (`analyze_themes.title_themes`). Organ names, authors and groups come from
+  AMO and dossiers from the dossiers download; a name or title missing from
+  them is left empty (information missions, for instance, are not all in AMO,
+  and publish no attendance). It only needs
   `download_open_data.py --only amo dossiers agenda`, so it can run on its own.
-  The server does not read it yet.
 
 `uv run --extra topics --with pytest pytest -q` runs the Python tests.
 
@@ -143,6 +146,16 @@ Open http://127.0.0.1:8000.
   `/api/register`, so its checks cannot be skipped.
 - `/conditions` states the terms and retention; `/methode` explains how themes,
   distinctive phrases, votes and estimated stances are computed.
+- `/agenda` lists the public sittings announced by the Assembly, item by item,
+  then, for each text on the programme, who deposited it, the committee in
+  charge, its theme and what Polititia already holds on it in public session
+  (speeches, public votes, key votes), and the committee meetings of the next
+  seven days. It is rendered by the server from `agenda.sqlite` and is free:
+  it is not an analysis. The home page shows the texts of the next seven days.
+  In production the server downloads `agenda.sqlite.gz` from the `data`
+  release at start (when its copy is more than three hours old) and every
+  three hours, into `DATA_DIR`; a download that does not read back as an
+  agenda database leaves the current file in place.
 - `GET /api/communes?q=` (free, same origin, 120 per minute and per IP)
   searches communes by name or postal code; without `communes.json` it
   answers 503 and the dashboard hides the finder.
@@ -313,6 +326,8 @@ Environment (`server/.env`):
 | `ANALYTICS_DB_PATH` | Defaults to `analysis_outputs/analytics.sqlite` |
 | `DASHBOARD_DATA_PATH`, `DATA_DIR` | First-load bundle and server data directory |
 | `COMMUNES_PATH` | Commune table for « Trouver mon député » (default `dashboard/data/communes.json`) |
+| `AGENDA_DB_URL` | Where the server downloads `agenda.sqlite.gz` (https). Production defaults to the `data` release of this repository; `off` disables the download. Unset elsewhere |
+| `AGENDA_DB_PATH` | The agenda database (default `DATA_DIR/agenda.sqlite` when downloading, else `analysis_outputs/agenda.sqlite`) |
 | `AUTH_TRUSTED_ORIGINS`, `ALLOW_INSECURE_HTTP` | Extra allowed origins; plain HTTP outside production |
 | `STANCE_LLM_URL`, `STANCE_LLM_MODEL`, `STANCE_LLM_KEY` | Optional LLM classifier for `analyze_stances.py` |
 
