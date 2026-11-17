@@ -36,11 +36,12 @@ arrivent en dernier, une fois le socle factuel en place, et sous des règles str
 | --- | --- | --- |
 | 0. Socle de données | Amendements, agenda, questions, le dossier législatif comme pivot | — |
 | 1. Le texte au centre | Fiche texte, agenda et mémoire du sujet, suivre un texte, pédagogie, journal des corrections | 🟢 |
-| 2. Qui fait quoi | Activité du député, contrôle du gouvernement, application des lois, indicateurs de procédure, scrutins en clair, circonscription, participation, déontologie | 🟢 🟡 |
-| 3. Synthèses et mise en regard | Parole face aux votes (étendue), contexte d'un texte, synthèse de l'activité d'un député | 🟡 🟠 |
+| 2. Qui fait quoi | Activité du député, contrôle du gouvernement, sujets et attention par période, application des lois, indicateurs de procédure, scrutins en clair, circonscription, participation, déontologie | 🟢 🟡 |
+| 3. Synthèses et mise en regard | Parole face aux votes (étendue), éclairages sourcés, contexte d'un texte, synthèse de l'activité d'un député | 🟡 🟠 |
 
-Ce qui est écarté, et pourquoi (détail au § 5.5) : le fact-checking « vrai / faux », toute note ou tout
-classement de députés, l'activité des collaborateurs, la recherche web ouverte pour contextualiser un texte.
+Ce qui est écarté, et pourquoi (détail au § 5.5) : le fact-checking « vrai / faux » (remplacé par des éclairages
+sourcés, sans verdict), toute note ou tout classement de députés, l'activité des collaborateurs, la recherche web
+ouverte pour contextualiser un texte.
 
 ---
 
@@ -131,7 +132,9 @@ une élection** (le bilan).
 
 ## 4. Diamant 2 : les solutions
 
-### 4.1 Développer : 61 cas d'usage, critiqués un par un
+### 4.1 Développer : 63 cas d'usage, critiqués un par un
+
+Les cas 62 et 63 ont été ajoutés après la première version (§ 4.2.1).
 
 #### Q1. Anticiper ce qui va être décidé
 
@@ -199,18 +202,20 @@ une élection** (le bilan).
 | 45 | Amendements identiques déposés par des groupes différents | Peut signaler une origine commune, mais ne doit jamais l'imputer. | ⏸ |
 | 46 | Croisement avec le répertoire des représentants d'intérêts | Imputation d'influence, risque de diffamation. | ❌ |
 | 47 | Coalitions de vote, texte par texte | Intéressant ; Datan propose déjà une approche proche. | ⏸ |
+| 63 | Sujets et attention par période : ce qui est déposé, inscrit, débattu et questionné, thème par thème, gouvernement et parlementaires | Les 29 thèmes et leur rattachement existent déjà. Un camembert à 29 parts serait illisible ; le budget écrase l'automne ; un dépôt ne dit rien de l'importance d'un texte. | ✅ R18 |
 
 #### Q5. La parole face aux faits
 
 | # | Cas d'usage | Critique | Verdict |
 | --- | --- | --- | --- |
 | 48 | Fact-checking IA de toutes les interventions | Volume énorme, hallucinations, exposition juridique (diffamation), parti pris perçu, non reproductible. | ❌ |
-| 49 | Fact-checking éditorial humain | C'est un métier de journaliste : équipe dédiée, code de déontologie, autre exposition juridique. | ❌ |
+| 49 | Fact-checking éditorial humain, avec verdict | C'est un métier de journaliste : équipe dédiée, code de déontologie, autre exposition juridique. La forme sans verdict est le cas 62. | ❌ |
 | 50 | Mettre en regard les affirmations sur des votes (« vous avez voté contre… ») et le scrutin correspondant | Vérifiable par les données de l'Assemblée seules. On montre le scrutin, on ne prononce pas de verdict. | 🔁 R12 |
-| 51 | Mettre en regard les chiffres officiels cités (INSEE, budget) et leur source | Utile, mais demande une relecture humaine pour chaque chiffre. | ⏸ |
-| 52 | Afficher les vérifications publiées par des médias de fact-checking signataires d'un code reconnu (format ClaimReview) | On cite au lieu de juger, mais la couverture des médias est inégale entre partis. | ⏸ |
+| 51 | Mettre en regard les chiffres officiels cités (INSEE, budget) et leur source | Utile, mais demande une relecture humaine pour chaque chiffre. | 🔁 R17 |
+| 52 | Afficher les vérifications publiées par des médias de fact-checking signataires d'un code reconnu (format ClaimReview) | On cite au lieu de juger, mais la couverture des médias est inégale entre partis. | 🔁 R17 |
 | 53 | Écart entre annonce et vote, étendu aux votes sur des articles et des amendements | Prolonge une mesure existante, précise à 98 %. | ✅ R12 |
 | 54 | Indice de « probité » ou de « sincérité » | La probité (intégrité, conflits d'intérêts) ne se mesure pas dans un discours. Diffamatoire. | ❌ |
+| 62 | Éclairages sourcés : sous une affirmation factuelle, les sources qui l'éclairent (données officielles, synthèses scientifiques, enquêtes de presse, réponse de l'intéressé), toutes citées, sans verdict ni commentaire | On cite au lieu de juger. Mais choisir les affirmations reste un acte éditorial, compter les sources trompe, et les désaccords tiennent souvent aux définitions. | 🔁 R17 |
 
 #### Q6. Un outil lui-même contrôlable
 
@@ -232,10 +237,17 @@ une élection** (le bilan).
 | Agenda des textes à venir, avec une recherche de contexte systématique | L'agenda et la mémoire interne : débats, scrutins et dossiers antérieurs | L'agenda vient du jeu de données « Agenda » de l'Assemblée (l'équivalent du feuilleton), pas du JORF : le Journal officiel publie les lois une fois promulguées, il sert donc à l'après-vote. La recherche web ouverte est remplacée par un corpus fermé de sources institutionnelles. | 🟢 R3 + 🟠 R5 |
 | Garder ce contexte sur chaque texte, avec la décision et qui a voté pour ou contre | Tout | Devient la fiche texte, page pivot du site, prolongée par l'après-vote (Conseil constitutionnel, promulgation, décrets). | 🟢 R1 + R2 |
 | Résumé IA neutre de l'engagement et des initiatives de chaque député | L'objectif | D'abord les faits bruts (R6), puis une synthèse rédigée par gabarit fixe, sans IA générative ; une IA ne viendrait qu'ensuite, pour la seule formulation. | 🟢 R6 → 🟠 R7 |
-| Fact-checking de chaque intervention pour évaluer la probité des discours | La confrontation de la parole aux faits | Pas de verdict « vrai / faux » ni de note de « probité ». On met en regard les affirmations sur des votes et le scrutin réel ; l'agrégation de vérifications publiées par des médias reste au backlog. | 🔴 sous sa forme initiale → 🟡 R12 |
-| Assiduité de chaque membre, en recoupant ses participations, celles de ses collaborateurs, aux votes et en commission | Votes et commissions | Les collaborateurs sont exclus (aucune activité publique, données personnelles). Pas de score global ni de classement. La présence en commission attend la validation de la donnée. | 🟡 R8 |
+| Fact-checking de chaque intervention pour évaluer la probité des discours | La confrontation de la parole aux faits | Pas de verdict « vrai / faux » ni de note de « probité ». Deux formes : les affirmations sur des votes mises en regard du scrutin réel (R12), et des éclairages sourcés sans verdict (R17, voir § 4.2.1). | 🔴 sous sa forme initiale → 🟡 R12 + 🟠 R17 |
+| Assiduité de chaque membre, en recoupant ses participations, celles de ses collaborateurs, aux votes et en commission | Votes et commissions | Les collaborateurs sont exclus (aucune activité publique, données personnelles). Pas de score global ni de classement. La présence en commission est validée (§ 6.1). | 🟡 R8 |
 
-### 4.3 Livrer : les 16 cas retenus
+#### 4.2.1 Idées ajoutées après la première version (17 novembre 2026)
+
+| Idée | Ce qui est gardé | Ce qui change | Verdict |
+| --- | --- | --- | --- |
+| Éclairer ce qui est dit par des études scientifiques et par la concordance de sources journalistiques, toutes citées, y compris celles qui contredisent, sans commentaire ni prise de position | Citer plutôt que juger ; montrer toutes les sources, y compris les démentis | Les affirmations éclairées sont choisies par une règle publique, indépendante de leur contenu. Les sources sont classées par nature, jamais comptées : cinq articles qui reprennent une même enquête ne sont qu'une source. Seules les synthèses scientifiques comptent, pas une étude isolée. Quand le désaccord tient à une définition (arme ou composant, licence ou livraison), chaque source est citée avec sa propre définition. Travail éditorial humain, piloté sur une dizaine de cas. | 🟠 R17 |
+| Catégoriser les textes et montrer par période, en camembert, les sujets qui occupent le gouvernement et les parlementaires | La vue par période, la distinction entre gouvernement et parlementaires, la lecture en un coup d'œil | Quatre angles plutôt qu'un : ce qui est déposé, inscrit à l'ordre du jour, débattu, et demandé au gouvernement. Des barres triées plutôt qu'un camembert à 29 parts ; un anneau à 6 parts plus « autres » seulement pour l'accueil et les cartes de partage. Le budget est montré à part. | 🟢 R18 |
+
+### 4.3 Livrer : les 18 cas retenus
 
 | Réf. | Cas retenu | Issu de | Risque | Phase |
 | --- | --- | --- | --- | --- |
@@ -255,6 +267,8 @@ une élection** (le bilan).
 | R14 | Pédagogie : glossaire et parcours d'un texte | 17, 18 | 🟢 | 1 |
 | R15 | Déontologie : liens HATVP et registre des déports | 34 | 🟢 | 2 |
 | R16 | Scrutins en clair | 14 | 🟡 | 2 |
+| R17 | Éclairages sourcés, sans verdict | 51, 52, 62 | 🟠 | 3 |
+| R18 | Sujets et attention par période | 63 | 🟢 | 2 |
 
 ---
 
@@ -269,6 +283,7 @@ Notes données pour le cas tel qu'il sera construit, garde-fous compris.
 | R1 | Fiche texte | 5 | 4 | 5 | 5 | 4 | 4 | **27** | 🟢 |
 | R3 | Agenda et mémoire du sujet | 5 | 4 | 5 | 5 | 4 | 4 | **27** | 🟢 |
 | R2 | Après le vote | 4 | 5 | 5 | 5 | 3 | 4 | **26** | 🟢 |
+| R18 | Sujets et attention par période | 5 | 4 | 5 | 4 | 4 | 4 | **26** | 🟢 |
 | R4 | Suivre un texte ou un thème | 3 | 4 | 5 | 5 | 5 | 3 | **25** | 🟢 |
 | R9 | Sa circonscription | 4 | 4 | 4 | 4 | 4 | 5 | **25** | 🟢 |
 | R11 | Contrôle du gouvernement | 3 | 5 | 5 | 4 | 4 | 4 | **25** | 🟢 |
@@ -281,6 +296,7 @@ Notes données pour le cas tel qu'il sera construit, garde-fous compris.
 | R15 | Déontologie | 2 | 4 | 5 | 4 | 5 | 1 | **21** | 🟢 |
 | R5 | Contexte d'un texte | 5 | 3 | 3 | 3 | 2 | 5 | **21** | 🟠 |
 | R8 | Participation | 3 | 5 | 4 | 3 | 3 | 2 | **20** | 🟡 |
+| R17 | Éclairages sourcés | 4 | 4 | 3 | 2 | 2 | 5 | **20** | 🟠 |
 | R7 | Synthèse du député | 4 | 3 | 3 | 2 | 3 | 4 | **19** | 🟠 |
 
 ### 5.2 🟢 Sûrs et peu critiquables
@@ -323,6 +339,13 @@ Pourquoi c'est sûr : données officielles, et la critique vise aussi l'exécuti
 **R14. Pédagogie.** Définitions reprises des fiches officielles de l'Assemblée, citées.
 
 **R15. Déontologie.** Liens vers les documents officiels, sans aucune interprétation.
+
+**R18. Sujets et attention par période.**
+Pourquoi c'est sûr : des comptes de données officielles, classés par les 29 thèmes publics du lexique, dont la précision est déjà mesurée (98,9 %).
+- *« Votre classement thématique est arbitraire. »* Le lexique est public ; chaque part est cliquable et mène à la liste des textes ou des interventions qu'elle compte.
+- *« Le budget écrase tout. »* D'octobre à décembre, le PLF et le PLFSS occupent l'essentiel du temps de séance : le budget est montré à part, et on peut l'exclure.
+- *« Vous suggérez que le gouvernement confisque l'ordre du jour. »* On montre côte à côte ce que déposent les députés et ce que dépose le gouvernement. Le cadre de l'article 48 de la Constitution (deux semaines sur quatre réservées au gouvernement, une au contrôle, un jour par mois aux groupes d'opposition et minoritaires) est expliqué dans le glossaire (R14), sans commentaire.
+- *« Un texte déposé n'est pas un texte important. »* La vue le dit : sur la législature, 2 118 propositions de loi ordinaires ont été déposées contre 73 projets de loi ordinaires, et la plupart des propositions ne sont jamais débattues. C'est justement l'écart que la vue rend visible.
 
 ### 5.3 🟡 Sûrs avec garde-fous
 
@@ -379,6 +402,33 @@ Garde-fous, en deux temps :
 
 Pas de lancement dans les semaines qui précèdent un scrutin national.
 
+**R17. Éclairages sourcés, sans verdict.**
+Principe : sous une affirmation factuelle prononcée en séance, afficher les sources qui l'éclairent, y compris celles qui la contredisent, sans verdict ni commentaire.
+Risques :
+- **La sélection** : avec plus de 77 000 interventions, choisir lesquelles éclairer est l'acte éditorial principal. Si on éclaire surtout le gouvernement, ou surtout un camp, c'est une prise de position, même avec des sources impeccables.
+- **Le comptage** : plusieurs médias reprennent souvent une même enquête ou une même dépêche. Afficher cinq articles donne l'illusion de cinq sources. À l'inverse, une étude face à un démenti suggère un équilibre qui n'existe pas forcément.
+- **Les définitions** : beaucoup de désaccords portent sur les mots. Sur les exportations d'armement, par exemple : arme ou composant, bien à double usage, licence accordée ou livraison effectuée, matériel destiné à la réexportation. Deux sources contraires peuvent être exactes chacune dans ses termes. Les juxtaposer sans le montrer induit en erreur ; l'expliquer avec nos mots, c'est déjà commenter.
+- **Les études** : une étude isolée se trouve pour presque toute thèse.
+- **Le droit** : placer le nom d'un élu à côté d'articles qui le contredisent peut se lire comme une insinuation.
+- **Le coût** : c'est un travail éditorial humain, qui ne s'automatise pas de façon fiable.
+
+Garde-fous :
+- Seulement des affirmations factuelles vérifiables : pas d'opinion, pas de prévision.
+- **Règle de sélection publique, indépendante du contenu**. Par exemple : les affirmations contestées dans l'hémicycle même (les comptes rendus notent les interruptions comme « C'est faux ! », déjà extraites dans les apartés), ou celles déjà traitées par un média de vérification signataire d'un code reconnu (IFCN, EFCSN).
+- **Les sources sont classées par nature, dans cet ordre** :
+  1. données officielles primaires, par exemple le rapport annuel du gouvernement au Parlement sur les exportations d'armement, ou les réponses des ministres aux questions écrites ;
+  2. évaluations institutionnelles : Cour des comptes, autorités indépendantes ;
+  3. synthèses scientifiques : méta-analyses, expertises collectives (Inserm, GIEC…), statistiques publiques ;
+  4. enquêtes journalistiques, avec leur source d'origine, les reprises étant regroupées sous elle ;
+  5. réponse de la personne ou du ministère concerné.
+- Ni verdict, ni comptage, ni code couleur. Chaque source est datée.
+- Quand le désaccord tient à une définition, chaque source est citée avec ses propres mots, sans reformulation.
+- Compteur public des éclairages par groupe et pour le gouvernement, rapporté au temps de parole.
+- Relecture par le comité pluraliste avant publication ; droit de réponse (R13).
+- Si une IA aide à trouver des sources, la charte du § 7 s'applique ; le choix final reste humain.
+
+Conditions de lancement : un pilote d'une dizaine de cas, choisis par la règle publique et portant sur des groupes variés, relu par le comité. Un partenariat est envisageable avec une rédaction de vérification ou avec l'équipe de l'USI. Pas de lancement dans les semaines qui précèdent un scrutin national.
+
 ### 5.5 🔴 Écartés
 
 | # | Cas | Raison principale |
@@ -392,7 +442,7 @@ Pas de lancement dans les semaines qui précèdent un scrutin national.
 | 35 | Frais de mandat | Non publics. |
 | 36 | Promesses de campagne et votes | Interprétation partisane inévitable. |
 | 46 | Croisement avec les représentants d'intérêts | Imputation, diffamation. |
-| 48, 49 | Fact-checking automatique ou éditorial | Exposition juridique, volume, parti pris perçu, autre métier. |
+| 48, 49 | Fact-checking automatique ou éditorial, avec verdict | Exposition juridique, volume, parti pris perçu, autre métier. Remplacé par R17, sans verdict. |
 | 54 | Indice de « probité » | Non mesurable dans un discours ; diffamatoire. |
 | 60 | Quiz « Qui a dit ? » | Sélection éditoriale, ludification du débat. |
 
@@ -536,6 +586,24 @@ Script reproductible : [`scripts/spike_commission_presence.py`](scripts/spike_co
 **R15. Déontologie.** **S**
 - Liens vers la déclaration d'intérêts et d'activités (HATVP) et vers le registre des déports.
 
+**R18. Sujets et attention par période** (vue « De quoi parle l'Assemblée », dans l'onglet Assemblée, avec un résumé sur l'accueil). **M**
+- Pour la période choisie, la part de chacun des 29 thèmes selon quatre angles :
+  1. **déposé** : propositions de loi des députés (par groupe) et projets de loi du gouvernement ;
+  2. **inscrit** à l'ordre du jour, à partir d'`agenda.sqlite`. Les codes de nature des points (`ODJPR`, `ODJAN`, `ODJSN`) ne seront interprétés qu'une fois leur sens confirmé ;
+  3. **débattu** : part du temps de parole en séance, déjà calculée ;
+  4. **demandé au gouvernement** : questions écrites et questions au gouvernement, après l'étape 0.3.
+- Vue principale : l'écart entre ce qui est déposé et ce qui est débattu, thème par thème.
+- Forme :
+  - barres horizontales triées par part, avec un repère pour la période précédente ;
+  - paires de barres « déposé / débattu » ;
+  - un anneau à 6 parts plus « autres », seulement pour l'accueil et les cartes de partage ;
+  - pas de camembert à 29 parts : les parts sous 3 % y sont invisibles, et deux camemberts se comparent mal.
+- Le budget (PLF, PLFSS) est montré à part, et on peut l'exclure.
+- Un texte rattaché à plusieurs thèmes compte dans chacun ; la vue précise alors que les parts ne totalisent pas 100 %.
+- Les thèmes des questions reposent sur la densité de mots-clés : précision mesurée à 91,9 % au lieu de 100 % pour le rattachement par le texte débattu. La page Méthode le dira.
+- Données : thèmes et rattachements (existants), dossiers (0.4), agenda (0.2), questions (0.3). Les angles « déposé » et « débattu » peuvent sortir avant les deux autres.
+- *Fait quand* : chaque part mène à la liste des textes ou des interventions qu'elle compte, et la méthode figure sur la page Méthode.
+
 ### Phase 3. Synthèses et mise en regard (S2 2027, après la présidentielle)
 
 Prérequis : charte IA publiée (§ 7), comité de relecture constitué, échantillons de vérification prêts.
@@ -548,6 +616,11 @@ Prérequis : charte IA publiée (§ 7), comité de relecture constitué, échant
 
 **R7. Synthèse de l'activité d'un député.** **M** (R7a), **L** (R7b)
 - R7a d'abord. R7b seulement si R7a ne suffit pas et si l'audit est concluant.
+
+**R17. Éclairages sourcés, sans verdict.** **L**, travail éditorial continu
+- Bloc « Éclairages » sous l'intervention concernée, et sur la fiche texte.
+- D'abord un pilote d'une dizaine de cas, aux conditions du § 5.4. La sélection n'est pas automatisée.
+- *Fait quand* : la règle de sélection, la hiérarchie des sources et le compteur par groupe sont publiés sur la page Méthode ; chaque éclairage a été relu par le comité et proposé en droit de réponse.
 
 ### Backlog ⏸
 
@@ -563,15 +636,13 @@ Prérequis : charte IA publiée (§ 7), comité de relecture constitué, échant
 | 38 | « Écrire à mon député » | Protection anti-abus éprouvée |
 | 45 | Amendements identiques entre groupes | Après R10 ; strictement factuel |
 | 47 | Coalitions de vote par texte | Après R1 |
-| 51 | Chiffres officiels cités | Après R12, avec relecture humaine |
-| 52 | Vérifications publiées par des médias (ClaimReview) | Après R12 ; liste de médias fondée sur un code reconnu, couverture publiée |
 | 61 | « Quel député vote comme moi ? » | Méthode de choix des questions publiée et non éditoriale (par exemple tous les votes clés d'une période) |
 
 ---
 
 ## 7. Charte des fonctions rédigées par IA
 
-S'applique à R5, R7b et à toute reformulation automatique. Elle sera publiée sur la page Méthode avant le premier lancement.
+S'applique à R5, R7b, à toute reformulation automatique et, pour R17, à toute aide automatique à la recherche de sources. Elle sera publiée sur la page Méthode avant le premier lancement.
 
 1. **Corpus fermé** : seules les sources listées sont utilisées, sans web ouvert.
 2. **Une source par phrase** : une phrase sans source n'est pas publiée.
@@ -603,7 +674,8 @@ S'applique à R5, R7b et à toute reformulation automatique. Elle sera publiée 
 | Sénat (data.senat.fr) | Dossiers et scrutins du Sénat | ⏸ | 20 |
 | HATVP (open data) | Déclarations d'intérêts et d'activités | ⬜ liens | R15 |
 | Vie-publique.fr (DILA) | Fiches explicatives | ⬜ liens ; conditions de réutilisation à vérifier | R5, R14 |
-| Fact Check Tools (ClaimReview) | Vérifications publiées par des médias | ⏸ | 52 |
+| Fact Check Tools (ClaimReview) | Vérifications publiées par des médias | ⏸ phase 3 | R17 |
+| Rapports officiels thématiques (rapport au Parlement sur les exportations d'armement, Cour des comptes, expertises collectives…) | Sources primaires et synthèses pour les éclairages | ⬜ au cas par cas | R17 |
 
 Les jeux de l'Assemblée sont sous Licence Ouverte ; leur présence a été vérifiée le 17 novembre 2026 sous
 `https://data.assemblee-nationale.fr/static/openData/repository/17/`.
@@ -619,7 +691,7 @@ Mesures côté serveur uniquement, sans traceur, dans l'esprit des `campaign_vis
 | Compréhension | Fiches textes consultées par semaine ; part des visites de l'agenda qui ouvrent une fiche texte |
 | Contrôle | Suivis de textes et de thèmes créés ; alertes envoyées ; désabonnements |
 | Qualité | Signalements d'erreur pour 1 000 vues ; délai de correction (cible : moins de 48 heures) ; précision de chaque mesure sur son échantillon |
-| Confiance | Droits de réponse reçus et traités ; aucune contestation publique laissée sans réponse |
+| Confiance | Droits de réponse reçus et traités ; aucune contestation publique laissée sans réponse ; répartition des éclairages sourcés par groupe, comparée au temps de parole |
 | Réutilisation | Téléchargements d'exports ; reprises dans la presse |
 
 ---
@@ -632,7 +704,9 @@ Mesures côté serveur uniquement, sans traceur, dans l'esprit des `campaign_vis
 4. **Comité de relecture pluraliste** : qui, combien, à quel rythme ?
 5. **Période électorale** : faut-il geler les nouveautés avant la présidentielle, et pendant combien de temps ?
 6. **Sénat** : à quelle phase ?
-7. **Noms** : onglet « Textes » ; « Comment le texte a été débattu » pour R10.
+7. **Noms** : onglet « Textes » ; « Comment le texte a été débattu » pour R10 ; « De quoi parle l'Assemblée » pour R18.
+8. **Éclairages sourcés (R17)** : quelle règle de sélection (affirmations contestées en séance, déjà traitées par un média de vérification, autre) ? Avec quel partenaire éditorial ?
+9. **Forme de R18 sur l'accueil** : anneau à 6 parts ou barres ?
 
 ---
 
@@ -643,3 +717,4 @@ Mesures côté serveur uniquement, sans traceur, dans l'esprit des `campaign_vis
 | 2026-11-17 | Création : double diamant, 61 cas d'usage, 16 retenus, phases 0 à 3. |
 | 2026-11-17 | Spikes 0.5 (présence en commission : feu vert) et 0.6 (XVIe législature : mémoire légère) ; constats sur l'agenda et le registre des déports (§ 6.1 à 6.3). |
 | 2026-11-17 | 0.2 fait : `agenda.sqlite` et son rafraîchissement quotidien. |
+| 2026-11-17 | Ajouts après discussion : éclairages sourcés sans verdict (R17, 🟠, phase 3), qui remplacent le fact-checking ; sujets et attention par période (R18, 🟢, phase 2). 63 cas d'usage, 18 retenus. |
